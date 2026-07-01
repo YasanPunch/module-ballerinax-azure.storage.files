@@ -1,3 +1,9 @@
+# Ballerina
+target/
+build/
+Config.toml
+.ballerina/
+
 # Compiled class file
 *.class
 
