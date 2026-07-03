@@ -15,33 +15,40 @@
 // under the License.
 
 # Shared Key authentication using one of the storage account's access keys.
-#
-# + accountKey - A base64-encoded access key of the storage account
 public type SharedKeyAuth record {|
+    # The storage account name (determines the service endpoint unless
+    # `ClientConfiguration.endpoint` overrides it)
+    string accountName;
+    # A base64-encoded access key of the storage account
     string accountKey;
 |};
 
 # Shared Access Signature (SAS) authentication.
-#
-# + sasToken - A SAS token scoped to the required resources and permissions
 public type SasAuth record {|
+    # The storage account name (determines the service endpoint unless
+    # `ClientConfiguration.endpoint` overrides it)
+    string accountName;
+    # A SAS token scoped to the required resources and permissions
     string sasToken;
 |};
 
 # Connection-string authentication. The connection string itself carries the account name,
-# key, and service endpoints, so `accountName` is not required alongside it.
-#
-# + connectionString - An Azure Storage account connection string
+# key, and service endpoints, so no separate account name is needed.
 public type ConnectionStringAuth record {|
+    # An Azure Storage account connection string
     string connectionString;
 |};
 
-# Configuration used to initialize an `azure.storage.files` client (`Client` or `AdminClient`).
-#
-# + accountName - The storage account name. Required for `SharedKeyAuth` and `SasAuth`;
-#                 redundant (and ignored) for `ConnectionStringAuth`.
-# + auth - The authentication method to use
-public type ConnectionConfig record {|
-    string accountName?;
+# Configuration for an `azure.storage.files` client (`Client` or `AdminClient`). Supplied to
+# `init` as an included record parameter, so its fields are passed as named arguments.
+public type ClientConfiguration record {|
+    # The authentication method to use. Each auth record carries exactly the fields it needs
+    # (e.g. `accountName` lives on `SharedKeyAuth`/`SasAuth` but not on `ConnectionStringAuth`),
+    # so a missing field is a compile error, not a runtime failure.
     SharedKeyAuth|SasAuth|ConnectionStringAuth auth;
+    # An explicit file-service endpoint URL, overriding the one derived from the auth record's
+    # `accountName` (`https://{accountName}.file.core.windows.net`). Use for sovereign clouds
+    # (e.g. `https://{account}.file.core.chinacloudapi.cn`), private endpoints with custom DNS,
+    # or local test endpoints.
+    string endpoint?;
 |};

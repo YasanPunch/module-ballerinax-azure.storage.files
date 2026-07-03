@@ -14,15 +14,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-# Structured detail carried by every connector error.
-#
-# + httpStatus - The HTTP status code returned by Azure, or a client-side status for local failures
-# + errorCode - The Azure error code (e.g. `ShareNotFound`), or a client-side identifier
-# + message - A human-readable description of the failure
+# Structured detail carried by every connector error. The human-readable description of the
+# failure is carried by the error's own message, not duplicated here.
 public type ErrorDetail record {|
-    int httpStatus;
+    # The HTTP status code returned by Azure. Absent when the failure happened without a
+    # server exchange (e.g. a `ProcessingError` raised client-side).
+    int httpStatus?;
+    # The Azure error code (e.g. `ShareNotFound`), or a connector-defined identifier for
+    # client-side failures
     string errorCode;
-    string message;
 |};
 
 # The root error type for the connector. Every error raised by an `azure.storage.files`
@@ -60,5 +60,5 @@ public type ProcessingError distinct Error;
 #
 # + return - An `Error` marking the operation as not yet implemented
 isolated function notImplemented() returns Error =>
-    error Error("Not yet implemented", httpStatus = 501, errorCode = "NotImplemented",
-            message = "This operation is a skeleton stub and is not yet implemented");
+    error Error("This operation is a skeleton stub and is not yet implemented",
+            errorCode = "NotImplemented");

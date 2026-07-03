@@ -14,217 +14,215 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import ballerina/time;
+
 // ---------------------------------------------------------------------------
 // Data-model records (results returned by operations)
 // ---------------------------------------------------------------------------
 
 # One share as returned by `AdminClient.listShares` (maps to the SDK `ShareItem`).
-#
-# + name - The share name
-# + properties - The share's properties
-# + metadata - User-defined metadata, when requested via `ShareListOptions.includeMetadata`
-# + snapshot - The snapshot identifier, present only for snapshot listings
-# + deleted - `true` when this entry is a soft-deleted share (requires `includeDeleted`)
-# + version - The share version; pass to `AdminClient.undeleteShare` to restore a deleted share
 public type ShareInfo record {|
+    # The share name
     string name;
+    # The share's properties
     ShareProperties properties;
+    # User-defined metadata, when requested via `ShareListOptions.includeMetadata`
     map<string> metadata?;
-    string snapshot?;
-    boolean deleted?;
+    # The snapshot identifier, present only for snapshot listings
+    string snapshotId?;
+    # `true` when this entry is a soft-deleted share (requires `includeDeleted`)
+    boolean isDeleted?;
+    # The share version; pass to `AdminClient.undeleteShare` to restore a deleted share
     string version?;
 |};
 
 # Properties of a file share (maps to the SDK `ShareProperties`).
-#
-# + quotaInGb - The provisioned capacity of the share, in GiB
-# + accessTier - The share's access tier
-# + eTag - The entity tag for optimistic concurrency
-# + lastModified - Last-modified time, ISO-8601
-# + metadata - User-defined metadata
-# + enabledProtocols - The enabled protocols (SMB and/or NFS)
-# + rootSquash - The NFS root-squash setting (NFS shares only)
-# + leaseState - The current lease state (read-only)
-# + leaseStatus - The current lease status (read-only)
-# + leaseDuration - The current lease duration (read-only)
-# + provisionedIops - Provisioned IOPS (premium shares only)
-# + provisionedBandwidthMbps - Provisioned bandwidth in MiB/s (premium shares only)
 public type ShareProperties record {|
+    # The provisioned capacity of the share, in GiB
     int quotaInGb;
+    # The share's access tier
     ShareAccessTier accessTier?;
+    # The entity tag for optimistic concurrency
     string eTag?;
-    string lastModified?;
+    # The last-modified time (UTC)
+    time:Utc lastModified?;
+    # User-defined metadata
     map<string> metadata?;
+    # The enabled protocols (SMB and/or NFS)
     ShareProtocol[] enabledProtocols?;
+    # The NFS root-squash setting (NFS shares only)
     NfsRootSquash rootSquash?;
+    # The current lease state (read-only)
     LeaseState leaseState?;
+    # The current lease status (read-only)
     LeaseStatus leaseStatus?;
+    # The current lease duration (read-only)
     LeaseDuration leaseDuration?;
+    # Provisioned IOPS (premium shares only)
     int provisionedIops?;
-    int provisionedBandwidthMbps?;
-|};
-
-# Usage statistics for a file share (maps to the SDK `ShareStatistics`).
-#
-# + shareUsageInBytes - The approximate size of the data stored on the share, in bytes
-public type ShareStatistics record {|
-    int shareUsageInBytes;
+    # Provisioned bandwidth in MiB/s (premium shares only)
+    int provisionedBandwidthMibps?;
 |};
 
 # Properties of a directory (maps to the SDK `ShareDirectoryProperties`).
-#
-# + eTag - The entity tag for optimistic concurrency
-# + lastModified - Last-modified time, ISO-8601
-# + metadata - User-defined metadata
-# + isServerEncrypted - Whether the directory metadata is encrypted at rest
-# + smbProperties - SMB-specific properties
-# + posixProperties - POSIX/NFS-specific properties (NFS shares only)
 public type DirectoryProperties record {|
+    # The entity tag for optimistic concurrency
     string eTag;
-    string lastModified;
+    # The last-modified time (UTC)
+    time:Utc lastModified;
+    # User-defined metadata
     map<string> metadata?;
+    # Whether the directory metadata is encrypted at rest
     boolean isServerEncrypted?;
+    # SMB-specific properties
     SmbProperties smbProperties?;
+    # POSIX/NFS-specific properties (NFS shares only)
     PosixProperties posixProperties?;
 |};
 
 # Properties of a file (curated from the SDK `ShareFileProperties`).
-#
-# + eTag - The entity tag for optimistic concurrency
-# + lastModified - Last-modified time, ISO-8601
-# + contentLength - The size of the file in bytes
-# + contentType - The MIME content type
-# + contentEncoding - The content encoding
-# + contentDisposition - The content disposition
-# + cacheControl - The cache-control header value
-# + contentMd5 - The base64-encoded MD5 hash of the content
-# + metadata - User-defined metadata
-# + isServerEncrypted - Whether the file data is encrypted at rest
-# + leaseState - The current lease state (read-only)
-# + leaseStatus - The current lease status (read-only)
-# + leaseDuration - The current lease duration (read-only)
-# + copyStatus - The status of the most recent copy operation, if any
-# + copyId - The identifier of the most recent copy operation, if any
-# + smbProperties - SMB-specific properties
-# + posixProperties - POSIX/NFS-specific properties (NFS shares only)
 public type Properties record {|
+    # The entity tag for optimistic concurrency
     string eTag;
-    string lastModified;
+    # The last-modified time (UTC)
+    time:Utc lastModified;
+    # The size of the file in bytes
     int contentLength;
+    # The MIME content type
     string contentType?;
+    # The content encoding
     string contentEncoding?;
+    # The content disposition
     string contentDisposition?;
+    # The cache-control header value
     string cacheControl?;
+    # The base64-encoded MD5 hash of the content
     string contentMd5?;
+    # User-defined metadata
     map<string> metadata?;
+    # Whether the file data is encrypted at rest
     boolean isServerEncrypted?;
+    # The current lease state (read-only)
     LeaseState leaseState?;
+    # The current lease status (read-only)
     LeaseStatus leaseStatus?;
+    # The current lease duration (read-only)
     LeaseDuration leaseDuration?;
+    # The status of the most recent copy operation, if any. Re-fetch the properties to observe
+    # a pending copy's progress.
     CopyStatus copyStatus?;
+    # The identifier of the most recent copy operation, if any
     string copyId?;
+    # Progress of the most recent copy operation, if any
+    CopyProgress copyProgress?;
+    # SMB-specific properties
     SmbProperties smbProperties?;
+    # POSIX/NFS-specific properties (NFS shares only)
     PosixProperties posixProperties?;
 |};
 
-# One entry returned by `Client.listDirectoriesAndFiles` (maps to the SDK `ShareFileItem`).
-#
-# + name - The entry name (file or directory)
-# + isDirectory - `true` if the entry is a directory, `false` if it is a file
-# + sizeBytes - The file size in bytes; not present for directories
-# + id - The entry identifier
-# + eTag - The entity tag; drives the polling `Listener`'s change detection
-# + lastModified - Last-modified time, ISO-8601
-public type FileSystemEntry record {|
+# Progress of an asynchronous copy operation. Parsed by the connector from the service's
+# raw `"bytesCopied/totalBytes"` form (the `x-ms-copy-progress` header).
+public type CopyProgress record {|
+    # The number of bytes copied so far
+    int copiedBytes;
+    # The total number of bytes to be copied
+    int totalBytes;
+|};
+
+# One entry returned by `Client.list` (maps to the SDK `ShareFileItem`). The service returns
+# only the entry's leaf name; the connector synthesizes the full share-relative `path` while
+# it walks the listing, so every entry can be passed directly to the path-taking operations
+# (`getProperties`, `delete`, `download`, ...).
+public type Entry record {|
+    # The share-relative path of the entry, e.g. `/dir1/dir2/file.ext`
+    string path;
+    # The entry name (file or directory), without the directory component
     string name;
+    # `true` if the entry is a directory, `false` if it is a file
     boolean isDirectory;
+    # The file size in bytes; not present for directories
     int sizeBytes?;
+    # The entry identifier
     string id?;
+    # The entity tag; drives the polling `Listener`'s change detection
     string eTag?;
-    string lastModified?;
+    # The last-modified time (UTC)
+    time:Utc lastModified?;
 |};
 
 # SMB-specific properties of a file or directory (maps to the SDK `FileSmbProperties`).
-#
-# + ntfsFileAttributes - The NTFS attributes, e.g. `"ReadOnly|Hidden"`
-# + filePermissionKey - The key of a permission stored in the share's permission store
-# + fileCreationTime - Creation time, ISO-8601
-# + fileLastWriteTime - Last-write time, ISO-8601
-# + fileChangeTime - Change time, ISO-8601
-# + fileId - The file identifier
-# + parentId - The parent directory identifier
 public type SmbProperties record {|
+    # The NTFS attributes, e.g. `"ReadOnly|Hidden"`
     string ntfsFileAttributes?;
+    # The key of a permission stored in the share's permission store
     string filePermissionKey?;
-    string fileCreationTime?;
-    string fileLastWriteTime?;
-    string fileChangeTime?;
+    # The creation time (UTC)
+    time:Utc fileCreationTime?;
+    # The last-write time (UTC)
+    time:Utc fileLastWriteTime?;
+    # The change time (UTC)
+    time:Utc fileChangeTime?;
+    # The file identifier
     string fileId?;
+    # The parent directory identifier
     string parentId?;
 |};
 
 # POSIX/NFS-specific properties of a file or directory (maps to the SDK `FilePosixProperties`).
 # Present only on NFS shares.
-#
-# + owner - The owner user id (UID)
-# + group - The owning group id (GID)
-# + fileMode - The file mode, octal or symbolic
-# + fileType - The NFS file type
-# + linkCount - The number of hard links to the file
 public type PosixProperties record {|
+    # The owner user id (UID)
     string owner?;
+    # The owning group id (GID)
     string group?;
+    # The file mode, octal or symbolic
     string fileMode?;
+    # The NFS file type
     NfsFileType fileType?;
+    # The number of hard links to the file
     int linkCount?;
 |};
 
-# The result of a copy operation (maps to the SDK `ShareFileCopyInfo`). Copies are asynchronous;
-# `copyStatus` is `PENDING` until the server-side copy completes.
-#
-# + copyId - The copy operation identifier; pass to `Client.abortCopy` to cancel a pending copy
-# + copyStatus - The current status of the copy
-# + eTag - The entity tag of the destination after the copy started
-# + lastModified - Last-modified time of the destination, ISO-8601
+# The result of starting a copy operation (maps to the SDK `ShareFileCopyInfo`). Copies are
+# asynchronous, and this record is a point-in-time snapshot taken when the copy started — it is
+# never updated afterwards. To observe progress, poll `Client.getProperties` on the destination
+# path and read `copyStatus`/`copyProgress`; cancel via `Client.abortCopy`.
 public type CopyInfo record {|
+    # The copy operation identifier; pass to `Client.abortCopy` to cancel a pending copy
     string copyId;
+    # The copy status at the moment the copy started — the `CopyStatus` enum value `PENDING`
+    # while the server-side copy is still in progress
     CopyStatus copyStatus;
+    # The entity tag of the destination after the copy started
     string eTag?;
-    string lastModified?;
+    # The last-modified time of the destination (UTC)
+    time:Utc lastModified?;
 |};
 
-# A single byte range within a file (maps to the SDK `ShareFileRange`). Both bounds are inclusive.
-#
-# + startByte - The zero-based inclusive start offset
-# + endByte - The zero-based inclusive end offset
+# A single byte range within a file (maps to the SDK `ShareFileRange`). Both bounds are
+# inclusive, mirroring the service's List Ranges response (a range starting at offset `o`
+# with length `l` is `startByte = o`, `endByte = o + l - 1`).
 public type Range record {|
+    # The zero-based inclusive start offset
     int startByte;
+    # The zero-based inclusive end offset
     int endByte;
 |};
 
-# The difference in file ranges between two snapshots (maps to the SDK `ShareFileRangeList`).
-#
-# + ranges - Ranges that were written (contain data) since the previous snapshot
-# + clearRanges - Ranges that were cleared since the previous snapshot
-public type RangeDiff record {|
-    Range[] ranges;
-    Range[] clearRanges;
-|};
-
-# A file as surfaced to the polling `Listener`'s event handlers and the `Caller`'s snapshot.
+# A file as surfaced to the polling `Listener`'s event handlers.
 # Carries only listing-derived fields (what a directory listing can provide).
-#
-# + path - The share-relative path, e.g. `/dir1/dir2/file.ext`
-# + name - The file name only (no directory component)
-# + sizeBytes - The file size in bytes
-# + eTag - The entity tag; a change in this value is what marks a file as modified
-# + lastModified - Last-modified time, ISO-8601
 public type FileInfo record {|
+    # The share-relative path, e.g. `/dir1/dir2/file.ext`
     string path;
+    # The file name only (no directory component)
     string name;
+    # The file size in bytes
     int sizeBytes;
+    # The entity tag; a change in this value is what marks a file as modified
     string eTag;
-    string lastModified;
+    # The last-modified time (UTC)
+    time:Utc lastModified;
 |};
 
 // ---------------------------------------------------------------------------
@@ -238,7 +236,9 @@ public enum ShareAccessTier {
     # Optimized for infrequently accessed data
     COOL = "Cool",
     # Optimized for high transaction volumes
-    TRANSACTION_OPTIMIZED = "TransactionOptimized"
+    TRANSACTION_OPTIMIZED = "TransactionOptimized",
+    # The default (and only) tier of provisioned premium file shares
+    PREMIUM = "Premium"
 }
 
 # The file-access protocol(s) enabled on a share.
@@ -317,12 +317,4 @@ public enum PermissionCopyMode {
     SOURCE = "source",
     # Override with an explicitly supplied permission
     OVERRIDE = "override"
-}
-
-# The transport protocol(s) permitted by a SAS token.
-public enum SasProtocol {
-    # HTTPS only
-    HTTPS = "https",
-    # HTTPS and HTTP
-    HTTPS_HTTP = "https,http"
 }

@@ -23,9 +23,9 @@ public isolated client class AdminClient {
 
     # Initializes the account-level client for the given storage account.
     #
-    # + config - The connection configuration (account name and authentication)
+    # + config - The client configuration (authentication, etc.), passed as named arguments
     # + return - An `Error` if the client could not be initialized, otherwise `()`
-    public isolated function init(ConnectionConfig config) returns Error? {
+    public isolated function init(*ClientConfiguration config) returns Error? {
         return;
     }
 
@@ -60,15 +60,17 @@ public isolated client class AdminClient {
 
     # Restores a previously soft-deleted share.
     #
-    # + deletedShareName - The name of the soft-deleted share
-    # + deletedShareVersion - The version of the soft-deleted share (from `ShareInfo.version`)
+    # + shareName - The name of the soft-deleted share to restore
+    # + version - The version of the soft-deleted share (from `ShareInfo.version`)
     # + return - An `Error` if the share could not be restored, otherwise `()`
-    isolated remote function undeleteShare(string deletedShareName, string deletedShareVersion)
-            returns Error? {
+    isolated remote function undeleteShare(string shareName, string version) returns Error? {
         return notImplemented();
     }
 
-    # Closes the client and releases any underlying resources.
+    # Closes the client. Subsequent operations on a closed client fail. Releases any
+    # connector-owned resources; the SDK's default HTTP transport is shared and
+    # process-managed, so with the default transport this is a lifecycle guard (a
+    # connector-owned transport configured post-v0.1 is torn down here).
     #
     # + return - An `Error` if the client could not be closed, otherwise `()`
     isolated remote function close() returns Error? {

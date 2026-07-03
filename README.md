@@ -6,7 +6,7 @@ It provides:
 
 - **`Client`** — a share-scoped client for the directories and files within a single share.
 - **`AdminClient`** — an account-level client for managing shares.
-- **`Listener`** — a polling listener that dispatches `onFileAdd` / `onFileDelete` / `onFileModify` events, with a `Caller` for acting on the triggering file.
+- **`Listener`** — a polling listener that dispatches an `onFile` event for each file present in the watched path (consume-style), with a `Caller` for acting on the file. Snapshot-diff events (`onFileAdd`/`onFileDelete`/`onFileModify`) are planned post-v0.1.
 
 > **Status: API skeleton.** The `ballerina/` package currently holds the first-release (v0.1) API surface with stubbed operation bodies, published for design review ahead of implementation. Operations return a `NotImplemented` error until they are implemented.
 

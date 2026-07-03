@@ -18,20 +18,19 @@
 // Content headers
 // ---------------------------------------------------------------------------
 
-# Standard HTTP content headers that can be set on a file.
-#
-# + contentType - The MIME content type
-# + contentEncoding - The content encoding
-# + contentLanguage - The content language
-# + contentDisposition - The content disposition
-# + cacheControl - The cache-control header value
-# + contentMd5 - The base64-encoded MD5 hash of the content
-public type HttpHeaders record {|
+# The standard content headers that can be set on a file.
+public type ContentHeaders record {|
+    # The MIME content type
     string contentType?;
+    # The content encoding
     string contentEncoding?;
+    # The content language
     string contentLanguage?;
+    # The content disposition
     string contentDisposition?;
+    # The cache-control header value
     string cacheControl?;
+    # The base64-encoded MD5 hash of the content
     string contentMd5?;
 |};
 
@@ -40,54 +39,41 @@ public type HttpHeaders record {|
 // ---------------------------------------------------------------------------
 
 # Options for `AdminClient.listShares`.
-#
-# + prefix - Return only shares whose name begins with this prefix
-# + includeMetadata - Include each share's metadata in the results
-# + includeSnapshots - Include share snapshots in the results
-# + includeDeleted - Include soft-deleted shares in the results
-# + maxResults - The maximum number of shares to return per page
 public type ShareListOptions record {|
+    # Return only shares whose name begins with this prefix
     string prefix?;
+    # Include each share's metadata in the results
     boolean includeMetadata = false;
+    # Include share snapshots in the results
     boolean includeSnapshots = false;
+    # Include soft-deleted shares in the results
     boolean includeDeleted = false;
-    int maxResults?;
+    # The number of shares fetched per service round-trip (page). Tunes latency/memory of the
+    # lazy stream; it does NOT cap the total number of results. Service default and maximum: 5,000.
+    int pageSize?;
 |};
 
 # Options for `AdminClient.createShare`.
-#
-# + metadata - User-defined metadata to set on the new share
-# + quotaInGb - The provisioned capacity of the share, in GiB
-# + accessTier - The access tier for the share
-# + enabledProtocols - The protocols to enable on the share (SMB and/or NFS)
-# + rootSquash - The NFS root-squash setting (NFS shares only)
 public type ShareCreateOptions record {|
+    # User-defined metadata to set on the new share
     map<string> metadata?;
+    # The provisioned capacity of the share, in GiB
     int quotaInGb?;
+    # The access tier for the share
     ShareAccessTier accessTier?;
+    # The protocols to enable on the share (SMB and/or NFS)
     ShareProtocol[] enabledProtocols?;
+    # The NFS root-squash setting (NFS shares only)
     NfsRootSquash rootSquash?;
 |};
 
 # Options for `AdminClient.deleteShare`.
-#
-# + deleteSnapshots - Also delete the share's snapshots
-# + snapshot - Delete a specific snapshot rather than the share itself
-# + leaseId - The active lease id, required when the share is leased
 public type ShareDeleteOptions record {|
+    # Also delete the share's snapshots
     boolean deleteSnapshots = false;
-    string snapshot?;
-    string leaseId?;
-|};
-
-# Options for `Client.setShareProperties`.
-#
-# + quotaInGb - The new provisioned capacity of the share, in GiB
-# + accessTier - The new access tier for the share
-# + leaseId - The active lease id, required when the share is leased
-public type ShareSetPropertiesOptions record {|
-    int quotaInGb?;
-    ShareAccessTier accessTier?;
+    # Delete a specific snapshot rather than the share itself
+    string snapshotId?;
+    # The active lease id, required when the share is leased
     string leaseId?;
 |};
 
@@ -96,26 +82,25 @@ public type ShareSetPropertiesOptions record {|
 // ---------------------------------------------------------------------------
 
 # Options for `Client.createDirectory`.
-#
-# + metadata - User-defined metadata to set on the new directory
-# + filePermission - An SDDL permission string to apply
-# + smbProperties - SMB properties to apply
 public type DirectoryCreateOptions record {|
+    # User-defined metadata to set on the new directory
     map<string> metadata?;
+    # An SDDL permission string to apply
     string filePermission?;
+    # SMB properties to apply
     SmbProperties smbProperties?;
 |};
 
-# Options for `Client.listDirectoriesAndFiles`.
-#
-# + prefix - Return only entries whose name begins with this prefix
-# + recursive - List entries in subdirectories as well
-# + maxResults - The maximum number of entries to return per page
-# + includeExtendedInfo - Include ETag and timestamps on each entry (needed for change detection)
+# Options for `Client.list`.
 public type ListOptions record {|
+    # Return only entries whose name begins with this prefix
     string prefix?;
+    # List entries in subdirectories as well
     boolean recursive = false;
-    int maxResults?;
+    # The number of entries fetched per service round-trip (page). Tunes latency/memory of the
+    # lazy stream; it does NOT cap the total number of results. Service default and maximum: 5,000.
+    int pageSize?;
+    # Include ETag and timestamps on each entry (needed for change detection)
     boolean includeExtendedInfo = true;
 |};
 
@@ -124,107 +109,66 @@ public type ListOptions record {|
 // ---------------------------------------------------------------------------
 
 # Options for `Client.rename` and `Client.renameDirectory`.
-#
-# + replaceIfExists - Overwrite the destination if it already exists
-# + ignoreReadOnly - Rename even if the destination has the read-only attribute set
-# + filePermission - An SDDL permission string to apply to the renamed entry
-# + metadata - User-defined metadata to set on the renamed entry
 public type RenameOptions record {|
+    # Overwrite an existing **file** at the destination. The service never allows overwriting
+    # an existing directory: for both `rename` and `renameDirectory`, a directory at the
+    # destination path fails the operation regardless of this flag.
     boolean replaceIfExists = false;
+    # Rename even if the destination has the read-only attribute set (requires `replaceIfExists`)
     boolean ignoreReadOnly = false;
+    # An SDDL permission string to apply to the renamed entry
     string filePermission?;
+    # User-defined metadata to set on the renamed entry
     map<string> metadata?;
 |};
 
 # Options for `Client.create` (creating an empty file of a given size).
-#
-# + httpHeaders - Content headers to set on the file
-# + metadata - User-defined metadata to set on the file
-# + filePermission - An SDDL permission string to apply
-# + smbProperties - SMB properties to apply
 public type CreateOptions record {|
-    HttpHeaders httpHeaders?;
+    # Content headers to set on the file
+    ContentHeaders contentHeaders?;
+    # User-defined metadata to set on the file
     map<string> metadata?;
+    # An SDDL permission string to apply
     string filePermission?;
+    # SMB properties to apply
     SmbProperties smbProperties?;
 |};
 
-# Options for the upload operations (`upload`, `uploadFromBytes`, `uploadFromStream`,
-# `uploadContent`).
-#
-# + httpHeaders - Content headers to set on the file
-# + metadata - User-defined metadata to set on the file
+# Options for the upload operations (`upload`, `uploadContent`, `uploadFromStream`).
+# Upload creates the destination file, so the create-time attributes are available here too.
 public type UploadOptions record {|
-    HttpHeaders httpHeaders?;
+    # Content headers to set on the file
+    ContentHeaders contentHeaders?;
+    # User-defined metadata to set on the file
     map<string> metadata?;
+    # An SDDL permission string to apply
+    string filePermission?;
+    # SMB properties to apply
+    SmbProperties smbProperties?;
 |};
 
-# Options for the download operations (`download`, `getBytes`).
-#
-# + range - Download only this byte range instead of the whole file
-# + rangeGetContentMd5 - Request the MD5 of the downloaded range
+# Options for the download operations (`download`, `getBytes`, `getStream`).
 public type DownloadOptions record {|
+    # Download only this byte range instead of the whole file
     Range range?;
-    boolean rangeGetContentMd5 = false;
 |};
 
 # Options for `Client.copy` and `Client.copyFromUrl`.
-#
-# + metadata - User-defined metadata to set on the destination
-# + filePermission - An SDDL permission string to apply to the destination
-# + smbProperties - SMB properties to apply to the destination
-# + permissionCopyMode - How to handle the source permission when copying
-# + ignoreReadOnly - Copy even if the destination has the read-only attribute set
 public type CopyOptions record {|
+    # User-defined metadata to set on the destination
     map<string> metadata?;
+    # An SDDL permission string to apply to the destination
     string filePermission?;
+    # SMB properties to apply to the destination
     SmbProperties smbProperties?;
+    # How to handle the source permission when copying
     PermissionCopyMode permissionCopyMode?;
+    # Copy even if the destination has the read-only attribute set
     boolean ignoreReadOnly?;
 |};
 
-# Options for `Client.listRanges` and `Client.listRangesDiff`.
-#
-# + range - Restrict the listing to this byte range
-# + previousSnapshot - The baseline snapshot id for a range diff
+# Options for `Client.listRanges`.
 public type RangeListOptions record {|
+    # Restrict the listing to this byte range
     Range range?;
-    string previousSnapshot?;
-|};
-
-// ---------------------------------------------------------------------------
-// SAS records
-// ---------------------------------------------------------------------------
-
-# The values used to generate a share-scoped Shared Access Signature via
-# `Client.generateShareSas`.
-#
-# + expiryTime - The expiry time, ISO-8601; omit when `identifier` refers to a stored policy
-# + permissions - The permissions granted by the SAS
-# + startTime - The start time, ISO-8601
-# + protocol - The transport protocol(s) permitted by the SAS
-# + ipRange - An allowed IP address or range, e.g. `"168.1.5.60-168.1.5.70"`
-# + identifier - The name of a stored access policy to base the SAS on
-public type ShareSasSignatureValues record {|
-    string expiryTime;
-    ShareSasPermissions permissions;
-    string startTime?;
-    SasProtocol protocol?;
-    string ipRange?;
-    string identifier?;
-|};
-
-# The permissions that can be granted by a share-scoped SAS.
-#
-# + read - Read file content and properties
-# + create - Create new files or directories
-# + write - Write file content and properties
-# + delete - Delete files or directories
-# + list - List directories and files
-public type ShareSasPermissions record {|
-    boolean read = false;
-    boolean create = false;
-    boolean write = false;
-    boolean delete = false;
-    boolean list = false;
 |};
