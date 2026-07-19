@@ -2,7 +2,7 @@
 distribution = "2201.12.0"
 org = "ballerinax"
 name = "azure.storage.files"
-version = "0.1.0"
+version = "@toml.version@"
 authors = ["Ballerina"]
 keywords = ["Type/Connector", "Area/Storage & File Management", "Cost/Paid", "Vendor/Microsoft"]
 repository = "https://github.com/ballerina-platform/module-ballerinax-azure.storage.files"
@@ -17,160 +17,160 @@ graalvmCompatible = true
 [[platform.java21.dependency]]
 groupId = "io.ballerina.lib"
 artifactId = "azure.storage.files-native"
-version = "0.1.0"
-path = "../native/build/libs/azure.storage.files-native-0.1.0-SNAPSHOT.jar"
+version = "@toml.version@"
+path = "../native/build/libs/azure.storage.files-native-@project.version@.jar"
 
 [[platform.java21.dependency]]
 groupId = "com.azure"
 artifactId = "azure-storage-file-share"
-version = "12.31.0"
+version = "@azure.storage.file.share.version@"
 
 [[platform.java21.dependency]]
 groupId = "com.azure"
 artifactId = "azure-storage-common"
-version = "12.34.0"
+version = "@azure.storage.common.version@"
 
 [[platform.java21.dependency]]
 groupId = "com.azure"
 artifactId = "azure-core"
-version = "1.58.1"
+version = "@azure.core.version@"
 
 [[platform.java21.dependency]]
 groupId = "com.azure"
 artifactId = "azure-core-http-netty"
-version = "1.16.5"
+version = "@azure.core.http.netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "com.azure"
 artifactId = "azure-json"
-version = "1.5.1"
+version = "@azure.json.version@"
 
 [[platform.java21.dependency]]
 groupId = "com.azure"
 artifactId = "azure-xml"
-version = "1.2.1"
+version = "@azure.xml.version@"
 
 [[platform.java21.dependency]]
 groupId = "com.fasterxml.jackson.core"
 artifactId = "jackson-annotations"
-version = "2.18.7"
+version = "@jackson.version@"
 
 [[platform.java21.dependency]]
 groupId = "com.fasterxml.jackson.core"
 artifactId = "jackson-core"
-version = "2.18.7"
+version = "@jackson.version@"
 
 [[platform.java21.dependency]]
 groupId = "com.fasterxml.jackson.core"
 artifactId = "jackson-databind"
-version = "2.18.7"
+version = "@jackson.version@"
 
 [[platform.java21.dependency]]
 groupId = "com.fasterxml.jackson.datatype"
 artifactId = "jackson-datatype-jsr310"
-version = "2.18.7"
+version = "@jackson.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.projectreactor"
 artifactId = "reactor-core"
-version = "3.7.18"
+version = "@reactor.core.version@"
 
 [[platform.java21.dependency]]
 groupId = "org.reactivestreams"
 artifactId = "reactive-streams"
-version = "1.0.4"
+version = "@reactive.streams.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.projectreactor.netty"
 artifactId = "reactor-netty-http"
-version = "1.2.18"
+version = "@reactor.netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.projectreactor.netty"
 artifactId = "reactor-netty-core"
-version = "1.2.18"
+version = "@reactor.netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-common"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-buffer"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-codec"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-codec-dns"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-codec-http"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-codec-http2"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-codec-socks"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-handler"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-handler-proxy"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-resolver"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-resolver-dns"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-resolver-dns-classes-macos"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-transport"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-transport-classes-epoll"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-transport-classes-kqueue"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-transport-native-unix-common"
-version = "4.1.135.Final"
+version = "@netty.version@"
 
 [[platform.java21.dependency]]
 groupId = "io.netty"
 artifactId = "netty-tcnative-classes"
-version = "2.0.78.Final"
+version = "@netty.tcnative.version@"

@@ -14,8 +14,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import ballerina/jballerina.java;
+import ballerina/time;
+
 # Account-level client for Azure Files. Manages the shares within a storage account
-# (create, list, delete, restore). For operations scoped to a single share, use `Client`.
+# (create, list, delete, restore, existence checks). For operations scoped to a single share,
+# use `Client`.
 #
 # The client is `isolated` and holds only immutable configuration, so its operations are
 # safe to invoke concurrently.
@@ -26,17 +30,29 @@ public isolated client class AdminClient {
     # + config - The client configuration (authentication, etc.), passed as named arguments
     # + return - An `Error` if the client could not be initialized, otherwise `()`
     public isolated function init(*ClientConfiguration config) returns Error? {
-        return;
+        return initAdminClient(self, config);
     }
 
-    # Lists the shares in the storage account.
+    # Checks whether a share exists in the storage account. Returns `false` only when Azure
+    # confirms the share is absent (HTTP 404); an `Error` means the check itself failed
+    # (e.g. invalid credentials, network failure) and the share's existence could not be
+    # determined.
+    #
+    # + shareName - The name of the share to check
+    # + return - `true` if the share exists, `false` if not, or an `Error`
+    isolated remote function hasShare(string shareName) returns boolean|Error = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+    } external;
+
+    # Lists the shares in the storage account. Soft-deleted shares appear only when requested
+    # via `ShareListOptions.includeDeleted`.
     #
     # + options - Optional filtering and listing options
-    # + return - A stream of `ShareInfo`, or an `Error`
+    # + return - An array of `ShareInfo`, or an `Error`
     isolated remote function listShares(ShareListOptions? options = ())
-            returns stream<ShareInfo, Error?>|Error {
-        return notImplemented();
-    }
+            returns ShareInfo[]|Error = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+    } external;
 
     # Creates a new share in the storage account.
     #
@@ -44,36 +60,92 @@ public isolated client class AdminClient {
     # + options - Optional creation options (quota, tier, protocols, metadata)
     # + return - An `Error` if the share could not be created, otherwise `()`
     isolated remote function createShare(string shareName, ShareCreateOptions? options = ())
-            returns Error? {
-        return notImplemented();
-    }
+            returns Error? = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+    } external;
 
-    # Deletes a share from the storage account.
+    # Deletes a share from the storage account. When the account's soft-delete retention
+    # policy is enabled (the default for new accounts), the share is retained for the
+    # configured period and can be restored with `undeleteShare`; there is no per-call
+    # hard-delete option. The retention policy itself is configured on the storage account
+    # (Azure management plane), not through this connector.
     #
     # + shareName - The name of the share to delete
     # + options - Optional deletion options (snapshot handling, lease id)
     # + return - An `Error` if the share could not be deleted, otherwise `()`
     isolated remote function deleteShare(string shareName, ShareDeleteOptions? options = ())
-            returns Error? {
-        return notImplemented();
-    }
+            returns Error? = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+    } external;
 
-    # Restores a previously soft-deleted share.
+    # Restores a soft-deleted share (see `deleteShare` — deletes are soft while the account's
+    # retention policy is enabled). Find restorable shares and their versions with
+    # `listShares(includeDeleted = true)`.
     #
     # + shareName - The name of the soft-deleted share to restore
     # + version - The version of the soft-deleted share (from `ShareInfo.version`)
     # + return - An `Error` if the share could not be restored, otherwise `()`
-    isolated remote function undeleteShare(string shareName, string version) returns Error? {
+    isolated remote function undeleteShare(string shareName, string version) returns Error? = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+    } external;
+
+    // -----------------------------------------------------------------------
+    // Service configuration
+    // -----------------------------------------------------------------------
+
+    # Reads the account's file-service configuration: metrics collection and CORS
+    # (Cross-Origin Resource Sharing) rules.
+    #
+    # + return - The `ServiceProperties`, or an `Error`
+    isolated remote function getServiceProperties() returns ServiceProperties|Error {
+        return notImplemented();
+    }
+
+    # Updates the account's file-service configuration. The service applies the record as a
+    # whole, so read the current configuration with `getServiceProperties`, modify it, and
+    # pass the result back.
+    #
+    # + properties - The complete file-service configuration to apply
+    # + return - An `Error` if the configuration could not be updated, otherwise `()`
+    isolated remote function setServiceProperties(ServiceProperties properties) returns Error? {
+        return notImplemented();
+    }
+
+    // -----------------------------------------------------------------------
+    // SAS
+    // -----------------------------------------------------------------------
+
+    # Gets a user-delegation key for signing user-delegation SAS tokens. Valid only on a
+    # client authenticated with Microsoft Entra ID (`EntraIdConfig`) whose identity holds the
+    # `Storage File Delegator` role.
+    #
+    # + startTime - The start of the key's validity period
+    # + expiryTime - The end of the key's validity period (at most 7 days out)
+    # + return - The `UserDelegationKey`, or an `Error`
+    isolated remote function getUserDelegationKey(time:Utc startTime, time:Utc expiryTime)
+            returns UserDelegationKey|Error {
+        return notImplemented();
+    }
+
+    # Mints an account-level SAS (Shared Access Signature) token. Signing happens locally with
+    # the account key, so no call is made to Azure; the client must be authenticated with
+    # `SharedKeyConfig` (or a connection string carrying an account key). Note that rotating
+    # the account key revokes every SAS minted from it.
+    #
+    # + values - What the SAS grants: validity window, permissions, and resource types
+    # + return - The SAS token, or an `Error`
+    isolated remote function generateAccountSas(AccountSasSignatureValues values)
+            returns string|Error {
         return notImplemented();
     }
 
     # Closes the client. Subsequent operations on a closed client fail. Releases any
     # connector-owned resources; the SDK's default HTTP transport is shared and
-    # process-managed, so with the default transport this is a lifecycle guard (a
-    # connector-owned transport configured post-v0.1 is torn down here).
+    # process-managed, so with the default transport this is a lifecycle guard. No call is
+    # made to Azure, so it is an ordinary method, not a remote one.
     #
     # + return - An `Error` if the client could not be closed, otherwise `()`
-    isolated remote function close() returns Error? {
-        return;
+    public isolated function close() returns Error? {
+        return closeClient(self);
     }
 }

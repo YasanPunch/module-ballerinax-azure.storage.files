@@ -18,19 +18,25 @@
 // Content headers
 // ---------------------------------------------------------------------------
 
-# The standard content headers that can be set on a file.
+# The standard content headers that can be set on a file. Azure serves these back verbatim
+# on every download, so they are how a stored file tells its eventual consumers what it is
+# and how to treat it.
 public type ContentHeaders record {|
-    # The MIME content type
+    # The MIME (Multipurpose Internet Mail Extensions) is a standardized identifier for the type of data in the file,
+    # (e.g. `application/pdf`, `image/png`, `text/html`), served as `Content-Type` on downloads so clients know how to handle the bytes
     string contentType?;
-    # The content encoding
+    # Any encoding applied to the stored content (e.g. `gzip`),
+    # so consumers know to decode before use
     string contentEncoding?;
-    # The content language
+    # The natural language of the content (e.g. `en-US`)
     string contentLanguage?;
-    # The content disposition
+    # How receivers should present the content (e.g. `attachment` to
+    # force a save dialog, `inline` to display in the browser, etc.)
     string contentDisposition?;
-    # The cache-control header value
+    # Caching directives served with the file (e.g. `max-age=3600, private`), telling
+    # browsers/proxies whether and how long they may cache it
     string cacheControl?;
-    # The base64-encoded MD5 hash of the content
+    # Base64-encoded MD5 of the content, for integrity verification of stored/transferred data
     string contentMd5?;
 |};
 
@@ -48,29 +54,40 @@ public type ShareListOptions record {|
     boolean includeSnapshots = false;
     # Include soft-deleted shares in the results
     boolean includeDeleted = false;
-    # The number of shares fetched per service round-trip (page). Tunes latency/memory of the
-    # lazy stream; it does NOT cap the total number of results. Service default and maximum: 5,000.
-    int pageSize?;
 |};
 
 # Options for `AdminClient.createShare`.
 public type ShareCreateOptions record {|
     # User-defined metadata to set on the new share
     map<string> metadata?;
-    # The provisioned capacity of the share, in GiB
+    # The provisioned capacity of the share, in GiB; when absent, the account kind's default
+    # quota applies
     int quotaInGb?;
-    # The access tier for the share
+    # The access tier for the share; when absent, the account kind's default tier applies
+    # (`TRANSACTION_OPTIMIZED` on pay-as-you-go accounts, `PREMIUM` on premium accounts)
     ShareAccessTier accessTier?;
     # The protocols to enable on the share (SMB and/or NFS)
-    ShareProtocol[] enabledProtocols?;
-    # The NFS root-squash setting (NFS shares only)
+    ShareProtocol[] enabledProtocols = [SMB];
+    # The NFS root-squash setting (NFS shares only); when absent, NFS shares default to
+    # `NO_ROOT_SQUASH`
     NfsRootSquash rootSquash?;
+|};
+
+# Options for `Client.setShareProperties`: administrative quota and tier changes.
+public type ShareSetPropertiesOptions record {|
+    # The new provisioned capacity of the share, in GiB; when absent, the quota is unchanged
+    int quotaInGb?;
+    # The new access tier for the share; when absent, the tier is unchanged
+    ShareAccessTier accessTier?;
+    # The active lease id, required when the share is leased
+    string leaseId?;
 |};
 
 # Options for `AdminClient.deleteShare`.
 public type ShareDeleteOptions record {|
-    # Also delete the share's snapshots
-    boolean deleteSnapshots = false;
+    # How the share's snapshots are handled; when absent, only the share itself is deleted
+    # (the delete fails if snapshots exist)
+    ShareSnapshotsDeleteOption deleteSnapshots?;
     # Delete a specific snapshot rather than the share itself
     string snapshotId?;
     # The active lease id, required when the share is leased
@@ -85,10 +102,12 @@ public type ShareDeleteOptions record {|
 public type DirectoryCreateOptions record {|
     # User-defined metadata to set on the new directory
     map<string> metadata?;
-    # An SDDL permission string to apply
+    # An SDDL (Security Descriptor Definition Language) permission string to apply
     string filePermission?;
     # SMB properties to apply
     SmbProperties smbProperties?;
+    # POSIX owner, group, and mode to apply (NFS shares only)
+    PosixProperties posixProperties?;
 |};
 
 # Options for `Client.list`.
@@ -98,33 +117,41 @@ public type ListOptions record {|
     # List entries in subdirectories as well
     boolean recursive = false;
     # The number of entries fetched per service round-trip (page). Tunes latency/memory of the
-    # lazy stream; it does NOT cap the total number of results. Service default and maximum: 5,000.
-    int pageSize?;
-    # Include ETag and timestamps on each entry (needed for change detection)
-    boolean includeExtendedInfo = true;
+    # lazy stream; it does NOT cap the total number of results. 5,000 is the service maximum.
+    int pageSize = 5000;
+    # Include the ETag and timestamps on each entry (needed for change detection). Requesting
+    # extended info makes the listing a more expensive service operation, so it is off by
+    # default
+    boolean includeExtendedInfo = false;
+    # List from the share snapshot with this id instead of the live share
+    string snapshotId?;
 |};
 
 // ---------------------------------------------------------------------------
 // File option records
 // ---------------------------------------------------------------------------
 
-# Options for `Client.rename` and `Client.renameDirectory`.
+# Options for `Client.renameFile` and `Client.renameDirectory`.
 public type RenameOptions record {|
-    # Overwrite an existing **file** at the destination. The service never allows overwriting
-    # an existing directory: for both `rename` and `renameDirectory`, a directory at the
-    # destination path fails the operation regardless of this flag.
+    # If a **file** already occupies the destination path, delete it and give its path to the
+    # renamed entry (paths are one namespace shared by files and directories, so a rename can
+    # collide with either kind). A **directory** occupying the destination always fails the
+    # operation regardless of this flag — the service never destroys a directory (and possibly
+    # its subtree) as a side effect of a rename.
     boolean replaceIfExists = false;
     # Rename even if the destination has the read-only attribute set (requires `replaceIfExists`)
     boolean ignoreReadOnly = false;
-    # An SDDL permission string to apply to the renamed entry
+    # An SDDL permission string to apply to the renamed entry; when absent, the existing
+    # permission is preserved
     string filePermission?;
-    # User-defined metadata to set on the renamed entry
+    # User-defined metadata to set on the renamed entry (replaces all existing metadata);
+    # when absent, the existing metadata is preserved
     map<string> metadata?;
 |};
 
-# Options for `Client.create` (creating an empty file of a given size).
+# Options for `Client.createFile` (creating an empty file of a given size).
 public type CreateOptions record {|
-    # Content headers to set on the file
+    # Content headers to set on the file (`Content-Type`, `Content-Encoding`, `Content-Language`, `Content-Disposition`, `Cache-Control`, and `Content-MD5` on downloads).
     ContentHeaders contentHeaders?;
     # User-defined metadata to set on the file
     map<string> metadata?;
@@ -132,12 +159,14 @@ public type CreateOptions record {|
     string filePermission?;
     # SMB properties to apply
     SmbProperties smbProperties?;
+    # POSIX owner, group, and mode to apply (NFS shares only)
+    PosixProperties posixProperties?;
 |};
 
-# Options for the upload operations (`upload`, `uploadContent`, `uploadFromStream`).
+# Options for the upload operations (`uploadFile`, `uploadContent`, `uploadFromStream`).
 # Upload creates the destination file, so the create-time attributes are available here too.
 public type UploadOptions record {|
-    # Content headers to set on the file
+    # Content headers to set on the file (`Content-Type`, `Content-Encoding`, `Content-Language`, `Content-Disposition`, `Cache-Control`, and `Content-MD5` on downloads).
     ContentHeaders contentHeaders?;
     # User-defined metadata to set on the file
     map<string> metadata?;
@@ -145,30 +174,66 @@ public type UploadOptions record {|
     string filePermission?;
     # SMB properties to apply
     SmbProperties smbProperties?;
+    # POSIX owner, group, and mode to apply (NFS shares only)
+    PosixProperties posixProperties?;
 |};
 
-# Options for the download operations (`download`, `getBytes`, `getStream`).
+# Options for the download operations (`downloadFile`, `getFileContent`).
 public type DownloadOptions record {|
     # Download only this byte range instead of the whole file
     Range range?;
+    # Read from the share snapshot with this id instead of the live share
+    string snapshotId?;
 |};
 
-# Options for `Client.copy` and `Client.copyFromUrl`.
+# Options for `Client.copyFile` and `Client.copyFileFromUrl`.
 public type CopyOptions record {|
-    # User-defined metadata to set on the destination
+    # User-defined metadata to set on the destination; when absent, the metadata is copied
+    # from the source file
     map<string> metadata?;
-    # An SDDL permission string to apply to the destination
+    # An SDDL permission string to apply to the destination; setting it requires
+    # `permissionCopyMode` to be `OVERRIDE`
     string filePermission?;
     # SMB properties to apply to the destination
     SmbProperties smbProperties?;
-    # How to handle the source permission when copying
+    # How the destination file's permission is determined; when absent, the security
+    # descriptor is copied from the source file (`SOURCE` behaviour)
     PermissionCopyMode permissionCopyMode?;
-    # Copy even if the destination has the read-only attribute set
-    boolean ignoreReadOnly?;
+    # Copy even if the destination has the read-only attribute set; when `false`, a read-only
+    # file at the destination fails the copy
+    boolean ignoreReadOnly = false;
 |};
 
-# Options for `Client.listRanges`.
+# Options for `Client.listRanges` and `Client.listRangesDiff`.
 public type RangeListOptions record {|
     # Restrict the listing to this byte range
     Range range?;
+    // kept a record so further options can be added compatibly
+|};
+
+# Options for `Client.setFileProperties`. Only what is set is changed; every omitted field
+# leaves the file's current value in place.
+public type FileSetPropertiesOptions record {|
+    # Content headers to set on the file
+    ContentHeaders contentHeaders?;
+    # SMB properties to apply
+    SmbProperties smbProperties?;
+    # An SDDL (Security Descriptor Definition Language) permission string to apply
+    string filePermission?;
+    # A new size for the file, in bytes. Growing pre-allocates the added space; shrinking
+    # truncates the content
+    int newFileSizeBytes?;
+    # POSIX owner, group, and mode to apply (NFS shares only)
+    PosixProperties posixProperties?;
+|};
+
+# Options for `Client.setDirectoryProperties`. Only what is set is changed. Directories carry
+# no content headers or size, so those fields do not appear here.
+public type DirectorySetPropertiesOptions record {|
+    # SMB properties to apply
+    SmbProperties smbProperties?;
+    # An SDDL (Security Descriptor Definition Language) permission string to apply
+    string filePermission?;
+    # POSIX owner, group, and mode to apply (NFS shares only)
+    PosixProperties posixProperties?;
 |};

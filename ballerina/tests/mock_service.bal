@@ -1,0 +1,680 @@
+// Copyright (c) 2026 WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+// A minimal in-memory mock of the Azure Files REST service ("FileREST"), speaking just enough
+// of the wire protocol for the real azure-storage-file-share SDK to run against it via the
+// SharedKeyConfig.serviceUrl override. Authentication headers are ignored. Any path whose last
+// segment has the form `__err-<status>-<AzureErrorCode>` short-circuits into that error
+// response, which is how the error-mapping tests drive specific Azure error codes.
+
+import ballerina/http;
+import ballerina/url;
+
+const int MOCK_PORT = 9099;
+const string LAST_MODIFIED = "Wed, 01 Jul 2026 10:00:00 GMT";
+
+type MockFile record {|
+    int size;
+    byte[] content;
+    map<string> metadata;
+    map<string> contentHeaders;
+    string etag;
+    string copyId?;
+|};
+
+type MockDir record {|
+    map<string> metadata;
+    string etag;
+|};
+
+type MockShare record {|
+    map<string> metadata = {};
+    int quota = 5120;
+    string accessTier = "TransactionOptimized";
+    string etag;
+    map<MockFile> files = {};
+    map<MockDir> dirs = {};
+|};
+
+type MockResponse record {|
+    int status;
+    map<string> headers = {};
+    byte[] body = [];
+    string contentType = "application/octet-stream";
+|};
+
+map<MockShare> mockShares = {};
+map<MockShare> mockDeletedShares = {};
+int mockEtagCounter = 0;
+int mockCopyCounter = 0;
+
+listener http:Listener mockListener = new (MOCK_PORT);
+
+service / on mockListener {
+    resource function 'default [string... segments](http:Request req) returns http:Response {
+        string method = req.method;
+        string comp = req.getQueryParamValue("comp") ?: "";
+        string restype = req.getQueryParamValue("restype") ?: "";
+        string include = req.getQueryParamValue("include") ?: "";
+        string prefix = req.getQueryParamValue("prefix") ?: "";
+        map<string> headers = {};
+        foreach string name in req.getHeaderNames() {
+            string|error value = req.getHeader(name);
+            if value is string {
+                headers[name.toLowerAscii()] = value;
+            }
+        }
+        byte[] payload = [];
+        var binaryPayload = req.getBinaryPayload();
+        if binaryPayload is byte[] {
+            payload = binaryPayload;
+        }
+        MockResponse mock = dispatch(method, segments, comp, restype, include, prefix,
+                headers, payload);
+        http:Response response = new;
+        response.statusCode = mock.status;
+        if mock.body.length() > 0 {
+            response.setBinaryPayload(mock.body, mock.contentType);
+        }
+        foreach [string, string] [name, value] in mock.headers.entries() {
+            response.setHeader(name, value);
+        }
+        return response;
+    }
+}
+
+// The service is deliberately non-isolated, so requests dispatch serially and the
+// module-level state needs no locking.
+function dispatch(string method, string[] segments, string comp, string restype,
+        string include, string prefix, map<string> headers, byte[] payload) returns MockResponse {
+    // Forced-error escape hatch for the error-mapping tests.
+    foreach string segment in segments {
+        if segment.startsWith("__err-") {
+            string[] parts = re `-`.split(segment);
+            if parts.length() >= 3 {
+                int status = checkpanic int:fromString(parts[1]);
+                return errorResponse(status, parts[2]);
+            }
+        }
+    }
+    if segments.length() == 0 {
+        if method == "GET" && comp == "list" {
+            return listSharesResponse(prefix, include);
+        }
+        return errorResponse(400, "InvalidQueryParameterValue");
+    }
+    string shareName = segments[0];
+    string path = joinPath(segments);
+    // restype=directory must win over the one-segment share fallback: a root-directory
+    // listing addresses /{share}?restype=directory&comp=list with a single segment.
+    if restype == "directory" {
+        return directoryDispatch(method, shareName, path, comp, include, prefix, headers);
+    }
+    if restype == "share" || (segments.length() == 1 && comp != "") {
+        return shareDispatch(method, shareName, comp, headers);
+    }
+    return fileDispatch(method, shareName, path, comp, headers, payload);
+}
+
+function joinPath(string[] segments) returns string {
+    string result = "";
+    foreach int i in 1 ..< segments.length() {
+        result = result == "" ? segments[i] : result + "/" + segments[i];
+    }
+    return result;
+}
+
+function nextEtag() returns string {
+    mockEtagCounter += 1;
+    return string `"0x${mockEtagCounter}"`;
+}
+
+function errorResponse(int status, string code) returns MockResponse {
+    string body = string `<?xml version="1.0" encoding="utf-8"?><Error><Code>${code}</Code><Message>Mock error: ${code}</Message></Error>`;
+    return {
+        status,
+        headers: {"x-ms-error-code": code, "x-ms-request-id": "mock"},
+        body: body.toBytes(),
+        contentType: "application/xml"
+    };
+}
+
+function okResponse(int status, map<string> extraHeaders = {}) returns MockResponse {
+    // x-ms-request-server-encrypted is unconditionally unboxed by the SDK's write-response
+    // header models, so every mutation response must carry it.
+    map<string> headers = {
+        "ETag": nextEtag(),
+        "Last-Modified": LAST_MODIFIED,
+        "x-ms-request-id": "mock",
+        "x-ms-request-server-encrypted": "true"
+    };
+    foreach [string, string] [name, value] in extraHeaders.entries() {
+        headers[name] = value;
+    }
+    return {status, headers};
+}
+
+function xmlResponse(string body) returns MockResponse {
+    return {
+        status: 200,
+        headers: {"x-ms-request-id": "mock"},
+        body: (string `<?xml version="1.0" encoding="utf-8"?>` + body).toBytes(),
+        contentType: "application/xml"
+    };
+}
+
+function metadataFrom(map<string> headers) returns map<string> {
+    map<string> result = {};
+    foreach [string, string] [name, value] in headers.entries() {
+        if name.startsWith("x-ms-meta-") {
+            result[name.substring(10)] = value;
+        }
+    }
+    return result;
+}
+
+function metadataHeaders(map<string> metadata) returns map<string> {
+    map<string> result = {};
+    foreach [string, string] [name, value] in metadata.entries() {
+        result["x-ms-meta-" + name] = value;
+    }
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// Shares
+// ---------------------------------------------------------------------------
+
+function shareDispatch(string method, string shareName, string comp,
+        map<string> headers) returns MockResponse {
+    if method == "PUT" && comp == "undelete" {
+        string deletedName = headers["x-ms-deleted-share-name"] ?: shareName;
+        if !mockDeletedShares.hasKey(deletedName) {
+            return errorResponse(404, "ShareNotFound");
+        }
+        MockShare share = mockDeletedShares.remove(deletedName);
+        mockShares[shareName] = share;
+        return okResponse(201);
+    }
+    if method == "PUT" && comp == "" {
+        if mockShares.hasKey(shareName) {
+            return errorResponse(409, "ShareAlreadyExists");
+        }
+        MockShare share = {etag: nextEtag(), metadata: metadataFrom(headers)};
+        string? quota = headers["x-ms-share-quota"];
+        if quota is string {
+            share.quota = checkpanic int:fromString(quota);
+        }
+        string? tier = headers["x-ms-access-tier"];
+        if tier is string {
+            share.accessTier = tier;
+        }
+        mockShares[shareName] = share;
+        return okResponse(201);
+    }
+    if !mockShares.hasKey(shareName) {
+        return errorResponse(404, "ShareNotFound");
+    }
+    MockShare share = mockShares.get(shareName);
+    if method == "PUT" && comp == "metadata" {
+        share.metadata = metadataFrom(headers);
+        share.etag = nextEtag();
+        return okResponse(200);
+    }
+    if (method == "GET" || method == "HEAD") && comp == "stats" {
+        int usage = 0;
+        foreach MockFile file in share.files {
+            usage += file.size;
+        }
+        return xmlResponse(string `<ShareStats><ShareUsageBytes>${usage}</ShareUsageBytes></ShareStats>`);
+    }
+    if (method == "GET" || method == "HEAD") && comp == "" {
+        map<string> extra = metadataHeaders(share.metadata);
+        extra["x-ms-share-quota"] = share.quota.toString();
+        extra["x-ms-access-tier"] = share.accessTier;
+        extra["x-ms-lease-state"] = "available";
+        extra["x-ms-lease-status"] = "unlocked";
+        MockResponse response = okResponse(200, extra);
+        response.headers["ETag"] = share.etag;
+        return response;
+    }
+    if method == "DELETE" {
+        _ = mockShares.remove(shareName);
+        mockDeletedShares[shareName] = share;
+        return okResponse(202);
+    }
+    return errorResponse(400, "InvalidQueryParameterValue");
+}
+
+function listSharesResponse(string prefix, string include) returns MockResponse {
+    string entries = "";
+    foreach [string, MockShare] [name, share] in mockShares.entries() {
+        if prefix != "" && !name.startsWith(prefix) {
+            continue;
+        }
+        entries += shareElement(name, share, false, include.includes("metadata"));
+    }
+    if include.includes("deleted") {
+        foreach [string, MockShare] [name, share] in mockDeletedShares.entries() {
+            if prefix != "" && !name.startsWith(prefix) {
+                continue;
+            }
+            entries += shareElement(name, share, true, include.includes("metadata"));
+        }
+    }
+    return xmlResponse(string `<EnumerationResults ServiceEndpoint="http://localhost:${MOCK_PORT}/"><Shares>${entries}</Shares><NextMarker /></EnumerationResults>`);
+}
+
+function shareElement(string name, MockShare share, boolean deleted,
+        boolean includeMetadata) returns string {
+    string metadata = "";
+    if includeMetadata && share.metadata.length() > 0 {
+        string items = "";
+        foreach [string, string] [key, value] in share.metadata.entries() {
+            items += string `<${key}>${value}</${key}>`;
+        }
+        metadata = string `<Metadata>${items}</Metadata>`;
+    }
+    string deletedElements = deleted ? "<Deleted>true</Deleted><Version>01D1MOCK</Version>" : "";
+    return string `<Share><Name>${name}</Name>${deletedElements}<Properties><Last-Modified>${LAST_MODIFIED}</Last-Modified><Etag>${share.etag}</Etag><Quota>${share.quota}</Quota><AccessTier>${share.accessTier}</AccessTier></Properties>${metadata}</Share>`;
+}
+
+// ---------------------------------------------------------------------------
+// Directories
+// ---------------------------------------------------------------------------
+
+function parentExists(MockShare share, string path) returns boolean {
+    int? slash = path.lastIndexOf("/");
+    if slash is () {
+        return true;
+    }
+    return share.dirs.hasKey(path.substring(0, slash));
+}
+
+function directoryDispatch(string method, string shareName, string path, string comp,
+        string include, string prefix, map<string> headers) returns MockResponse {
+    if !mockShares.hasKey(shareName) {
+        return errorResponse(404, "ShareNotFound");
+    }
+    MockShare share = mockShares.get(shareName);
+    if method == "PUT" && comp == "rename" {
+        return renameEntry(share, shareName, path, headers, true);
+    }
+    if method == "PUT" && comp == "" {
+        if path == "" || share.dirs.hasKey(path) {
+            return errorResponse(409, "ResourceAlreadyExists");
+        }
+        if !parentExists(share, path) {
+            return errorResponse(404, "ParentNotFound");
+        }
+        share.dirs[path] = {metadata: metadataFrom(headers), etag: nextEtag()};
+        return okResponse(201);
+    }
+    if path != "" && !share.dirs.hasKey(path) {
+        return errorResponse(404, "ResourceNotFound");
+    }
+    if method == "PUT" && comp == "metadata" {
+        MockDir dir = share.dirs.get(path);
+        dir.metadata = metadataFrom(headers);
+        dir.etag = nextEtag();
+        return okResponse(200);
+    }
+    if method == "GET" && comp == "list" {
+        return listDirectoryResponse(shareName, share, path, prefix, include);
+    }
+    if method == "GET" || method == "HEAD" {
+        map<string> extra = {"x-ms-server-encrypted": "true", "x-ms-file-attributes": "Directory"};
+        string etag = nextEtag();
+        if path != "" {
+            MockDir dir = share.dirs.get(path);
+            etag = dir.etag;
+            foreach [string, string] [name, value] in metadataHeaders(dir.metadata).entries() {
+                extra[name] = value;
+            }
+        }
+        MockResponse response = okResponse(200, extra);
+        response.headers["ETag"] = etag;
+        return response;
+    }
+    if method == "DELETE" {
+        foreach string filePath in share.files.keys() {
+            if filePath.startsWith(path + "/") {
+                return errorResponse(409, "DirectoryNotEmpty");
+            }
+        }
+        foreach string dirPath in share.dirs.keys() {
+            if dirPath.startsWith(path + "/") {
+                return errorResponse(409, "DirectoryNotEmpty");
+            }
+        }
+        _ = share.dirs.remove(path);
+        return okResponse(202);
+    }
+    return errorResponse(400, "InvalidQueryParameterValue");
+}
+
+function directChildName(string parent, string entryPath) returns string? {
+    string prefix = parent == "" ? "" : parent + "/";
+    if !entryPath.startsWith(prefix) || entryPath == parent {
+        return ();
+    }
+    string rest = entryPath.substring(prefix.length());
+    return rest.includes("/") ? () : rest;
+}
+
+function listDirectoryResponse(string shareName, MockShare share, string path,
+        string prefix, string include) returns MockResponse {
+    boolean extended = include.includes("Etag") || include.includes("Timestamps");
+    string entries = "";
+    foreach [string, MockDir] [dirPath, dir] in share.dirs.entries() {
+        string? name = directChildName(path, dirPath);
+        if name is string && (prefix == "" || name.startsWith(prefix)) {
+            string properties = extended
+                ? string `<Properties><Last-Modified>${LAST_MODIFIED}</Last-Modified><Etag>${dir.etag}</Etag></Properties>`
+                : "<Properties />";
+            entries += string `<Directory><Name>${name}</Name><FileId>1</FileId>${properties}</Directory>`;
+        }
+    }
+    foreach [string, MockFile] [filePath, file] in share.files.entries() {
+        string? name = directChildName(path, filePath);
+        if name is string && (prefix == "" || name.startsWith(prefix)) {
+            string extendedProperties = extended
+                ? string `<Last-Modified>${LAST_MODIFIED}</Last-Modified><Etag>${file.etag}</Etag>`
+                : "";
+            entries += string `<File><Name>${name}</Name><FileId>2</FileId><Properties><Content-Length>${file.size}</Content-Length>${extendedProperties}</Properties></File>`;
+        }
+    }
+    return xmlResponse(string `<EnumerationResults ServiceEndpoint="http://localhost:${MOCK_PORT}/" ShareName="${shareName}" DirectoryPath="${path}"><Entries>${entries}</Entries><NextMarker /></EnumerationResults>`);
+}
+
+// ---------------------------------------------------------------------------
+// Files
+// ---------------------------------------------------------------------------
+
+function fileDispatch(string method, string shareName, string path, string comp,
+        map<string> headers, byte[] payload) returns MockResponse {
+    if !mockShares.hasKey(shareName) {
+        return errorResponse(404, "ShareNotFound");
+    }
+    MockShare share = mockShares.get(shareName);
+    if method == "PUT" && comp == "rename" {
+        return renameEntry(share, shareName, path, headers, false);
+    }
+    if method == "PUT" && comp == "range" {
+        return putRange(share, path, headers, payload);
+    }
+    if method == "PUT" && comp == "copy" {
+        // Abort copy: every mock copy completes synchronously, so there is nothing pending.
+        return errorResponse(409, "NoPendingCopyOperation");
+    }
+    if method == "PUT" && headers.hasKey("x-ms-copy-source") {
+        return startCopy(share, path, headers);
+    }
+    if method == "PUT" && comp == "" && (headers["x-ms-type"] ?: "") == "file" {
+        if !parentExists(share, path) {
+            return errorResponse(404, "ParentNotFound");
+        }
+        int size = checkpanic int:fromString(headers["x-ms-content-length"] ?: "0");
+        map<string> contentHeaders = {};
+        foreach string headerName in ["x-ms-content-type", "x-ms-content-encoding",
+                "x-ms-content-language", "x-ms-content-disposition", "x-ms-cache-control",
+                "x-ms-content-md5"] {
+            string? value = headers[headerName];
+            if value is string {
+                contentHeaders[headerName.substring(5)] = value;
+            }
+        }
+        share.files[path] = {
+            size,
+            content: zeros(size),
+            metadata: metadataFrom(headers),
+            contentHeaders,
+            etag: nextEtag()
+        };
+        return okResponse(201);
+    }
+    if !share.files.hasKey(path) {
+        return errorResponse(404, "ResourceNotFound");
+    }
+    MockFile file = share.files.get(path);
+    if method == "PUT" && comp == "metadata" {
+        file.metadata = metadataFrom(headers);
+        file.etag = nextEtag();
+        return okResponse(200);
+    }
+    if method == "PUT" && comp == "properties" {
+        map<string> contentHeaders = {};
+        foreach string headerName in ["x-ms-content-type", "x-ms-content-encoding",
+                "x-ms-content-language", "x-ms-content-disposition", "x-ms-cache-control",
+                "x-ms-content-md5"] {
+            string? value = headers[headerName];
+            if value is string {
+                contentHeaders[headerName.substring(5)] = value;
+            }
+        }
+        file.contentHeaders = contentHeaders;
+        file.etag = nextEtag();
+        return okResponse(200);
+    }
+    if method == "GET" && comp == "rangelist" {
+        return rangeListResponse(file);
+    }
+    if method == "HEAD" || (method == "GET" && comp == "") {
+        return downloadOrProps(method, file, headers);
+    }
+    if method == "DELETE" {
+        _ = share.files.remove(path);
+        return okResponse(202);
+    }
+    return errorResponse(400, "InvalidQueryParameterValue");
+}
+
+function zeros(int size) returns byte[] {
+    byte[] content = [];
+    content.setLength(size);
+    return content;
+}
+
+function fileHeaders(MockFile file) returns map<string> {
+    map<string> result = metadataHeaders(file.metadata);
+    result["ETag"] = file.etag;
+    result["Last-Modified"] = LAST_MODIFIED;
+    result["x-ms-request-id"] = "mock";
+    result["x-ms-type"] = "File";
+    result["x-ms-server-encrypted"] = "true";
+    result["Content-Type"] = file.contentHeaders["content-type"] ?: "application/octet-stream";
+    string? encoding = file.contentHeaders["content-encoding"];
+    if encoding is string {
+        result["Content-Encoding"] = encoding;
+    }
+    string? language = file.contentHeaders["content-language"];
+    if language is string {
+        result["Content-Language"] = language;
+    }
+    string? disposition = file.contentHeaders["content-disposition"];
+    if disposition is string {
+        result["Content-Disposition"] = disposition;
+    }
+    string? cacheControl = file.contentHeaders["cache-control"];
+    if cacheControl is string {
+        result["Cache-Control"] = cacheControl;
+    }
+    string? md5 = file.contentHeaders["content-md5"];
+    if md5 is string {
+        result["Content-MD5"] = md5;
+    }
+    string? copyId = file.copyId;
+    if copyId is string {
+        result["x-ms-copy-id"] = copyId;
+        result["x-ms-copy-status"] = "success";
+        result["x-ms-copy-progress"] = string `${file.size}/${file.size}`;
+        result["x-ms-copy-source"] = "http://localhost:9099/mock";
+    }
+    return result;
+}
+
+function downloadOrProps(string method, MockFile file, map<string> headers)
+        returns MockResponse {
+    map<string> responseHeaders = fileHeaders(file);
+    if method == "HEAD" {
+        // The listener recomputes Content-Length from the entity, so the properties response
+        // must carry the real content; the transport strips the body for HEAD.
+        return {status: 200, headers: responseHeaders, body: file.content.clone()};
+    }
+    string? rangeHeader = headers["x-ms-range"] ?: headers["range"];
+    if rangeHeader is () {
+        return {status: 200, headers: responseHeaders, body: file.content.clone()};
+    }
+    string spec = rangeHeader.substring(6); // strip "bytes="
+    string[] bounds = re `-`.split(spec);
+    int rangeStart = checkpanic int:fromString(bounds[0]);
+    int rangeEnd = bounds.length() > 1 && bounds[1] != "" ? checkpanic int:fromString(bounds[1]) : file.size - 1;
+    if rangeStart >= file.size {
+        return errorResponse(416, "InvalidRange");
+    }
+    int clampedEnd = rangeEnd >= file.size ? file.size - 1 : rangeEnd;
+    byte[] slice = file.content.slice(rangeStart, clampedEnd + 1);
+    responseHeaders["Content-Range"] = string `bytes ${rangeStart}-${clampedEnd}/${file.size}`;
+    return {status: 206, headers: responseHeaders, body: slice};
+}
+
+function putRange(MockShare share, string path, map<string> headers, byte[] payload)
+        returns MockResponse {
+    if !share.files.hasKey(path) {
+        return errorResponse(404, "ResourceNotFound");
+    }
+    MockFile file = share.files.get(path);
+    string rangeHeader = headers["x-ms-range"] ?: headers["range"] ?: "bytes=0-0";
+    string[] bounds = re `-`.split(rangeHeader.substring(6));
+    int rangeStart = checkpanic int:fromString(bounds[0]);
+    int rangeEnd = checkpanic int:fromString(bounds[1]);
+    if rangeEnd >= file.size {
+        return errorResponse(416, "InvalidRange");
+    }
+    boolean clearWrite = (headers["x-ms-write"] ?: "update") == "clear";
+    foreach int i in rangeStart ... rangeEnd {
+        file.content[i] = clearWrite ? 0 : payload[i - rangeStart];
+    }
+    file.etag = nextEtag();
+    return okResponse(201);
+}
+
+function rangeListResponse(MockFile file) returns MockResponse {
+    // Report one whole-file range when any byte is nonzero; an empty list otherwise. Enough
+    // for the tests without tracking written ranges byte-by-byte.
+    boolean hasContent = false;
+    foreach byte b in file.content {
+        if b != 0 {
+            hasContent = true;
+            break;
+        }
+    }
+    string ranges = hasContent && file.size > 0
+        ? string `<Range><Start>0</Start><End>${file.size - 1}</End></Range>` : "";
+    return xmlResponse(string `<Ranges>${ranges}</Ranges>`);
+}
+
+function startCopy(MockShare share, string path, map<string> headers) returns MockResponse {
+    string sourceHeader = checkpanic url:decode(headers["x-ms-copy-source"] ?: "", "UTF-8");
+    // The source URL has the form http://host:port/{share}/{path...}.
+    int schemeEnd = sourceHeader.indexOf("://") is int ? <int>sourceHeader.indexOf("://") + 3 : 0;
+    int? hostEnd = sourceHeader.indexOf("/", schemeEnd);
+    if hostEnd is () {
+        return errorResponse(404, "CannotVerifyCopySource");
+    }
+    string sourceFull = sourceHeader.substring(hostEnd + 1);
+    int? firstSlash = sourceFull.indexOf("/");
+    if firstSlash is () {
+        return errorResponse(404, "CannotVerifyCopySource");
+    }
+    string sourceShareName = sourceFull.substring(0, firstSlash);
+    string sourcePath = sourceFull.substring(firstSlash + 1);
+    if !mockShares.hasKey(sourceShareName) {
+        return errorResponse(404, "CannotVerifyCopySource");
+    }
+    MockShare sourceShare = mockShares.get(sourceShareName);
+    if !sourceShare.files.hasKey(sourcePath) {
+        return errorResponse(404, "CannotVerifyCopySource");
+    }
+    MockFile sourceFile = sourceShare.files.get(sourcePath);
+    mockCopyCounter += 1;
+    string copyId = string `copy-${mockCopyCounter}`;
+    map<string> metadata = metadataFrom(headers);
+    share.files[path] = {
+        size: sourceFile.size,
+        content: sourceFile.content.clone(),
+        metadata: metadata.length() > 0 ? metadata : sourceFile.metadata.clone(),
+        contentHeaders: sourceFile.contentHeaders.clone(),
+        etag: nextEtag(),
+        copyId
+    };
+    return okResponse(202, {"x-ms-copy-id": copyId, "x-ms-copy-status": "success"});
+}
+
+function renameEntry(MockShare share, string shareName, string destinationPath,
+        map<string> headers, boolean isDirectory) returns MockResponse {
+    string sourceHeader = checkpanic url:decode(headers["x-ms-file-rename-source"] ?: "", "UTF-8");
+    int schemeEnd = sourceHeader.indexOf("://") is int ? <int>sourceHeader.indexOf("://") + 3 : 0;
+    int? hostEnd = sourceHeader.indexOf("/", schemeEnd);
+    if hostEnd is () {
+        return errorResponse(404, "ResourceNotFound");
+    }
+    string sourceFull = sourceHeader.substring(hostEnd + 1);
+    int? firstSlash = sourceFull.indexOf("/");
+    if firstSlash is () {
+        return errorResponse(404, "ResourceNotFound");
+    }
+    string sourcePath = sourceFull.substring(firstSlash + 1);
+    boolean replaceIfExists = (headers["x-ms-file-rename-replace-if-exists"] ?: "false") == "true";
+    if share.dirs.hasKey(destinationPath) {
+        return errorResponse(409, "ResourceAlreadyExists");
+    }
+    if share.files.hasKey(destinationPath) && !replaceIfExists {
+        return errorResponse(409, "ResourceAlreadyExists");
+    }
+    if isDirectory {
+        if !share.dirs.hasKey(sourcePath) {
+            return errorResponse(404, "ResourceNotFound");
+        }
+        MockDir dir = share.dirs.remove(sourcePath);
+        share.dirs[destinationPath] = dir;
+        // Move the subtree with the directory.
+        foreach string dirPath in share.dirs.keys() {
+            if dirPath.startsWith(sourcePath + "/") {
+                MockDir child = share.dirs.remove(dirPath);
+                share.dirs[destinationPath + dirPath.substring(sourcePath.length())] = child;
+            }
+        }
+        foreach string filePath in share.files.keys() {
+            if filePath.startsWith(sourcePath + "/") {
+                MockFile child = share.files.remove(filePath);
+                share.files[destinationPath + filePath.substring(sourcePath.length())] = child;
+            }
+        }
+    } else {
+        if !share.files.hasKey(sourcePath) {
+            return errorResponse(404, "ResourceNotFound");
+        }
+        MockFile file = share.files.remove(sourcePath);
+        if share.files.hasKey(destinationPath) {
+            _ = share.files.remove(destinationPath);
+        }
+        share.files[destinationPath] = file;
+    }
+    return okResponse(200);
+}
+
+

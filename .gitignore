@@ -4,6 +4,12 @@ build/
 Config.toml
 .ballerina/
 
+# Gradle
+.gradle/
+
+# Ballerina Gradle plugin env dump (may contain local secrets; regenerated per build)
+docker.env
+
 # Compiled class file
 *.class
 

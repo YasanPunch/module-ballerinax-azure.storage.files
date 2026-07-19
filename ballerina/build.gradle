@@ -1,0 +1,71 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
+plugins {
+    id 'io.ballerina.plugin'
+}
+
+description = 'Ballerina - Azure Storage Files'
+
+def packageName = "azure.storage.files"
+def packageOrg = "ballerinax"
+def tomlVersion = stripBallerinaExtensionVersion("${project.version}")
+def ballerinaTomlFilePlaceHolder = new File("${project.rootDir}/build-config/resources/Ballerina.toml")
+def ballerinaTomlFile = new File("$project.projectDir/Ballerina.toml")
+
+def stripBallerinaExtensionVersion(String extVersion) {
+    if (extVersion.matches(project.ext.timestampedVersionRegex)) {
+        def splitVersion = extVersion.split('-')
+        if (splitVersion.length > 3) {
+            def strippedValues = splitVersion[0..-4]
+            return strippedValues.join('-')
+        } else {
+            return extVersion
+        }
+    } else {
+        return extVersion.replace("${project.ext.snapshotVersion}", "")
+    }
+}
+
+ballerina {
+    packageOrganization = packageOrg
+    module = packageName
+    langVersion = project.ballerinaLangVersion
+    isConnector = true
+    platform = "java21"
+}
+
+task updateTomlFiles {
+    doLast {
+        def newBallerinaToml = ballerinaTomlFilePlaceHolder.text
+            .replace("@project.version@", project.version)
+            .replace("@toml.version@", tomlVersion)
+            .replace("@azure.storage.file.share.version@", project.azureStorageFileShareVersion)
+            .replace("@azure.storage.common.version@", project.azureStorageCommonVersion)
+            .replace("@azure.core.version@", project.azureCoreVersion)
+            .replace("@azure.core.http.netty.version@", project.azureCoreHttpNettyVersion)
+            .replace("@azure.json.version@", project.azureJsonVersion)
+            .replace("@azure.xml.version@", project.azureXmlVersion)
+            .replace("@jackson.version@", project.jacksonVersion)
+            .replace("@slf4j.version@", project.slf4jVersion)
+            .replace("@reactor.core.version@", project.reactorCoreVersion)
+            .replace("@reactive.streams.version@", project.reactiveStreamsVersion)
+            .replace("@reactor.netty.version@", project.reactorNettyVersion)
+            .replace("@netty.version@", project.nettyVersion)
+            .replace("@netty.tcnative.version@", project.nettyTcnativeVersion)
+        ballerinaTomlFile.text = newBallerinaToml
+    }
+}
+
+// The io.ballerina.plugin wires this task into the build. Kept as a no-op so local builds never
+// auto-commit the generated toml files; restore the git-commit body when wiring the release flow.
+task commitTomlFiles {
+    doLast {
+    }
+}
+
+clean {
+    delete 'build'
+    delete 'lib'
+}
+
+build.dependsOn ":azure.storage.files-native:build"

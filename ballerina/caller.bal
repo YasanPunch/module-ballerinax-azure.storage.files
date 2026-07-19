@@ -14,12 +14,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-# Passed to each `Listener` event handler, the `Caller` lets a handler act on the file that
-# triggered the event (and its neighbours) without constructing a separate `Client`. It exposes a
-# curated subset of `Client` operations — the ones useful from within an event handler, notably
-# `delete`/`rename` for consuming processed files — plus a helper for the listener's context.
+# Passed to each `Listener` event handler, the `Caller` is bound to the share the listener watches,
+# exposing a curated subset of `Client` operations (all taking explicit paths) so a handler can act
+# without constructing a separate `Client`. The file that triggered the event is identified by the
+# `FileInfo` payload, not the `Caller`; the handler passes that path into whichever op it needs,
+# notably `deleteFile`/`renameFile` to consume a processed file. It also exposes `getShareName`.
 #
-# The `Caller` is created and supplied by the `Listener`; applications never construct it directly.
+# The `Caller` is created and supplied by the `Listener` — one `Caller` serves every handler
+# invocation (it holds no per-event state; the event's file identity travels in the `FileInfo`
+# payload). Applications never construct it directly.
 public isolated client class Caller {
 
     private final string shareName;
@@ -32,59 +35,51 @@ public isolated client class Caller {
         self.shareName = shareName;
     }
 
-    # Downloads a file to a local path. The local file must not already exist
-    # (see `Client.download`).
+    # Downloads a file to a local path. Both parameters are full paths including the file name.
+    # The local file must not already exist.
     #
-    # + path - The source share-relative path
-    # + localPath - The local path to write the downloaded file to (must not exist)
+    # + sourcePath - The share-relative path of the file to download
+    # + destinationPath - The local path to write the downloaded file to (must not exist)
     # + options - Optional download options (range)
     # + return - An `Error` if the download failed, otherwise `()`
-    isolated remote function download(string path, string localPath, DownloadOptions? options = ())
-            returns Error? {
+    isolated remote function downloadFile(string sourcePath, string destinationPath,
+            DownloadOptions? options = ()) returns Error? {
         return notImplemented();
     }
 
-    # Downloads a file into an in-memory byte array.
-    #
-    # + path - The source share-relative path
-    # + options - Optional download options (range)
-    # + return - The file content as bytes, or an `Error`
-    isolated remote function getBytes(string path, DownloadOptions? options = ()) returns byte[]|Error {
-        return notImplemented();
-    }
-
-    # Opens a file as a byte stream for reading.
+    # Opens a file's content as a byte stream. To read the content into memory, collect the
+    # stream (see `Client.getFileContent`).
     #
     # + path - The source share-relative path
     # + options - Optional download options (range)
     # + return - A byte stream over the file content, or an `Error`
-    isolated remote function getStream(string path, DownloadOptions? options = ())
+    isolated remote function getFileContent(string path, DownloadOptions? options = ())
             returns stream<byte[], Error?>|Error {
         return notImplemented();
     }
 
-    # Uploads a local file to the share.
+    # Uploads a local file to the share. Both parameters are full paths including the file name.
     #
-    # + path - The destination share-relative path
-    # + localPath - The path of the local file to upload
+    # + sourcePath - The path of the local file to upload
+    # + destinationPath - The share-relative path the file is written to
     # + options - Optional upload options (headers, metadata, permission, SMB properties)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function upload(string path, string localPath, UploadOptions? options = ())
-            returns Error? {
+    isolated remote function uploadFile(string sourcePath, string destinationPath,
+            UploadOptions? options = ()) returns Error? {
         return notImplemented();
     }
 
     # Uploads in-memory content to the share. Dispatch is by the value's **runtime** type:
-    # `byte[]` and `string` values are written as-is (a `string` is written raw even when the
-    # variable's static type is `json`); `xml` and other `json` values are serialized to their
-    # textual form. See `Client.uploadContent` for the full dispatch rule.
+    # `byte[]` and `string` values are written as-is; `xml` is serialized to its textual form;
+    # a `map<json>` — including records, which are subtypes — is serialized as a JSON document.
+    # See `Client.uploadContent` for the full dispatch rule.
     #
-    # + path - The destination share-relative path
     # + content - The content to upload
+    # + destinationPath - The share-relative path the content is written to
     # + options - Optional upload options (headers, metadata, permission, SMB properties)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadContent(string path, byte[]|string|xml|json content,
-            UploadOptions? options = ()) returns Error? {
+    isolated remote function uploadContent(byte[]|string|xml|map<json> content,
+            string destinationPath, UploadOptions? options = ()) returns Error? {
         return notImplemented();
     }
 
@@ -92,7 +87,7 @@ public isolated client class Caller {
     #
     # + path - The share-relative path of the file to delete
     # + return - An `Error` if the file could not be deleted, otherwise `()`
-    isolated remote function delete(string path) returns Error? {
+    isolated remote function deleteFile(string path) returns Error? {
         return notImplemented();
     }
 
@@ -102,7 +97,7 @@ public isolated client class Caller {
     # + destinationPath - The destination share-relative path
     # + options - Optional copy options
     # + return - The `CopyInfo` for the started copy, or an `Error`
-    isolated remote function copy(string sourcePath, string destinationPath,
+    isolated remote function copyFile(string sourcePath, string destinationPath,
             CopyOptions? options = ()) returns CopyInfo|Error {
         return notImplemented();
     }
@@ -118,13 +113,13 @@ public isolated client class Caller {
 
     # Renames (moves) a file within the share. An existing destination file is overwritten only
     # when `RenameOptions.replaceIfExists` is set; an existing destination directory always fails
-    # the operation (see `Client.rename`).
+    # the operation (see `Client.renameFile`).
     #
     # + sourcePath - The current share-relative path of the file
     # + destinationPath - The new share-relative path
     # + options - Optional rename options
     # + return - An `Error` if the file could not be renamed, otherwise `()`
-    isolated remote function rename(string sourcePath, string destinationPath,
+    isolated remote function renameFile(string sourcePath, string destinationPath,
             RenameOptions? options = ()) returns Error? {
         return notImplemented();
     }

@@ -1,0 +1,23 @@
+pluginManagement {
+    plugins {
+        id "io.ballerina.plugin" version "${ballerinaGradlePluginVersion}"
+    }
+    repositories {
+        gradlePluginPortal()
+        maven {
+            url = 'https://maven.pkg.github.com/ballerina-platform/*'
+            credentials {
+                username System.getenv("packageUser")
+                password System.getenv("packagePAT")
+            }
+        }
+    }
+}
+
+rootProject.name = 'module-ballerinax-azure.storage.files'
+
+include ':azure.storage.files-ballerina'
+project(':azure.storage.files-ballerina').projectDir = file("ballerina")
+
+include ':azure.storage.files-native'
+project(':azure.storage.files-native').projectDir = file("native")

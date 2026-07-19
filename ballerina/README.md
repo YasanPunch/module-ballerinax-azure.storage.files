@@ -2,11 +2,11 @@
 
 This package provides a Ballerina connector for Azure Files, backed by the official [`azure-storage-file-share`](https://learn.microsoft.com/en-us/java/api/overview/azure/storage-file-share-readme) Java SDK. It exposes:
 
-- **`Client`** — a share-scoped client for working with the directories and files in a single share (create, upload, download, copy, rename, ranges, and more).
-- **`AdminClient`** — an account-level client for managing shares (create, list, delete, restore).
-- **`Listener`** — a polling listener that watches a share and dispatches an `onFile` event for each file present in the watched path, with a `Caller` for acting on (and consuming) the file. Snapshot-diff events (`onFileAdd`/`onFileDelete`/`onFileModify`) are planned post-v0.1.
+- **`Client`**: a share-scoped client for working with the directories and files in a single share (create, upload, download, copy, rename, ranges, and more).
+- **`AdminClient`**: an account-level client for managing shares (create, list, delete, restore).
+- **`Listener`**: a polling listener that watches a share and dispatches an `onFile` event for each file present in the watched path, with a `Caller` for acting on (and consuming) the file.
 
-> **Status: API skeleton.** This is the first-release (v0.1) API surface with stubbed operation bodies, published for design review ahead of implementation. Operations currently return a `NotImplemented` error.
+> **Status: API skeleton.** This package holds the connector's API surface with stubbed operation bodies, published for design review ahead of implementation. Operations currently return a `NotImplemented` error.
 
 ## Quickstart
 
@@ -31,8 +31,8 @@ files:Client fileClient = check new (
 
 ```ballerina
 // Upload a local file, then read its properties back.
-check fileClient->upload("/reports/q1.pdf", "./local/q1.pdf");
-files:Properties props = check fileClient->getProperties("/reports/q1.pdf");
+check fileClient->uploadFile("./local/q1.pdf", "/reports/q1.pdf");
+files:FileProperties props = check fileClient->getFileProperties("/reports/q1.pdf");
 ```
 
 ### Manage shares with `AdminClient`
@@ -53,7 +53,7 @@ listener files:Listener fileListener = check new (
 service on fileListener {
     remote function onFile(files:FileInfo file, files:Caller caller) returns error? {
         // process the file, then consume it so it does not re-fire on the next poll
-        check caller->delete(file.path);
+        check caller->deleteFile(file.path);
     }
 }
 ```

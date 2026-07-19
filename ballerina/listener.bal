@@ -16,46 +16,70 @@
 
 # Configuration for the polling `Listener`. Supplied to `init` as an included record
 # parameter, so its fields are passed as named arguments (the watched share is `init`'s
-# positional parameter).
+# positional parameter). The configuration covers the share-level concerns only; what to
+# watch within the share is declared per attached service (see `Service` and `ServiceConfig`).
 public type ListenerConfiguration record {|
-    # The authentication method to use
-    SharedKeyAuth|SasAuth|ConnectionStringAuth auth;
-    # An explicit file-service endpoint URL, overriding the one derived from the auth record's
-    # `accountName` (see `ClientConfiguration.endpoint`)
-    string endpoint?;
-    # The share-relative directory to watch; defaults to the share root
-    string path = "/";
-    # How often to poll the share, in seconds
+    # The authentication configuration (see `AuthConfig`)
+    AuthConfig auth;
+    # How often to poll the share, in seconds. Polls never overlap: the next poll begins only
+    # after the previous tick's handlers have returned, so a handler that runs longer than the
+    # interval delays polling rather than triggering a concurrent dispatch of the same file
     decimal pollingInterval = 60;
-    # Watch subdirectories as well as the top-level `path`
+|};
+
+# Per-service watch settings, applied to a service with the `ServiceConfig` annotation.
+# The watched path itself is the service's attach point (see `Service`); this record
+# configures how that path is watched. A service without the annotation uses the defaults.
+public type ServiceConfiguration record {|
+    # Watch subdirectories under the watched path as well
     boolean recursive = true;
-    # A regular expression matched against the file **name** (not the path); files that do not
-    # match are never dispatched. Without a filter, remember that non-matching files a handler
-    # never consumes will re-fire on every poll.
+    # A regular expression matched against the file **name** (not the path); files that do
+    # not match are never dispatched to this service. An invalid pattern fails `attach`.
+    # Without a filter, non-matching files a handler never consumes will re-fire on every poll.
     string fileNamePattern?;
 |};
 
+# Configures how an attached service watches its path (recursion, file-name filtering).
+public annotation ServiceConfiguration ServiceConfig on service;
+
 # The service contract for an Azure Files listener.
+#
+# The service's attach point declares the share-relative path it watches: a string literal
+# (`service "/invoices" on shareListener`) or an absolute resource path
+# (`service /invoices on shareListener`; segments are joined with `/`). A service with no
+# attach point watches the share root. Use the string-literal form for directory names a
+# resource path cannot express (spaces, dots, and other special characters). Watch behaviour
+# (recursion, file-name filtering) is configured per service with the `ServiceConfig`
+# annotation.
 #
 # `onFile` fires once per file **present** in the watched path on each poll — the listener keeps
 # no state between polls, so a file fires again on every poll until the handler consumes it
 # (processes it, then deletes it or moves it out of the watched path via the `Caller`).
-# The snapshot-diff handlers (`onFileAdd`/`onFileDelete`/`onFileModify`) are planned post-v0.1.
 #
 # Because dispatch is presence-based, a file still being written by another client (e.g. a large
 # copy onto the share's SMB mount) can be dispatched at partial size. Producers should write to a
-# temporary name or directory outside the watched path and `rename` into it — the rename is
-# atomic, so the file appears complete or not at all.
+# temporary name or directory outside the watched path and rename the file into it — the rename
+# is atomic, so the file appears complete or not at all.
 public type Service distinct service object {
     remote function onFile(FileInfo file, Caller caller) returns error?;
 };
 
-# Listens to an Azure Files share and dispatches the files it finds to an attached service.
-# Each polling tick lists the watched path and fires `onFile` for every file present — stateless
+# Listens to an Azure Files share and dispatches the files it finds to the attached services.
+# Each polling tick lists the watched paths and fires `onFile` for every file present — stateless
 # by design: nothing is remembered between polls, so handlers consume files (delete or move them
-# out of the watched path) to stop them from re-firing on the next tick. The post-v0.1
-# snapshot-diff mode adds fired-once-per-change semantics via eTag comparison, holding its
-# snapshot as `lock`-guarded private state on this class.
+# out of the watched path) to stop them from re-firing on the next tick. Delivery is therefore
+# at-least-once: a handler failure before consumption means the file is redelivered on the next
+# poll, and because polls never overlap, redelivery is always sequential — one file is never
+# processed by two handler invocations at once. For exactly-once effects, make the handler
+# idempotent, or claim the file first by renaming it out of the watched path.
+#
+# Several services can attach to one listener, each watching its own path (the service's attach
+# point). Every file is dispatched to **exactly one** service — the one with the most specific
+# (longest) watched path covering it — so two handlers never receive the same file. A service's
+# `fileNamePattern` applies after that routing: a file routed to a service but not matching its
+# pattern is not dispatched at all. Attaching a second service with a watched path that is
+# already taken fails; to handle one directory's files differently by name, attach a single
+# service and branch on `FileInfo.name` in the handler.
 public isolated class Listener {
 
     private final string shareName;
@@ -71,10 +95,15 @@ public isolated class Listener {
         self.config = config.cloneReadOnly();
     }
 
-    # Attaches a service to the listener.
+    # Attaches a service to the listener. The service's attach point is the share-relative
+    # path it watches; a service with no attach point watches the share root. Attaching fails
+    # when another attached service already watches the same path, or when the service's
+    # `ServiceConfig.fileNamePattern` is not a valid regular expression.
     #
     # + serviceRef - The service implementing the file handler
-    # + name - The optional service name(s)
+    # + name - The watched path, taken from the service declaration's attach point (a string
+    #          literal, or an absolute resource path whose segments are joined with `/`);
+    #          `()` watches the share root
     # + return - An `error` if the service could not be attached, otherwise `()`
     public isolated function attach(Service serviceRef, string[]|string? name = ()) returns error? {
         return;
