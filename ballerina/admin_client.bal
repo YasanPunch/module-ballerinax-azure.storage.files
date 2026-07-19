@@ -97,9 +97,9 @@ public isolated client class AdminClient {
     # (Cross-Origin Resource Sharing) rules.
     #
     # + return - The `ServiceProperties`, or an `Error`
-    isolated remote function getServiceProperties() returns ServiceProperties|Error {
-        return notImplemented();
-    }
+    isolated remote function getServiceProperties() returns ServiceProperties|Error = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+    } external;
 
     # Updates the account's file-service configuration. The service applies the record as a
     # whole, so read the current configuration with `getServiceProperties`, modify it, and
@@ -107,9 +107,9 @@ public isolated client class AdminClient {
     #
     # + properties - The complete file-service configuration to apply
     # + return - An `Error` if the configuration could not be updated, otherwise `()`
-    isolated remote function setServiceProperties(ServiceProperties properties) returns Error? {
-        return notImplemented();
-    }
+    isolated remote function setServiceProperties(ServiceProperties properties) returns Error? = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+    } external;
 
     // -----------------------------------------------------------------------
     // SAS
@@ -123,9 +123,9 @@ public isolated client class AdminClient {
     # + expiryTime - The end of the key's validity period (at most 7 days out)
     # + return - The `UserDelegationKey`, or an `Error`
     isolated remote function getUserDelegationKey(time:Utc startTime, time:Utc expiryTime)
-            returns UserDelegationKey|Error {
-        return notImplemented();
-    }
+            returns UserDelegationKey|Error = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+    } external;
 
     # Mints an account-level SAS (Shared Access Signature) token. Signing happens locally with
     # the account key, so no call is made to Azure; the client must be authenticated with
@@ -135,9 +135,9 @@ public isolated client class AdminClient {
     # + values - What the SAS grants: validity window, permissions, and resource types
     # + return - The SAS token, or an `Error`
     isolated remote function generateAccountSas(AccountSasSignatureValues values)
-            returns string|Error {
-        return notImplemented();
-    }
+            returns string|Error = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.SasOps"
+    } external;
 
     # Closes the client. Subsequent operations on a closed client fail. Releases any
     # connector-owned resources; the SDK's default HTTP transport is shared and

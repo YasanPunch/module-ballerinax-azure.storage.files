@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import ballerina/http;
+import ballerina/crypto;
 
 # Shared Key authentication using one of the storage account's access keys.
 public type SharedKeyConfig record {|
@@ -233,7 +233,47 @@ public type TransportConfig record {|
     # Connection-pool tuning
     ConnectionPoolConfig connectionPool = {};
     # Custom TLS settings (trust and key material, verification)
-    http:ClientSecureSocket secureSocket?;
+    SecureSocket secureSocket?;
+|};
+
+# Custom TLS settings for the connection to the service.
+public type SecureSocket record {|
+    # The trust material for verifying the server: a PKCS12 or JKS truststore, or the path
+    # to a PEM certificate file. Omit to trust the platform's default certificate authorities
+    crypto:TrustStore|string cert?;
+    # The client's own identity for mutual TLS: a PKCS12 or JKS keystore, or a certificate
+    # and private key pair. Omit when the server does not request a client certificate
+    crypto:KeyStore|CertKey 'key?;
+    # The TLS versions offered during the handshake (e.g. `TLSv1.3`, `TLSv1.2`). Omit to use
+    # the platform defaults
+    string[] tlsVersions?;
+    # The cipher suites offered during the handshake. Omit to use the platform defaults
+    string[] ciphers?;
+    # Verify that the server certificate matches the host being called. Disabling this
+    # removes protection against man-in-the-middle attacks, so it is meant for testing only
+    boolean verifyHostName = true;
+    # Allow TLS sessions to be reused across connections
+    boolean shareSession = true;
+    # Check the server certificate against revocation information: a stapled OCSP response
+    # when the server sends one, otherwise an OCSP or CRL fetch. Requires `cert` to be set
+    boolean validateRevocation = false;
+    # The SNI (Server Name Indication) host name presented during the handshake; omit to use
+    # the host being called
+    string serverName?;
+    # The TLS handshake timeout, in seconds
+    decimal handshakeTimeoutSeconds?;
+    # How long a TLS session stays reusable, in seconds
+    decimal sessionTimeoutSeconds?;
+|};
+
+# A client certificate and private key pair, as files.
+public type CertKey record {|
+    # The path to the certificate file
+    string certFile;
+    # The path to the private key file
+    string keyFile;
+    # The password protecting the private key, when it has one
+    string keyPassword?;
 |};
 
 # Configuration for an `azure.storage.files` client (`Client` or `AdminClient`). Supplied to

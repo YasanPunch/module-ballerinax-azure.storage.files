@@ -20,10 +20,17 @@ package io.ballerina.lib.azure.storage.files;
 
 import com.azure.core.credential.AzureNamedKeyCredential;
 import com.azure.core.credential.AzureSasCredential;
+import com.azure.core.credential.TokenCredential;
 import com.azure.core.http.policy.HttpPipelinePolicy;
 import com.azure.core.util.UrlBuilder;
+import com.azure.identity.ClientCertificateCredentialBuilder;
+import com.azure.identity.ClientSecretCredentialBuilder;
+import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.identity.ManagedIdentityCredentialBuilder;
+import com.azure.identity.WorkloadIdentityCredentialBuilder;
 import com.azure.storage.file.share.ShareServiceClient;
 import com.azure.storage.file.share.ShareServiceClientBuilder;
+import com.azure.storage.file.share.models.ShareTokenIntent;
 import io.ballerina.runtime.api.values.BError;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
@@ -31,6 +38,8 @@ import io.ballerina.runtime.api.values.BString;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 
 /**
@@ -100,14 +109,16 @@ public final class ClientInit {
 
     @SuppressWarnings("unchecked")
     private static ShareServiceClient buildServiceClient(BMap<BString, Object> config) {
-        if (config.get(Constants.RETRY_CONFIG) != null) {
-            throw FilesErrorCreator.notImplemented("retryConfig");
-        }
-        if (config.get(Constants.TRANSPORT_CONFIG) != null) {
-            throw FilesErrorCreator.notImplemented("transportConfig");
-        }
         BMap<BString, Object> auth = (BMap<BString, Object>) config.getMapValue(Constants.AUTH);
         ShareServiceClientBuilder builder = new ShareServiceClientBuilder();
+        Object retryConfig = config.get(Constants.RETRY_CONFIG);
+        if (retryConfig != null) {
+            builder.retryOptions(TransportSupport.retryOptions((BMap<BString, Object>) retryConfig));
+        }
+        Object transportConfig = config.get(Constants.TRANSPORT_CONFIG);
+        if (transportConfig != null) {
+            builder.httpClient(TransportSupport.httpClient((BMap<BString, Object>) transportConfig));
+        }
         if (auth.containsKey(Constants.ACCOUNT_KEY)) {
             configureSharedKey(builder, auth);
         } else if (auth.containsKey(Constants.SAS_TOKEN)) {
@@ -117,7 +128,7 @@ public final class ClientInit {
         } else if (auth.containsKey(Constants.CONNECTION_STRING)) {
             configureConnectionString(builder, auth);
         } else {
-            throw FilesErrorCreator.notImplemented("Microsoft Entra ID authentication");
+            configureEntra(builder, auth);
         }
         try {
             return builder.buildClient();
@@ -162,6 +173,60 @@ public final class ClientInit {
             return next.process();
         };
         builder.addPolicy(override);
+    }
+
+    /**
+     * Configures a Microsoft Entra ID credential. The record kind is chosen structurally: a
+     * secret, a certificate path, or a token file path names its credential outright; otherwise
+     * the {@code kind} discriminator separates the default chain from a managed identity.
+     * Azure Files honors OAuth tokens only with the backup intent, so it is always set.
+     */
+    private static void configureEntra(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
+        TokenCredential credential;
+        if (auth.containsKey(Constants.CLIENT_SECRET)) {
+            credential = new ClientSecretCredentialBuilder()
+                    .tenantId(requireNonEmpty(auth, Constants.TENANT_ID))
+                    .clientId(requireNonEmpty(auth, Constants.CLIENT_ID))
+                    .clientSecret(requireNonEmpty(auth, Constants.CLIENT_SECRET))
+                    .build();
+        } else if (auth.containsKey(Constants.CERTIFICATE_PATH)) {
+            String certificatePath = requireNonEmpty(auth, Constants.CERTIFICATE_PATH);
+            if (!Files.isRegularFile(Path.of(certificatePath))) {
+                throw FilesErrorCreator.processingError(
+                        "certificatePath does not point to a readable file: " + certificatePath, null);
+            }
+            ClientCertificateCredentialBuilder certificateBuilder = new ClientCertificateCredentialBuilder()
+                    .tenantId(requireNonEmpty(auth, Constants.TENANT_ID))
+                    .clientId(requireNonEmpty(auth, Constants.CLIENT_ID));
+            String certificatePassword = ValueUtils.optString(auth, Constants.CERTIFICATE_PASSWORD);
+            credential = (certificatePassword == null
+                    ? certificateBuilder.pemCertificate(certificatePath)
+                    : certificateBuilder.pfxCertificate(certificatePath, certificatePassword))
+                    .build();
+        } else if (auth.containsKey(Constants.TOKEN_FILE_PATH)) {
+            credential = new WorkloadIdentityCredentialBuilder()
+                    .tenantId(requireNonEmpty(auth, Constants.TENANT_ID))
+                    .clientId(requireNonEmpty(auth, Constants.CLIENT_ID))
+                    .tokenFilePath(requireNonEmpty(auth, Constants.TOKEN_FILE_PATH))
+                    .build();
+        } else if ("managed-identity".equals(ValueUtils.optString(auth, Constants.KIND))) {
+            ManagedIdentityCredentialBuilder managedBuilder = new ManagedIdentityCredentialBuilder();
+            String clientId = ValueUtils.optString(auth, Constants.CLIENT_ID);
+            if (clientId != null) {
+                managedBuilder.clientId(clientId);
+            }
+            credential = managedBuilder.build();
+        } else {
+            credential = new DefaultAzureCredentialBuilder().build();
+        }
+        String accountName = requireNonEmpty(auth, Constants.ACCOUNT_NAME);
+        String serviceUrl = ValueUtils.optString(auth, Constants.SERVICE_URL);
+        builder.endpoint(serviceUrl == null ? defaultEndpoint(accountName) : validateUrl(serviceUrl, "serviceUrl"))
+                .credential(credential)
+                .shareTokenIntent(ShareTokenIntent.BACKUP);
+        if (serviceUrl != null) {
+            addPortOverride(builder, serviceUrl);
+        }
     }
 
     private static void configureSas(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {

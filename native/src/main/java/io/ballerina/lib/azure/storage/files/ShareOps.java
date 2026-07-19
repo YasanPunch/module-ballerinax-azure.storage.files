@@ -18,6 +18,10 @@
 
 package io.ballerina.lib.azure.storage.files;
 
+import com.azure.core.util.Context;
+import com.azure.storage.file.share.models.ShareAccessTier;
+import com.azure.storage.file.share.models.ShareRequestConditions;
+import com.azure.storage.file.share.options.ShareSetPropertiesOptions;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
@@ -44,5 +48,25 @@ public final class ShareOps {
 
     public static Object getShareUsage(Environment env, BObject self) {
         return Ops.invoke(env, () -> Ops.shareClient(self).getStatistics().getShareUsageInBytes());
+    }
+
+    public static Object setShareProperties(Environment env, BObject self, BMap<BString, Object> options) {
+        return Ops.invoke(env, () -> {
+            ShareSetPropertiesOptions sdkOptions = new ShareSetPropertiesOptions();
+            Object quota = options.get(Constants.QUOTA_IN_GB);
+            if (quota != null) {
+                sdkOptions.setQuotaInGb(((Long) quota).intValue());
+            }
+            String tier = ValueUtils.optString(options, Constants.ACCESS_TIER);
+            if (tier != null) {
+                sdkOptions.setAccessTier(ShareAccessTier.fromString(tier));
+            }
+            String leaseId = ValueUtils.optString(options, Constants.LEASE_ID);
+            if (leaseId != null) {
+                sdkOptions.setRequestConditions(new ShareRequestConditions().setLeaseId(leaseId));
+            }
+            Ops.shareClient(self).setPropertiesWithResponse(sdkOptions, null, Context.NONE);
+            return null;
+        });
     }
 }

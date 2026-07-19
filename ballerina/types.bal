@@ -291,8 +291,9 @@ public type CorsRule record {|
 
 # Protocol-level settings of the file service.
 public type ProtocolSettings record {|
-    # The maximum number of channels an SMB multichannel session may open
-    int smbMultichannelMaxChannels?;
+    # Whether SMB multichannel (multiple parallel network channels per SMB session) is
+    # enabled for the account
+    boolean smbMultichannelEnabled?;
 |};
 
 # A key for signing user-delegation SAS tokens, obtained with Microsoft Entra ID credentials

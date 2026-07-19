@@ -18,8 +18,11 @@
 
 package io.ballerina.lib.azure.storage.files;
 
+import com.azure.core.util.Context;
 import com.azure.storage.file.share.ShareDirectoryClient;
+import com.azure.storage.file.share.models.ShareFilePermission;
 import com.azure.storage.file.share.options.ShareDirectoryCreateOptions;
+import com.azure.storage.file.share.options.ShareDirectorySetPropertiesOptions;
 import com.azure.storage.file.share.options.ShareFileRenameOptions;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
@@ -53,6 +56,21 @@ public final class DirectoryOps {
     public static Object deleteDirectory(Environment env, BObject self, BString directoryPath) {
         return Ops.invoke(env, () -> {
             directoryClient(self, directoryPath).delete();
+            return null;
+        });
+    }
+
+    public static Object setDirectoryProperties(Environment env, BObject self, BString directoryPath,
+            BMap<BString, Object> options) {
+        return Ops.invoke(env, () -> {
+            ShareDirectorySetPropertiesOptions sdkOptions = new ShareDirectorySetPropertiesOptions()
+                    .setSmbProperties(OptionsReader.smbProperties(options.get(Constants.SMB_PROPERTIES)))
+                    .setPosixProperties(OptionsReader.posixProperties(options.get(Constants.POSIX_PROPERTIES)));
+            String permission = ValueUtils.optString(options, Constants.FILE_PERMISSION);
+            if (permission != null) {
+                sdkOptions.setFilePermissions(new ShareFilePermission().setPermission(permission));
+            }
+            directoryClient(self, directoryPath).setPropertiesWithResponse(sdkOptions, null, Context.NONE);
             return null;
         });
     }

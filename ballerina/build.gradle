@@ -30,6 +30,7 @@ ballerina {
     packageOrganization = packageOrg
     module = packageName
     langVersion = project.ballerinaLangVersion
+    testCoverageParam = "--code-coverage --coverage-format=xml --excludes=\"modules/**/**\""
     isConnector = true
     platform = "java21"
 }
@@ -43,6 +44,11 @@ task updateTomlFiles {
             .replace("@azure.storage.common.version@", project.azureStorageCommonVersion)
             .replace("@azure.core.version@", project.azureCoreVersion)
             .replace("@azure.core.http.netty.version@", project.azureCoreHttpNettyVersion)
+            .replace("@azure.identity.version@", project.azureIdentityVersion)
+            .replace("@msal4j.version@", project.msal4jVersion)
+            .replace("@msal4j.persistence.extension.version@", project.msal4jPersistenceExtensionVersion)
+            .replace("@jna.version@", project.jnaVersion)
+            .replace("@jna.platform.version@", project.jnaPlatformVersion)
             .replace("@azure.json.version@", project.azureJsonVersion)
             .replace("@azure.xml.version@", project.azureXmlVersion)
             .replace("@jackson.version@", project.jacksonVersion)
@@ -68,4 +74,7 @@ clean {
     delete 'lib'
 }
 
+// Both build and test resolve the native jar through Ballerina.toml, so each needs the
+// native module built first (test would otherwise run before the jar exists after a clean).
 build.dependsOn ":azure.storage.files-native:build"
+test.dependsOn ":azure.storage.files-native:build"

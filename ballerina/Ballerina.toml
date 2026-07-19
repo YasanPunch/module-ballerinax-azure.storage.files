@@ -42,6 +42,36 @@ version = "1.16.5"
 
 [[platform.java21.dependency]]
 groupId = "com.azure"
+artifactId = "azure-identity"
+version = "1.18.4"
+
+[[platform.java21.dependency]]
+groupId = "com.microsoft.azure"
+artifactId = "msal4j"
+version = "1.23.1"
+
+[[platform.java21.dependency]]
+groupId = "com.microsoft.azure"
+artifactId = "msal4j-persistence-extension"
+version = "1.3.0"
+
+[[platform.java21.dependency]]
+groupId = "net.java.dev.jna"
+artifactId = "jna"
+version = "5.17.0"
+
+[[platform.java21.dependency]]
+groupId = "net.java.dev.jna"
+artifactId = "jna-platform"
+version = "5.17.0"
+
+[[platform.java21.dependency]]
+groupId = "org.slf4j"
+artifactId = "slf4j-api"
+version = "1.7.36"
+
+[[platform.java21.dependency]]
+groupId = "com.azure"
 artifactId = "azure-json"
 version = "1.5.1"
 

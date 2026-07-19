@@ -257,6 +257,155 @@ final class RecordMapper {
         return record;
     }
 
+    /** Builds a `Range` record from explicit bounds. */
+    static BMap<BString, Object> range(long start, long end) {
+        BMap<BString, Object> record = newRecord(Constants.RECORD_RANGE);
+        record.put(Constants.START_BYTE, start);
+        record.put(Constants.END_BYTE, end);
+        return record;
+    }
+
+    /** Builds a `ShareSnapshotInfo` record. */
+    static BMap<BString, Object> shareSnapshotInfo(String snapshotId, String eTag,
+            java.time.OffsetDateTime lastModified) {
+        BMap<BString, Object> record = newRecord(Constants.RECORD_SHARE_SNAPSHOT_INFO);
+        record.put(Constants.SNAPSHOT_ID, StringUtils.fromString(snapshotId));
+        record.put(Constants.E_TAG, StringUtils.fromString(eTag == null ? "" : eTag));
+        record.put(Constants.LAST_MODIFIED, ValueUtils.toUtc(lastModified));
+        return record;
+    }
+
+    /** Maps the SDK file-service configuration to a `ServiceProperties` record. */
+    static BMap<BString, Object> serviceProperties(com.azure.storage.file.share.models.ShareServiceProperties sdk) {
+        BMap<BString, Object> record = newRecord(Constants.RECORD_SERVICE_PROPERTIES);
+        if (sdk.getHourMetrics() != null) {
+            record.put(Constants.HOUR_METRICS, metrics(sdk.getHourMetrics()));
+        }
+        if (sdk.getMinuteMetrics() != null) {
+            record.put(Constants.MINUTE_METRICS, metrics(sdk.getMinuteMetrics()));
+        }
+        if (sdk.getCors() != null) {
+            BArray rules = recordArray(Constants.RECORD_CORS_RULE);
+            for (com.azure.storage.file.share.models.ShareCorsRule rule : sdk.getCors()) {
+                BMap<BString, Object> ruleRecord = newRecord(Constants.RECORD_CORS_RULE);
+                ruleRecord.put(Constants.ALLOWED_ORIGINS, StringUtils.fromString(rule.getAllowedOrigins()));
+                ruleRecord.put(Constants.ALLOWED_METHODS, StringUtils.fromString(rule.getAllowedMethods()));
+                ruleRecord.put(Constants.ALLOWED_HEADERS, StringUtils.fromString(rule.getAllowedHeaders()));
+                ruleRecord.put(Constants.EXPOSED_HEADERS, StringUtils.fromString(rule.getExposedHeaders()));
+                ruleRecord.put(Constants.MAX_AGE_IN_SECONDS, (long) rule.getMaxAgeInSeconds());
+                rules.append(ruleRecord);
+            }
+            record.put(Constants.CORS, rules);
+        }
+        if (sdk.getProtocol() != null && sdk.getProtocol().getSmb() != null
+                && sdk.getProtocol().getSmb().getMultichannel() != null) {
+            BMap<BString, Object> protocol = newRecord(Constants.RECORD_PROTOCOL_SETTINGS);
+            Boolean enabled = sdk.getProtocol().getSmb().getMultichannel().isEnabled();
+            if (enabled != null) {
+                protocol.put(Constants.SMB_MULTICHANNEL_ENABLED, enabled);
+            }
+            record.put(Constants.PROTOCOL, protocol);
+        }
+        return record;
+    }
+
+    private static BMap<BString, Object> metrics(com.azure.storage.file.share.models.ShareMetrics sdk) {
+        BMap<BString, Object> record = newRecord(Constants.RECORD_METRICS);
+        record.put(Constants.ENABLED, sdk.isEnabled());
+        if (sdk.getVersion() != null) {
+            record.put(Constants.VERSION, StringUtils.fromString(sdk.getVersion()));
+        }
+        if (sdk.isIncludeApis() != null) {
+            record.put(Constants.INCLUDE_APIS, sdk.isIncludeApis());
+        }
+        com.azure.storage.file.share.models.ShareRetentionPolicy retention = sdk.getRetentionPolicy();
+        if (retention != null && retention.isEnabled() && retention.getDays() != null) {
+            record.put(Constants.RETENTION_DAYS, (long) retention.getDays());
+        }
+        return record;
+    }
+
+    /** Maps the SDK user-delegation key to a `UserDelegationKey` record. */
+    static BMap<BString, Object> userDelegationKey(com.azure.storage.file.share.models.UserDelegationKey key) {
+        BMap<BString, Object> record = newRecord(Constants.RECORD_USER_DELEGATION_KEY);
+        record.put(Constants.SIGNED_OBJECT_ID, StringUtils.fromString(key.getSignedObjectId()));
+        record.put(Constants.SIGNED_TENANT_ID, StringUtils.fromString(key.getSignedTenantId()));
+        record.put(Constants.SIGNED_START, ValueUtils.toUtc(key.getSignedStart()));
+        record.put(Constants.SIGNED_EXPIRY, ValueUtils.toUtc(key.getSignedExpiry()));
+        record.put(Constants.SIGNED_SERVICE, StringUtils.fromString(key.getSignedService()));
+        record.put(Constants.SIGNED_VERSION, StringUtils.fromString(key.getSignedVersion()));
+        record.put(Constants.VALUE, StringUtils.fromString(key.getValue()));
+        return record;
+    }
+
+    /** Maps one SDK SMB-handle item to a `HandleInfo` record. */
+    static BMap<BString, Object> handleInfo(com.azure.storage.file.share.models.HandleItem item) {
+        BMap<BString, Object> record = newRecord(Constants.RECORD_HANDLE_INFO);
+        record.put(Constants.HANDLE_ID, StringUtils.fromString(item.getHandleId()));
+        record.put(Constants.PATH, StringUtils.fromString("/" + (item.getPath() == null ? "" : item.getPath())));
+        if (item.getFileId() != null) {
+            record.put(Constants.FILE_ID, StringUtils.fromString(item.getFileId()));
+        }
+        if (item.getSessionId() != null) {
+            record.put(Constants.SESSION_ID, StringUtils.fromString(item.getSessionId()));
+        }
+        if (item.getClientIp() != null) {
+            record.put(Constants.CLIENT_IP, StringUtils.fromString(item.getClientIp()));
+        }
+        if (item.getOpenTime() != null) {
+            record.put(Constants.OPEN_TIME, ValueUtils.toUtc(item.getOpenTime()));
+        }
+        if (item.getLastReconnectTime() != null) {
+            record.put(Constants.LAST_RECONNECT_TIME, ValueUtils.toUtc(item.getLastReconnectTime()));
+        }
+        return record;
+    }
+
+    /** Maps the SDK close-handles result to a `CloseHandlesInfo` record. */
+    static BMap<BString, Object> closeHandlesInfo(com.azure.storage.file.share.models.CloseHandlesInfo info) {
+        BMap<BString, Object> record = newRecord(Constants.RECORD_CLOSE_HANDLES_INFO);
+        record.put(Constants.CLOSED_HANDLES, (long) info.getClosedHandles());
+        record.put(Constants.FAILED_HANDLES, (long) info.getFailedHandles());
+        return record;
+    }
+
+    /** Maps one SDK stored-access-policy identifier to a `SignedIdentifier` record. */
+    static BMap<BString, Object> signedIdentifier(
+            com.azure.storage.file.share.models.ShareSignedIdentifier identifier) {
+        BMap<BString, Object> record = newRecord(Constants.RECORD_SIGNED_IDENTIFIER);
+        record.put(Constants.ID, StringUtils.fromString(identifier.getId()));
+        BMap<BString, Object> policy = newRecord(Constants.RECORD_ACCESS_POLICY);
+        com.azure.storage.file.share.models.ShareAccessPolicy sdkPolicy = identifier.getAccessPolicy();
+        if (sdkPolicy != null) {
+            policy.put(Constants.PERMISSIONS,
+                    StringUtils.fromString(sdkPolicy.getPermissions() == null ? "" : sdkPolicy.getPermissions()));
+            if (sdkPolicy.getStartsOn() != null) {
+                policy.put(Constants.STARTS_ON, ValueUtils.toUtc(sdkPolicy.getStartsOn()));
+            }
+            if (sdkPolicy.getExpiresOn() != null) {
+                policy.put(Constants.EXPIRES_ON, ValueUtils.toUtc(sdkPolicy.getExpiresOn()));
+            }
+        }
+        record.put(Constants.ACCESS_POLICY, policy);
+        return record;
+    }
+
+    /** Maps the SDK range-diff listing to a `RangeDiff` record. */
+    static BMap<BString, Object> rangeDiff(com.azure.storage.file.share.models.ShareFileRangeList list) {
+        BMap<BString, Object> record = newRecord(Constants.RECORD_RANGE_DIFF);
+        BArray ranges = recordArray(Constants.RECORD_RANGE);
+        for (com.azure.storage.file.share.models.FileRange r : list.getRanges()) {
+            ranges.append(range(r.getStart(), r.getEnd()));
+        }
+        BArray clearRanges = recordArray(Constants.RECORD_RANGE);
+        for (com.azure.storage.file.share.models.ClearRange r : list.getClearRanges()) {
+            clearRanges.append(range(r.getStart(), r.getEnd()));
+        }
+        record.put(Constants.RANGES, ranges);
+        record.put(Constants.CLEAR_RANGES, clearRanges);
+        return record;
+    }
+
     /** Creates an array value typed to the named module record. */
     static BArray recordArray(String recordTypeName) {
         BMap<BString, Object> template = newRecord(recordTypeName);

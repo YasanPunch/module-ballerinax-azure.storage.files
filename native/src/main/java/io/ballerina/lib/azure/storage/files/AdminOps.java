@@ -25,7 +25,9 @@ import com.azure.storage.file.share.models.ShareItem;
 import com.azure.storage.file.share.models.ShareProtocols;
 import com.azure.storage.file.share.models.ShareRequestConditions;
 import com.azure.storage.file.share.models.ShareRootSquash;
+import com.azure.storage.file.share.models.ShareServiceProperties;
 import com.azure.storage.file.share.models.ShareSnapshotsDeleteOptionType;
+import com.azure.storage.file.share.models.UserDelegationKey;
 import com.azure.storage.file.share.options.ShareCreateOptions;
 import com.azure.storage.file.share.options.ShareDeleteOptions;
 import io.ballerina.runtime.api.Environment;
@@ -139,6 +141,27 @@ public final class AdminOps {
         return Ops.invoke(env, () -> {
             Ops.serviceClient(self).undeleteShare(shareName.getValue(), version.getValue());
             return null;
+        });
+    }
+
+    public static Object getServiceProperties(Environment env, BObject self) {
+        return Ops.invoke(env, () ->
+                RecordMapper.serviceProperties(Ops.serviceClient(self).getProperties()));
+    }
+
+    public static Object setServiceProperties(Environment env, BObject self, BMap<BString, Object> properties) {
+        return Ops.invoke(env, () -> {
+            ShareServiceProperties sdkProperties = OptionsReader.serviceProperties(properties);
+            Ops.serviceClient(self).setProperties(sdkProperties);
+            return null;
+        });
+    }
+
+    public static Object getUserDelegationKey(Environment env, BObject self, BArray startTime, BArray expiryTime) {
+        return Ops.invoke(env, () -> {
+            UserDelegationKey key = Ops.serviceClient(self)
+                    .getUserDelegationKey(ValueUtils.fromUtc(startTime), ValueUtils.fromUtc(expiryTime));
+            return RecordMapper.userDelegationKey(key);
         });
     }
 }

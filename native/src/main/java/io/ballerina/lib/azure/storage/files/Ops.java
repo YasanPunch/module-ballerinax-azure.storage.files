@@ -18,7 +18,12 @@
 
 package io.ballerina.lib.azure.storage.files;
 
+import com.azure.core.http.HttpPipeline;
+import com.azure.core.http.HttpPipelineBuilder;
+import com.azure.core.http.policy.HttpPipelinePolicy;
+import com.azure.core.util.UrlBuilder;
 import com.azure.storage.file.share.ShareClient;
+import com.azure.storage.file.share.ShareClientBuilder;
 import com.azure.storage.file.share.ShareServiceClient;
 import com.azure.storage.file.share.models.ShareStorageException;
 import io.ballerina.runtime.api.Environment;
@@ -26,6 +31,8 @@ import io.ballerina.runtime.api.values.BError;
 import io.ballerina.runtime.api.values.BObject;
 import io.ballerina.runtime.api.values.BString;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.function.Supplier;
 
 /**
@@ -84,6 +91,59 @@ final class Ops {
     static ShareClient shareClient(BObject self) {
         ensureOpen(self);
         return (ShareClient) self.getNativeData(Constants.NATIVE_SHARE_CLIENT);
+    }
+
+    /**
+     * Returns the {@code ShareClient} for the live share, or for one of its snapshots when a
+     * snapshot id is given.
+     *
+     * <p>The snapshot client is rebuilt with an extra pipeline policy that appends the
+     * {@code sharesnapshot} query parameter to any request missing it. The SDK's download path
+     * hard-codes that parameter to {@code null} ({@code ShareFileAsyncClient.downloadRange}
+     * bytecode-verified in 12.31.0), so without the policy every content read from a snapshot
+     * client silently serves the live file.
+     *
+     * @param self       the Ballerina client object
+     * @param snapshotId the snapshot to read from, or {@code null} for the live share
+     * @return the SDK share client
+     */
+    static ShareClient shareClient(BObject self, String snapshotId) {
+        ShareClient base = shareClient(self);
+        if (snapshotId == null) {
+            return base;
+        }
+        String encodedId = URLEncoder.encode(snapshotId, StandardCharsets.UTF_8);
+        HttpPipelinePolicy ensureSnapshotParam = (context, next) -> {
+            UrlBuilder url = UrlBuilder.parse(context.getHttpRequest().getUrl());
+            if (!url.getQuery().containsKey("sharesnapshot")) {
+                url.setQueryParameter("sharesnapshot", encodedId);
+                context.getHttpRequest().setUrl(url.toString());
+            }
+            return next.process();
+        };
+        HttpPipeline pipeline = base.getHttpPipeline();
+        // The parameter must be on the URL before the credential policy signs the request
+        // (shared-key signatures cover the canonicalized query), so the policy is inserted
+        // ahead of the first credential policy rather than appended.
+        java.util.List<HttpPipelinePolicy> policies = new java.util.ArrayList<>();
+        int insertAt = -1;
+        for (int i = 0; i < pipeline.getPolicyCount(); i++) {
+            HttpPipelinePolicy policy = pipeline.getPolicy(i);
+            if (insertAt == -1 && policy.getClass().getSimpleName().contains("Credential")) {
+                insertAt = i;
+            }
+            policies.add(policy);
+        }
+        policies.add(insertAt == -1 ? policies.size() : insertAt, ensureSnapshotParam);
+        return new ShareClientBuilder()
+                .pipeline(new HttpPipelineBuilder()
+                        .policies(policies.toArray(new HttpPipelinePolicy[0]))
+                        .httpClient(pipeline.getHttpClient())
+                        .build())
+                .endpoint(base.getAccountUrl())
+                .shareName(base.getShareName())
+                .snapshot(snapshotId)
+                .buildClient();
     }
 
     private static void ensureOpen(BObject self) {

@@ -119,13 +119,15 @@ public final class TransferOps {
     public static Object downloadFile(Environment env, BObject self, BString sourcePath,
                                       BString destinationPath, Object options) {
         return Ops.invoke(env, () -> {
-            ShareFileClient client = FileOps.fileClient(self, sourcePath);
             Object range = null;
+            String snapshotId = null;
             if (options != null) {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) options;
                 range = record.get(Constants.RANGE);
+                snapshotId = ValueUtils.optString(record, Constants.SNAPSHOT_ID);
             }
+            ShareFileClient client = FileOps.fileClient(self, sourcePath, snapshotId);
             try {
                 if (range == null) {
                     client.downloadToFile(destinationPath.getValue());
@@ -146,13 +148,15 @@ public final class TransferOps {
     public static Object openContentStream(Environment env, BObject self, BObject generator,
                                            BString path, Object options) {
         return Ops.invoke(env, () -> {
-            ShareFileClient client = FileOps.fileClient(self, path);
             Object range = null;
+            String snapshotId = null;
             if (options != null) {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) options;
                 range = record.get(Constants.RANGE);
+                snapshotId = ValueUtils.optString(record, Constants.SNAPSHOT_ID);
             }
+            ShareFileClient client = FileOps.fileClient(self, path, snapshotId);
             StorageFileInputStream stream = range == null
                     ? client.openInputStream()
                     : client.openInputStream(OptionsReader.range(range));

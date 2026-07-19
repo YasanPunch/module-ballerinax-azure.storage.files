@@ -18,9 +18,13 @@
 
 package io.ballerina.lib.azure.storage.files;
 
+import com.azure.core.util.Context;
 import com.azure.storage.file.share.ShareFileClient;
 import com.azure.storage.file.share.models.ShareFileHttpHeaders;
+import com.azure.storage.file.share.models.ShareFilePermission;
+import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.options.ShareFileCreateOptions;
+import com.azure.storage.file.share.options.ShareFileSetPropertiesOptions;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
@@ -54,6 +58,39 @@ public final class FileOps {
 
     public static Object getFileProperties(Environment env, BObject self, BString path) {
         return Ops.invoke(env, () -> RecordMapper.fileProperties(fileClient(self, path).getProperties()));
+    }
+
+    public static Object setFileProperties(Environment env, BObject self, BString path,
+            BMap<BString, Object> options) {
+        return Ops.invoke(env, () -> {
+            ShareFileClient client = fileClient(self, path);
+            Object newSize = options.get(Constants.NEW_FILE_SIZE_BYTES);
+            Object headers = options.get(Constants.CONTENT_HEADERS);
+            // The wire operation replaces the whole property set: an omitted size or content
+            // header is cleared, not preserved. The current values are re-sent for whatever
+            // the caller left out, honouring the only-what-is-set-changes contract.
+            ShareFileProperties current = newSize == null || headers == null ? client.getProperties() : null;
+            long size = newSize != null ? (Long) newSize : current.getContentLength();
+            ShareFileSetPropertiesOptions sdkOptions = new ShareFileSetPropertiesOptions(size);
+            if (headers != null) {
+                sdkOptions.setHttpHeaders(OptionsReader.contentHeaders(headers));
+            } else {
+                sdkOptions.setHttpHeaders(new ShareFileHttpHeaders()
+                        .setContentType(current.getContentType())
+                        .setContentEncoding(current.getContentEncoding())
+                        .setContentDisposition(current.getContentDisposition())
+                        .setCacheControl(current.getCacheControl())
+                        .setContentMd5(current.getContentMd5()));
+            }
+            sdkOptions.setSmbProperties(OptionsReader.smbProperties(options.get(Constants.SMB_PROPERTIES)))
+                    .setPosixProperties(OptionsReader.posixProperties(options.get(Constants.POSIX_PROPERTIES)));
+            String permission = ValueUtils.optString(options, Constants.FILE_PERMISSION);
+            if (permission != null) {
+                sdkOptions.setFilePermissions(new ShareFilePermission().setPermission(permission));
+            }
+            client.setPropertiesWithResponse(sdkOptions, null, Context.NONE);
+            return null;
+        });
     }
 
     public static Object setFileMetadata(Environment env, BObject self, BString path,
@@ -101,8 +138,35 @@ public final class FileOps {
         return sdkOptions;
     }
 
+    public static Object createHardLink(Environment env, BObject self, BString path, BString targetPath) {
+        return Ops.invoke(env, () -> {
+            // The wire header wants the full path including the share; the connector builds it
+            // from the share-relative path so callers never handle the share name.
+            String target = "/" + Ops.shareClient(self).getShareName() + "/" + Ops.filePath(targetPath);
+            fileClient(self, path).createHardLink(target);
+            return null;
+        });
+    }
+
+    public static Object createSymbolicLink(Environment env, BObject self, BString path, BString linkTarget) {
+        return Ops.invoke(env, () -> {
+            fileClient(self, path).createSymbolicLink(linkTarget.getValue());
+            return null;
+        });
+    }
+
+    public static Object getSymbolicLink(Environment env, BObject self, BString path) {
+        return Ops.invoke(env, () -> io.ballerina.runtime.api.utils.StringUtils.fromString(
+                fileClient(self, path).getSymbolicLink().getLinkText()));
+    }
+
     /** Returns the SDK file client for a combined share-relative path. */
     static ShareFileClient fileClient(BObject self, BString path) {
         return Ops.shareClient(self).getFileClient(Ops.filePath(path));
+    }
+
+    /** Returns the SDK file client for a path, bound to a share snapshot when an id is given. */
+    static ShareFileClient fileClient(BObject self, BString path, String snapshotId) {
+        return Ops.shareClient(self, snapshotId).getFileClient(Ops.filePath(path));
     }
 }

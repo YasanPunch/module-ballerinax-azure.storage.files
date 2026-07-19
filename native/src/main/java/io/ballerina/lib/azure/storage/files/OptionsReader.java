@@ -21,14 +21,23 @@ package io.ballerina.lib.azure.storage.files;
 import com.azure.storage.file.share.FileSmbProperties;
 import com.azure.storage.file.share.models.FilePosixProperties;
 import com.azure.storage.file.share.models.NtfsFileAttributes;
+import com.azure.storage.file.share.models.ShareCorsRule;
 import com.azure.storage.file.share.models.ShareFileHttpHeaders;
 import com.azure.storage.file.share.models.ShareFileRange;
+import com.azure.storage.file.share.models.ShareMetrics;
+import com.azure.storage.file.share.models.ShareProtocolSettings;
+import com.azure.storage.file.share.models.ShareRetentionPolicy;
+import com.azure.storage.file.share.models.ShareServiceProperties;
+import com.azure.storage.file.share.models.ShareSmbSettings;
+import com.azure.storage.file.share.models.SmbMultichannel;
 import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BString;
 
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.EnumSet;
+import java.util.List;
 
 /**
  * Reads the Ballerina option records into the SDK's option and property classes. Every reader
@@ -119,6 +128,66 @@ final class OptionsReader {
         long start = (Long) record.get(Constants.START_BYTE);
         long end = (Long) record.get(Constants.END_BYTE);
         return new ShareFileRange(start, end);
+    }
+
+    /** Converts a `ServiceProperties` record to the SDK model. */
+    static ShareServiceProperties serviceProperties(BMap<BString, Object> record) {
+        ShareServiceProperties sdk = new ShareServiceProperties();
+        Object hourMetrics = record.get(Constants.HOUR_METRICS);
+        if (hourMetrics != null) {
+            sdk.setHourMetrics(metrics(hourMetrics));
+        }
+        Object minuteMetrics = record.get(Constants.MINUTE_METRICS);
+        if (minuteMetrics != null) {
+            sdk.setMinuteMetrics(metrics(minuteMetrics));
+        }
+        Object cors = record.get(Constants.CORS);
+        if (cors != null) {
+            List<ShareCorsRule> rules = new ArrayList<>();
+            BArray ruleArray = (BArray) cors;
+            for (int i = 0; i < ruleArray.size(); i++) {
+                @SuppressWarnings("unchecked")
+                BMap<BString, Object> rule = (BMap<BString, Object>) ruleArray.get(i);
+                rules.add(new ShareCorsRule()
+                        .setAllowedOrigins(rule.getStringValue(Constants.ALLOWED_ORIGINS).getValue())
+                        .setAllowedMethods(rule.getStringValue(Constants.ALLOWED_METHODS).getValue())
+                        .setAllowedHeaders(rule.getStringValue(Constants.ALLOWED_HEADERS).getValue())
+                        .setExposedHeaders(rule.getStringValue(Constants.EXPOSED_HEADERS).getValue())
+                        .setMaxAgeInSeconds(((Long) rule.get(Constants.MAX_AGE_IN_SECONDS)).intValue()));
+            }
+            sdk.setCors(rules);
+        }
+        Object protocol = record.get(Constants.PROTOCOL);
+        if (protocol != null) {
+            @SuppressWarnings("unchecked")
+            BMap<BString, Object> protocolRecord = (BMap<BString, Object>) protocol;
+            Object multichannelEnabled = protocolRecord.get(Constants.SMB_MULTICHANNEL_ENABLED);
+            if (multichannelEnabled != null) {
+                sdk.setProtocol(new ShareProtocolSettings().setSmb(new ShareSmbSettings()
+                        .setMultichannel(new SmbMultichannel().setEnabled((Boolean) multichannelEnabled))));
+            }
+        }
+        return sdk;
+    }
+
+    private static ShareMetrics metrics(Object value) {
+        @SuppressWarnings("unchecked")
+        BMap<BString, Object> record = (BMap<BString, Object>) value;
+        String version = ValueUtils.optString(record, Constants.VERSION);
+        ShareMetrics sdk = new ShareMetrics()
+                .setEnabled(record.getBooleanValue(Constants.ENABLED))
+                .setVersion(version == null ? "1.0" : version);
+        Object includeApis = record.get(Constants.INCLUDE_APIS);
+        if (includeApis != null) {
+            sdk.setIncludeApis((Boolean) includeApis);
+        }
+        Object retentionDays = record.get(Constants.RETENTION_DAYS);
+        ShareRetentionPolicy retention = new ShareRetentionPolicy().setEnabled(retentionDays != null);
+        if (retentionDays != null) {
+            retention.setDays(((Long) retentionDays).intValue());
+        }
+        sdk.setRetentionPolicy(retention);
+        return sdk;
     }
 
     private static NtfsFileAttributes ntfsAttribute(String value) {

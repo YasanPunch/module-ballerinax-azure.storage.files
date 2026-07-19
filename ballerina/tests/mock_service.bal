@@ -33,6 +33,8 @@ type MockFile record {|
     map<string> contentHeaders;
     string etag;
     string copyId?;
+    string? leaseId = ();
+    string? linkText = ();
 |};
 
 type MockDir record {|
@@ -47,6 +49,10 @@ type MockShare record {|
     string etag;
     map<MockFile> files = {};
     map<MockDir> dirs = {};
+    string? leaseId = ();
+    string leaseDuration = "infinite";
+    string aclXml = "<?xml version=\"1.0\" encoding=\"utf-8\"?><SignedIdentifiers />";
+    map<string> permissions = {};
 |};
 
 type MockResponse record {|
@@ -58,11 +64,33 @@ type MockResponse record {|
 
 map<MockShare> mockShares = {};
 map<MockShare> mockDeletedShares = {};
+// Keyed "{share}\n{snapshotId}"; each value is a deep copy of the share at snapshot time.
+map<MockShare> mockShareSnapshots = {};
 int mockEtagCounter = 0;
 int mockCopyCounter = 0;
+int mockLeaseCounter = 0;
+int mockSnapshotCounter = 0;
+int mockPermissionCounter = 0;
+string mockServicePropsXml = string `<?xml version="1.0" encoding="utf-8"?><StorageServiceProperties />`;
+
+function snapshotKey(string shareName, string snapshotId) returns string {
+    return shareName + "\n" + snapshotId;
+}
+
+// Resolves the live share, or the stored snapshot copy when the request carries a
+// sharesnapshot query parameter.
+function resolveShare(string shareName, string snapshotParam) returns MockShare? {
+    if snapshotParam == "" {
+        return mockShares[shareName];
+    }
+    return mockShareSnapshots[snapshotKey(shareName, snapshotParam)];
+}
 
 listener http:Listener mockListener = new (MOCK_PORT);
 
+// Azure always answers with an explicit Content-Length; auto-chunking would drop it on
+// large responses and the SDK reads the file size from that header.
+@http:ServiceConfig {chunking: http:CHUNKING_NEVER}
 service / on mockListener {
     resource function 'default [string... segments](http:Request req) returns http:Response {
         string method = req.method;
@@ -70,6 +98,8 @@ service / on mockListener {
         string restype = req.getQueryParamValue("restype") ?: "";
         string include = req.getQueryParamValue("include") ?: "";
         string prefix = req.getQueryParamValue("prefix") ?: "";
+        string snapshotParam = req.getQueryParamValue("sharesnapshot") ?: "";
+        string prevSnapshotParam = req.getQueryParamValue("prevsharesnapshot") ?: "";
         map<string> headers = {};
         foreach string name in req.getHeaderNames() {
             string|error value = req.getHeader(name);
@@ -83,7 +113,7 @@ service / on mockListener {
             payload = binaryPayload;
         }
         MockResponse mock = dispatch(method, segments, comp, restype, include, prefix,
-                headers, payload);
+                snapshotParam, prevSnapshotParam, headers, payload);
         http:Response response = new;
         response.statusCode = mock.status;
         if mock.body.length() > 0 {
@@ -99,7 +129,8 @@ service / on mockListener {
 // The service is deliberately non-isolated, so requests dispatch serially and the
 // module-level state needs no locking.
 function dispatch(string method, string[] segments, string comp, string restype,
-        string include, string prefix, map<string> headers, byte[] payload) returns MockResponse {
+        string include, string prefix, string snapshotParam, string prevSnapshotParam,
+        map<string> headers, byte[] payload) returns MockResponse {
     // Forced-error escape hatch for the error-mapping tests.
     foreach string segment in segments {
         if segment.startsWith("__err-") {
@@ -111,6 +142,24 @@ function dispatch(string method, string[] segments, string comp, string restype,
         }
     }
     if segments.length() == 0 {
+        if restype == "service" && comp == "properties" {
+            if method == "PUT" {
+                mockServicePropsXml = checkpanic string:fromBytes(payload);
+                return okResponse(202);
+            }
+            return {
+                status: 200,
+                headers: {"x-ms-request-id": "mock"},
+                body: mockServicePropsXml.toBytes(),
+                contentType: "application/xml"
+            };
+        }
+        if restype == "service" && comp == "userdelegationkey" && method == "POST" {
+            string body = checkpanic string:fromBytes(payload);
+            string signedStart = extractTag(body, "Start");
+            string signedExpiry = extractTag(body, "Expiry");
+            return xmlResponse(string `<UserDelegationKey><SignedOid>mock-oid</SignedOid><SignedTid>mock-tid</SignedTid><SignedStart>${signedStart}</SignedStart><SignedExpiry>${signedExpiry}</SignedExpiry><SignedService>f</SignedService><SignedVersion>2025-05-05</SignedVersion><Value>bW9jay11ZGstdmFsdWU=</Value></UserDelegationKey>`);
+        }
         if method == "GET" && comp == "list" {
             return listSharesResponse(prefix, include);
         }
@@ -121,12 +170,23 @@ function dispatch(string method, string[] segments, string comp, string restype,
     // restype=directory must win over the one-segment share fallback: a root-directory
     // listing addresses /{share}?restype=directory&comp=list with a single segment.
     if restype == "directory" {
-        return directoryDispatch(method, shareName, path, comp, include, prefix, headers);
+        return directoryDispatch(method, shareName, path, comp, include, prefix,
+                snapshotParam, headers);
     }
     if restype == "share" || (segments.length() == 1 && comp != "") {
-        return shareDispatch(method, shareName, comp, headers);
+        return shareDispatch(method, shareName, comp, snapshotParam, headers, payload);
     }
-    return fileDispatch(method, shareName, path, comp, headers, payload);
+    return fileDispatch(method, shareName, path, comp, restype, snapshotParam,
+            prevSnapshotParam, headers, payload);
+}
+
+function extractTag(string body, string tag) returns string {
+    int? tagStart = body.indexOf("<" + tag + ">");
+    int? tagEnd = body.indexOf("</" + tag + ">");
+    if tagStart is () || tagEnd is () {
+        return "";
+    }
+    return body.substring(tagStart + tag.length() + 2, tagEnd);
 }
 
 function joinPath(string[] segments) returns string {
@@ -198,8 +258,8 @@ function metadataHeaders(map<string> metadata) returns map<string> {
 // Shares
 // ---------------------------------------------------------------------------
 
-function shareDispatch(string method, string shareName, string comp,
-        map<string> headers) returns MockResponse {
+function shareDispatch(string method, string shareName, string comp, string snapshotParam,
+        map<string> headers, byte[] payload) returns MockResponse {
     if method == "PUT" && comp == "undelete" {
         string deletedName = headers["x-ms-deleted-share-name"] ?: shareName;
         if !mockDeletedShares.hasKey(deletedName) {
@@ -229,10 +289,93 @@ function shareDispatch(string method, string shareName, string comp,
         return errorResponse(404, "ShareNotFound");
     }
     MockShare share = mockShares.get(shareName);
+    if method == "PUT" && comp == "snapshot" {
+        mockSnapshotCounter += 1;
+        string snapshotId = string `2026-07-19T00:00:00.${mockSnapshotCounter}Z`;
+        MockShare copy = share.clone();
+        map<string> snapshotMetadata = metadataFrom(headers);
+        if snapshotMetadata.length() > 0 {
+            copy.metadata = snapshotMetadata;
+        }
+        mockShareSnapshots[snapshotKey(shareName, snapshotId)] = copy;
+        return okResponse(201, {"x-ms-snapshot": snapshotId});
+    }
+    if method == "DELETE" && snapshotParam != "" {
+        if !mockShareSnapshots.hasKey(snapshotKey(shareName, snapshotParam)) {
+            return errorResponse(404, "ShareSnapshotNotFound");
+        }
+        _ = mockShareSnapshots.remove(snapshotKey(shareName, snapshotParam));
+        return okResponse(202);
+    }
+    if method == "PUT" && comp == "lease" {
+        var [response, newLeaseId, apply] = leaseAction(share.leaseId, headers);
+        if apply {
+            share.leaseId = newLeaseId;
+            if (headers["x-ms-lease-action"] ?: "") == "acquire" {
+                share.leaseDuration = (headers["x-ms-lease-duration"] ?: "-1") == "-1"
+                    ? "infinite" : "fixed";
+            }
+        }
+        return response;
+    }
     if method == "PUT" && comp == "metadata" {
         share.metadata = metadataFrom(headers);
         share.etag = nextEtag();
         return okResponse(200);
+    }
+    if method == "PUT" && comp == "properties" {
+        string? quota = headers["x-ms-share-quota"];
+        if quota is string {
+            share.quota = checkpanic int:fromString(quota);
+        }
+        string? tier = headers["x-ms-access-tier"];
+        if tier is string {
+            share.accessTier = tier;
+        }
+        share.etag = nextEtag();
+        return okResponse(200);
+    }
+    if comp == "acl" {
+        if method == "PUT" {
+            share.aclXml = checkpanic string:fromBytes(payload);
+            return okResponse(200);
+        }
+        return {
+            status: 200,
+            headers: {"x-ms-request-id": "mock"},
+            body: share.aclXml.toBytes(),
+            contentType: "application/xml"
+        };
+    }
+    if comp == "filepermission" {
+        if method == "PUT" {
+            string bodyText = checkpanic string:fromBytes(payload);
+            json body = checkpanic bodyText.fromJsonString();
+            if body is map<json> && body["permission"] is string {
+                mockPermissionCounter += 1;
+                string key = string `mock-permission-key-${mockPermissionCounter}`;
+                share.permissions[key] = <string>body["permission"];
+                return okResponse(201, {"x-ms-file-permission-key": key});
+            }
+            return errorResponse(400, "InvalidHeaderValue");
+        }
+        string requestedKey = headers["x-ms-file-permission-key"] ?: "";
+        string? sddl = share.permissions[requestedKey];
+        if sddl is () {
+            return errorResponse(404, "ResourceNotFound");
+        }
+        return {
+            status: 200,
+            headers: {"x-ms-request-id": "mock"},
+            body: string `{"permission":${sddl.toJsonString()}}`.toBytes(),
+            contentType: "application/json"
+        };
+    }
+    if comp == "listhandles" {
+        return listHandlesResponse(share, "");
+    }
+    if method == "PUT" && comp == "forceclosehandles" {
+        return forceCloseHandlesResponse(share, "");
     }
     if (method == "GET" || method == "HEAD") && comp == "stats" {
         int usage = 0;
@@ -245,8 +388,12 @@ function shareDispatch(string method, string shareName, string comp,
         map<string> extra = metadataHeaders(share.metadata);
         extra["x-ms-share-quota"] = share.quota.toString();
         extra["x-ms-access-tier"] = share.accessTier;
-        extra["x-ms-lease-state"] = "available";
-        extra["x-ms-lease-status"] = "unlocked";
+        string? shareLeaseId = share.leaseId;
+        extra["x-ms-lease-state"] = shareLeaseId is string ? "leased" : "available";
+        extra["x-ms-lease-status"] = shareLeaseId is string ? "locked" : "unlocked";
+        if shareLeaseId is string {
+            extra["x-ms-lease-duration"] = share.leaseDuration;
+        }
         MockResponse response = okResponse(200, extra);
         response.headers["ETag"] = share.etag;
         return response;
@@ -266,6 +413,15 @@ function listSharesResponse(string prefix, string include) returns MockResponse 
             continue;
         }
         entries += shareElement(name, share, false, include.includes("metadata"));
+        if include.includes("snapshots") {
+            foreach [string, MockShare] [key, snapshotShare] in mockShareSnapshots.entries() {
+                string[] parts = re `\n`.split(key);
+                if parts[0] == name {
+                    entries += shareElement(name, snapshotShare, false,
+                            include.includes("metadata"), parts[1]);
+                }
+            }
+        }
     }
     if include.includes("deleted") {
         foreach [string, MockShare] [name, share] in mockDeletedShares.entries() {
@@ -279,7 +435,7 @@ function listSharesResponse(string prefix, string include) returns MockResponse 
 }
 
 function shareElement(string name, MockShare share, boolean deleted,
-        boolean includeMetadata) returns string {
+        boolean includeMetadata, string snapshotId = "") returns string {
     string metadata = "";
     if includeMetadata && share.metadata.length() > 0 {
         string items = "";
@@ -289,7 +445,8 @@ function shareElement(string name, MockShare share, boolean deleted,
         metadata = string `<Metadata>${items}</Metadata>`;
     }
     string deletedElements = deleted ? "<Deleted>true</Deleted><Version>01D1MOCK</Version>" : "";
-    return string `<Share><Name>${name}</Name>${deletedElements}<Properties><Last-Modified>${LAST_MODIFIED}</Last-Modified><Etag>${share.etag}</Etag><Quota>${share.quota}</Quota><AccessTier>${share.accessTier}</AccessTier></Properties>${metadata}</Share>`;
+    string snapshotElement = snapshotId == "" ? "" : string `<Snapshot>${snapshotId}</Snapshot>`;
+    return string `<Share><Name>${name}</Name>${snapshotElement}${deletedElements}<Properties><Last-Modified>${LAST_MODIFIED}</Last-Modified><Etag>${share.etag}</Etag><Quota>${share.quota}</Quota><AccessTier>${share.accessTier}</AccessTier></Properties>${metadata}</Share>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,11 +462,14 @@ function parentExists(MockShare share, string path) returns boolean {
 }
 
 function directoryDispatch(string method, string shareName, string path, string comp,
-        string include, string prefix, map<string> headers) returns MockResponse {
-    if !mockShares.hasKey(shareName) {
-        return errorResponse(404, "ShareNotFound");
+        string include, string prefix, string snapshotParam, map<string> headers)
+        returns MockResponse {
+    MockShare? resolved = resolveShare(shareName, snapshotParam);
+    if resolved is () {
+        return errorResponse(404,
+                snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
     }
-    MockShare share = mockShares.get(shareName);
+    MockShare share = resolved;
     if method == "PUT" && comp == "rename" {
         return renameEntry(share, shareName, path, headers, true);
     }
@@ -331,6 +491,18 @@ function directoryDispatch(string method, string shareName, string path, string 
         dir.metadata = metadataFrom(headers);
         dir.etag = nextEtag();
         return okResponse(200);
+    }
+    if method == "PUT" && comp == "properties" {
+        if path != "" && !share.dirs.hasKey(path) {
+            return errorResponse(404, "ResourceNotFound");
+        }
+        return okResponse(200);
+    }
+    if comp == "listhandles" {
+        return listHandlesResponse(share, path);
+    }
+    if method == "PUT" && comp == "forceclosehandles" {
+        return forceCloseHandlesResponse(share, path);
     }
     if method == "GET" && comp == "list" {
         return listDirectoryResponse(shareName, share, path, prefix, include);
@@ -405,16 +577,58 @@ function listDirectoryResponse(string shareName, MockShare share, string path,
 // ---------------------------------------------------------------------------
 
 function fileDispatch(string method, string shareName, string path, string comp,
-        map<string> headers, byte[] payload) returns MockResponse {
-    if !mockShares.hasKey(shareName) {
-        return errorResponse(404, "ShareNotFound");
+        string restype, string snapshotParam, string prevSnapshotParam, map<string> headers,
+        byte[] payload) returns MockResponse {
+    MockShare? resolved = resolveShare(shareName, snapshotParam);
+    if resolved is () {
+        return errorResponse(404,
+                snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
     }
-    MockShare share = mockShares.get(shareName);
+    MockShare share = resolved;
+    if restype == "hardlink" && method == "PUT" {
+        string targetHeader = checkpanic url:decode(headers["x-ms-file-target-file"] ?: "", "UTF-8");
+        string sharePrefix = "/" + shareName + "/";
+        if !targetHeader.startsWith(sharePrefix)
+                || !share.files.hasKey(targetHeader.substring(sharePrefix.length())) {
+            return errorResponse(404, "ResourceNotFound");
+        }
+        // Storing the same record makes both paths one file, which is what a hard link is.
+        share.files[path] = share.files.get(targetHeader.substring(sharePrefix.length()));
+        return okResponse(201);
+    }
+    if restype == "symboliclink" {
+        if method == "PUT" {
+            share.files[path] = {
+                size: 0,
+                content: [],
+                metadata: metadataFrom(headers),
+                contentHeaders: {},
+                etag: nextEtag(),
+                linkText: checkpanic url:decode(headers["x-ms-link-text"] ?: "", "UTF-8")
+            };
+            return okResponse(201);
+        }
+        MockFile? linkFile = share.files[path];
+        if linkFile is () {
+            return errorResponse(404, "ResourceNotFound");
+        }
+        string? linkText = linkFile.linkText;
+        if linkText is () {
+            return errorResponse(409, "InvalidResourceType");
+        }
+        return okResponse(200, {"x-ms-link-text": linkText});
+    }
     if method == "PUT" && comp == "rename" {
         return renameEntry(share, shareName, path, headers, false);
     }
     if method == "PUT" && comp == "range" {
         return putRange(share, path, headers, payload);
+    }
+    if comp == "listhandles" {
+        return listHandlesResponse(share, path);
+    }
+    if method == "PUT" && comp == "forceclosehandles" {
+        return forceCloseHandlesResponse(share, path);
     }
     if method == "PUT" && comp == "copy" {
         // Abort copy: every mock copy completes synchronously, so there is nothing pending.
@@ -450,6 +664,13 @@ function fileDispatch(string method, string shareName, string path, string comp,
         return errorResponse(404, "ResourceNotFound");
     }
     MockFile file = share.files.get(path);
+    if method == "PUT" && comp == "lease" {
+        var [response, newLeaseId, apply] = leaseAction(file.leaseId, headers);
+        if apply {
+            file.leaseId = newLeaseId;
+        }
+        return response;
+    }
     if method == "PUT" && comp == "metadata" {
         file.metadata = metadataFrom(headers);
         file.etag = nextEtag();
@@ -466,10 +687,29 @@ function fileDispatch(string method, string shareName, string path, string comp,
             }
         }
         file.contentHeaders = contentHeaders;
+        string? newLength = headers["x-ms-content-length"];
+        if newLength is string {
+            int size = checkpanic int:fromString(newLength);
+            if size < file.size {
+                file.content = file.content.slice(0, size);
+            } else if size > file.size {
+                byte[] grown = file.content.clone();
+                grown.setLength(size);
+                file.content = grown;
+            }
+            file.size = size;
+        }
         file.etag = nextEtag();
         return okResponse(200);
     }
     if method == "GET" && comp == "rangelist" {
+        if prevSnapshotParam != "" {
+            MockShare? baseline = resolveShare(shareName, prevSnapshotParam);
+            if baseline is () {
+                return errorResponse(404, "ShareSnapshotNotFound");
+            }
+            return rangeDiffResponse(file, baseline.files[path]);
+        }
         return rangeListResponse(file);
     }
     if method == "HEAD" || (method == "GET" && comp == "") {
@@ -523,7 +763,52 @@ function fileHeaders(MockFile file) returns map<string> {
         result["x-ms-copy-progress"] = string `${file.size}/${file.size}`;
         result["x-ms-copy-source"] = "http://localhost:9099/mock";
     }
+    string? fileLeaseId = file.leaseId;
+    if fileLeaseId is string {
+        result["x-ms-lease-state"] = "leased";
+        result["x-ms-lease-status"] = "locked";
+        result["x-ms-lease-duration"] = "infinite";
+    } else {
+        result["x-ms-lease-state"] = "available";
+        result["x-ms-lease-status"] = "unlocked";
+    }
     return result;
+}
+
+// The shared lease protocol: one PUT with an x-ms-lease-action header drives the whole
+// lifecycle. Returns the response, the lease id after the action, and whether to apply it.
+function leaseAction(string? current, map<string> headers) returns [MockResponse, string?, boolean] {
+    string action = headers["x-ms-lease-action"] ?: "";
+    if action == "acquire" {
+        if current is string {
+            return [errorResponse(409, "LeaseAlreadyPresent"), (), false];
+        }
+        mockLeaseCounter += 1;
+        string id = headers["x-ms-proposed-lease-id"] ?: string `mock-lease-${mockLeaseCounter}`;
+        return [okResponse(201, {"x-ms-lease-id": id}), id, true];
+    }
+    if current is () {
+        return [errorResponse(409, "LeaseNotPresentWithLeaseOperation"), (), false];
+    }
+    if action == "break" {
+        string breakPeriod = headers["x-ms-lease-break-period"] ?: "0";
+        return [okResponse(202, {"x-ms-lease-time": breakPeriod}), (), true];
+    }
+    string presented = headers["x-ms-lease-id"] ?: "";
+    if presented != current {
+        return [errorResponse(409, "LeaseIdMismatchWithLeaseOperation"), (), false];
+    }
+    if action == "renew" {
+        return [okResponse(200, {"x-ms-lease-id": current}), current, true];
+    }
+    if action == "release" {
+        return [okResponse(200), (), true];
+    }
+    if action == "change" {
+        string proposed = headers["x-ms-proposed-lease-id"] ?: current;
+        return [okResponse(200, {"x-ms-lease-id": proposed}), proposed, true];
+    }
+    return [errorResponse(400, "InvalidHeaderValue"), (), false];
 }
 
 function downloadOrProps(string method, MockFile file, map<string> headers)
@@ -585,6 +870,69 @@ function rangeListResponse(MockFile file) returns MockResponse {
     string ranges = hasContent && file.size > 0
         ? string `<Range><Start>0</Start><End>${file.size - 1}</End></Range>` : "";
     return xmlResponse(string `<Ranges>${ranges}</Ranges>`);
+}
+
+// SMB handles: any file whose name is held.txt reports one canned open handle; everything
+// else reports none. Enough to exercise listing, per-handle close, and recursive close.
+function heldHandlePaths(MockShare share, string path) returns string[] {
+    if share.files.hasKey(path) {
+        return path.endsWith("held.txt") ? [path] : [];
+    }
+    string[] matches = [];
+    foreach string filePath in share.files.keys() {
+        if filePath.endsWith("held.txt") && (path == "" || filePath.startsWith(path + "/")) {
+            matches.push(filePath);
+        }
+    }
+    return matches;
+}
+
+function listHandlesResponse(MockShare share, string path) returns MockResponse {
+    string entries = "";
+    foreach string heldPath in heldHandlePaths(share, path) {
+        entries += string `<Handle><HandleId>1</HandleId><Path>${heldPath}</Path><FileId>2</FileId><SessionId>3</SessionId><ClientIp>10.0.0.1</ClientIp><OpenTime>${LAST_MODIFIED}</OpenTime></Handle>`;
+    }
+    return xmlResponse(string `<EnumerationResults><Entries>${entries}</Entries><NextMarker /></EnumerationResults>`);
+}
+
+function forceCloseHandlesResponse(MockShare share, string path) returns MockResponse {
+    int closed = heldHandlePaths(share, path).length();
+    return okResponse(200, {
+        "x-ms-number-of-handles-closed": closed.toString(),
+        "x-ms-number-of-handles-failed": "0"
+    });
+}
+
+// Byte-scan diff between the live file and its snapshot baseline: contiguous regions where
+// the live content differs and is nonzero become Ranges, regions where snapshot content was
+// overwritten with zeros become ClearRanges.
+function rangeDiffResponse(MockFile live, MockFile? baseline) returns MockResponse {
+    byte[] snapContent = baseline is MockFile ? baseline.content : [];
+    string ranges = "";
+    string clearRanges = "";
+    int i = 0;
+    while i < live.size {
+        byte liveByte = live.content[i];
+        byte snapByte = i < snapContent.length() ? snapContent[i] : 0;
+        if liveByte != snapByte && liveByte != 0 {
+            int rangeStart = i;
+            while i < live.size && live.content[i] != 0
+                    && live.content[i] != (i < snapContent.length() ? snapContent[i] : 0) {
+                i += 1;
+            }
+            ranges += string `<Range><Start>${rangeStart}</Start><End>${i - 1}</End></Range>`;
+        } else if liveByte == 0 && snapByte != 0 {
+            int clearStart = i;
+            while i < live.size && live.content[i] == 0
+                    && (i < snapContent.length() ? snapContent[i] : 0) != 0 {
+                i += 1;
+            }
+            clearRanges += string `<ClearRange><Start>${clearStart}</Start><End>${i - 1}</End></ClearRange>`;
+        } else {
+            i += 1;
+        }
+    }
+    return xmlResponse(string `<Ranges>${ranges}${clearRanges}</Ranges>`);
 }
 
 function startCopy(MockShare share, string path, map<string> headers) returns MockResponse {

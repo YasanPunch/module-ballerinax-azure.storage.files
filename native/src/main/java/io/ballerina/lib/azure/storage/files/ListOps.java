@@ -53,7 +53,8 @@ public final class ListOps {
             boolean recursive = options.getBooleanValue(Constants.RECURSIVE);
             Integer pageSize = ((Long) options.get(Constants.PAGE_SIZE)).intValue();
             boolean extendedInfo = options.getBooleanValue(Constants.INCLUDE_EXTENDED_INFO);
-            EntryIterator iterator = new EntryIterator(Ops.shareClient(self),
+            String snapshotId = ValueUtils.optString(options, Constants.SNAPSHOT_ID);
+            EntryIterator iterator = new EntryIterator(Ops.shareClient(self, snapshotId),
                     Ops.directoryPath(directoryPath), prefix, recursive, pageSize, extendedInfo);
             generator.addNativeData(Constants.NATIVE_ITERATOR, iterator);
             return null;

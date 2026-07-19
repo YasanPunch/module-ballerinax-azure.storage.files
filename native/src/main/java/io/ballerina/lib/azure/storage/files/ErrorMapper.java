@@ -38,7 +38,9 @@ public final class ErrorMapper {
     private static final Set<String> CONFLICT_CODES =
             Set.of("ResourceAlreadyExists", "ShareAlreadyExists", "DirectoryNotEmpty", "ShareBeingDeleted",
                     "SharingViolation", "TotalSharesProvisionedCapacityExceedsAccountLimit",
-                    "ContainerQuotaDowngradeNotAllowed");
+                    "ContainerQuotaDowngradeNotAllowed", "LeaseAlreadyPresent", "LeaseIdMissing",
+                    "LeaseIdMismatchWithLeaseOperation", "LeaseNotPresentWithLeaseOperation",
+                    "LeaseIsBreakingAndCannotBeChanged", "LeaseIsBrokenAndCannotBeRenewed");
     private static final Set<String> AUTHORIZATION_CODES =
             Set.of("AuthenticationFailed", "AuthorizationFailure", "InsufficientAccountPermissions", "ShareDisabled");
     private static final Set<String> QUOTA_CODES =
