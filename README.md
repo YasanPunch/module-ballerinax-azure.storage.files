@@ -6,9 +6,8 @@ It provides:
 
 - **`Client`** — a share-scoped client for the directories and files within a single share.
 - **`AdminClient`** — an account-level client for managing shares.
-- **`Listener`** — a polling listener that dispatches an `onFile` event for each file present in the watched path (consume-style), with a `Caller` for acting on the file. Snapshot-diff events (`onFileAdd`/`onFileDelete`/`onFileModify`) are planned post-v0.1.
 
-> **Status: client surface implemented.** All `Client` and `AdminClient` operations are implemented over the Azure SDK and covered by tests: the core share, directory, file, transfer, copy, and range operations, plus snapshots, leases, property setters, access policies, SDDL permissions, SMB handles, SAS generation, NFS links, and service properties. Authentication covers shared key, SAS, connection strings, and Microsoft Entra ID, with configurable retry, proxy, connection-pool, and TLS transport settings. The `Listener` and `Caller` are declared but still return a `NotImplemented` error.
+> **Status: client surface implemented.** All `Client` and `AdminClient` operations are implemented over the Azure SDK and covered by tests: the core share, directory, file, transfer, copy, and range operations, plus snapshots, leases, property setters, access policies, SDDL permissions, SMB handles, SAS generation, NFS links, and service properties. Authentication covers shared key, SAS, connection strings, and Microsoft Entra ID, with configurable retry, proxy, connection-pool, and TLS transport settings. A polling listener for reacting to files as they appear is planned for a later release.
 
 ## Building from the source
 

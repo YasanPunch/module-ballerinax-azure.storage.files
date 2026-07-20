@@ -4,9 +4,8 @@ This package provides a Ballerina connector for Azure Files, backed by the offic
 
 - **`Client`**: a share-scoped client for working with the directories and files in a single share (create, upload, download, copy, rename, ranges, and more).
 - **`AdminClient`**: an account-level client for managing shares (create, list, delete, restore).
-- **`Listener`**: a polling listener that watches a share and dispatches an `onFile` event for each file present in the watched path, with a `Caller` for acting on (and consuming) the file.
 
-> **Status: API skeleton.** This package holds the connector's API surface with stubbed operation bodies, published for design review ahead of implementation. Operations currently return a `NotImplemented` error.
+> **Status: client surface implemented.** The `Client` and `AdminClient` operations are implemented over the Azure SDK and covered by tests, across shared key, SAS, connection-string, and Microsoft Entra ID authentication. A polling listener for reacting to files as they appear is planned for a later release.
 
 ## Quickstart
 
@@ -40,22 +39,6 @@ files:FileProperties props = check fileClient->getFileProperties("/reports/q1.pd
 ```ballerina
 files:AdminClient admin = check new (auth = {accountName: "<account>", accountKey: "<key>"});
 check admin->createShare("reports");
-```
-
-### Watch a share with `Listener`
-
-```ballerina
-listener files:Listener fileListener = check new (
-    "reports",
-    auth = {accountName: "<account>", accountKey: "<key>"}
-);
-
-service on fileListener {
-    remote function onFile(files:FileInfo file, files:Caller caller) returns error? {
-        // process the file, then consume it so it does not re-fire on the next poll
-        check caller->deleteFile(file.path);
-    }
-}
 ```
 
 ## Report issues

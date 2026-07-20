@@ -499,23 +499,6 @@ public type FileSasPermissions record {|
     boolean delete = false;
 |};
 
-# A file as surfaced to the polling `Listener`'s event handlers.
-# Carries only listing-derived fields (what a directory listing can provide), and no event kind:
-# `onFile` fires for every file present in the watched path on each poll, so there is no
-# added/deleted/modified distinction to convey.
-public type FileInfo record {|
-    # The share-relative path, e.g. `/dir1/dir2/file.ext`
-    string path;
-    # The file name only (no directory component)
-    string name;
-    # The file size in bytes
-    int sizeBytes;
-    # The entity tag; a change in this value is what marks a file as modified
-    string eTag;
-    # The last-modified time (UTC)
-    time:Utc lastModified;
-|};
-
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------

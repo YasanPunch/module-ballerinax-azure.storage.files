@@ -54,11 +54,3 @@ public type QuotaExceededError distinct Error;
 # A client-side failure occurred while preparing the request or decoding the response
 # (no server round-trip, or a failure outside Azure's control).
 public type ProcessingError distinct Error;
-
-# Placeholder returned by every unimplemented skeleton operation. Replaced with real logic
-# as each operation is implemented.
-#
-# + return - An `Error` marking the operation as not yet implemented
-isolated function notImplemented() returns Error =>
-    error Error("This operation is a skeleton stub and is not yet implemented",
-            errorCode = "NotImplemented");
