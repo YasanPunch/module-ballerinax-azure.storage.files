@@ -140,9 +140,9 @@ public final class FileOps {
 
     public static Object createHardLink(Environment env, BObject self, BString path, BString targetPath) {
         return Ops.invoke(env, () -> {
-            // The wire header wants the full path including the share; the connector builds it
-            // from the share-relative path so callers never handle the share name.
-            String target = "/" + Ops.shareClient(self).getShareName() + "/" + Ops.filePath(targetPath);
+            // The SDK sends the target verbatim in the x-ms-file-target-file header, which is
+            // the share-relative path of the existing file, not including the share name.
+            String target = Ops.filePath(targetPath);
             fileClient(self, path).createHardLink(target);
             return null;
         });

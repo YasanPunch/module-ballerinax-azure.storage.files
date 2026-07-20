@@ -51,7 +51,7 @@ public final class ListOps {
         return Ops.invoke(env, () -> {
             String prefix = ValueUtils.optString(options, Constants.PREFIX);
             boolean recursive = options.getBooleanValue(Constants.RECURSIVE);
-            Integer pageSize = ((Long) options.get(Constants.PAGE_SIZE)).intValue();
+            Integer pageSize = Math.toIntExact((Long) options.get(Constants.PAGE_SIZE));
             boolean extendedInfo = options.getBooleanValue(Constants.INCLUDE_EXTENDED_INFO);
             String snapshotId = ValueUtils.optString(options, Constants.SNAPSHOT_ID);
             EntryIterator iterator = new EntryIterator(Ops.shareClient(self, snapshotId),

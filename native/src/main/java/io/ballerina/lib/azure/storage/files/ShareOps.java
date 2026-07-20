@@ -55,7 +55,7 @@ public final class ShareOps {
             ShareSetPropertiesOptions sdkOptions = new ShareSetPropertiesOptions();
             Object quota = options.get(Constants.QUOTA_IN_GB);
             if (quota != null) {
-                sdkOptions.setQuotaInGb(((Long) quota).intValue());
+                sdkOptions.setQuotaInGb(Math.toIntExact((Long) quota));
             }
             String tier = ValueUtils.optString(options, Constants.ACCESS_TIER);
             if (tier != null) {

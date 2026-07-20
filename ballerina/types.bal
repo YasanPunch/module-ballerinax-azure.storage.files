@@ -552,6 +552,7 @@ public enum NtfsFileAttribute {
     SYSTEM = "System",
     # The file is a standard file with no special attributes; valid only on its own
     NORMAL = "None",
+    # The entry is a directory rather than a file
     DIRECTORY = "Directory",
     # The file is marked for backup or removal
     ARCHIVE = "Archive",

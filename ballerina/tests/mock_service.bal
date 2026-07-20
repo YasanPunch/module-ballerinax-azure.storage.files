@@ -586,14 +586,15 @@ function fileDispatch(string method, string shareName, string path, string comp,
     }
     MockShare share = resolved;
     if restype == "hardlink" && method == "PUT" {
+        // The target header is the share-relative path of the existing file, not including
+        // the share name (a leading slash, if any, is tolerated).
         string targetHeader = checkpanic url:decode(headers["x-ms-file-target-file"] ?: "", "UTF-8");
-        string sharePrefix = "/" + shareName + "/";
-        if !targetHeader.startsWith(sharePrefix)
-                || !share.files.hasKey(targetHeader.substring(sharePrefix.length())) {
+        string targetKey = targetHeader.startsWith("/") ? targetHeader.substring(1) : targetHeader;
+        if !share.files.hasKey(targetKey) {
             return errorResponse(404, "ResourceNotFound");
         }
         // Storing the same record makes both paths one file, which is what a hard link is.
-        share.files[path] = share.files.get(targetHeader.substring(sharePrefix.length()));
+        share.files[path] = share.files.get(targetKey);
         return okResponse(201);
     }
     if restype == "symboliclink" {

@@ -153,7 +153,7 @@ final class OptionsReader {
                         .setAllowedMethods(rule.getStringValue(Constants.ALLOWED_METHODS).getValue())
                         .setAllowedHeaders(rule.getStringValue(Constants.ALLOWED_HEADERS).getValue())
                         .setExposedHeaders(rule.getStringValue(Constants.EXPOSED_HEADERS).getValue())
-                        .setMaxAgeInSeconds(((Long) rule.get(Constants.MAX_AGE_IN_SECONDS)).intValue()));
+                        .setMaxAgeInSeconds(Math.toIntExact((Long) rule.get(Constants.MAX_AGE_IN_SECONDS))));
             }
             sdk.setCors(rules);
         }
@@ -184,7 +184,7 @@ final class OptionsReader {
         Object retentionDays = record.get(Constants.RETENTION_DAYS);
         ShareRetentionPolicy retention = new ShareRetentionPolicy().setEnabled(retentionDays != null);
         if (retentionDays != null) {
-            retention.setDays(((Long) retentionDays).intValue());
+            retention.setDays(Math.toIntExact((Long) retentionDays));
         }
         sdk.setRetentionPolicy(retention);
         return sdk;

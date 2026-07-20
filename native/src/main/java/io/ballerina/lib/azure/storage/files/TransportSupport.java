@@ -72,7 +72,7 @@ final class TransportSupport {
         String policy = retry.getStringValue(Constants.RETRY_POLICY_TYPE).getValue();
         return new RequestRetryOptions(
                 "fixed".equals(policy) ? RetryPolicyType.FIXED : RetryPolicyType.EXPONENTIAL,
-                ((Long) retry.get(Constants.MAX_TRIES)).intValue(),
+                Math.toIntExact((Long) retry.get(Constants.MAX_TRIES)),
                 seconds(retry.get(Constants.TRY_TIMEOUT_SECONDS)),
                 seconds(retry.get(Constants.RETRY_DELAY_SECONDS)),
                 seconds(retry.get(Constants.MAX_RETRY_DELAY_SECONDS)),
@@ -83,7 +83,7 @@ final class TransportSupport {
     static com.azure.core.http.HttpClient httpClient(BMap<BString, Object> transport) {
         BMap<BString, Object> pool = (BMap<BString, Object>) transport.get(Constants.CONNECTION_POOL);
         ConnectionProvider provider = ConnectionProvider.builder("azure-storage-files")
-                .maxConnections(((Long) pool.get(Constants.MAX_CONNECTIONS)).intValue())
+                .maxConnections(Math.toIntExact((Long) pool.get(Constants.MAX_CONNECTIONS)))
                 .maxIdleTime(seconds(pool.get(Constants.IDLE_TIMEOUT_SECONDS)))
                 .build();
         HttpClient reactorClient = HttpClient.create(provider);
@@ -113,7 +113,7 @@ final class TransportSupport {
         };
         ProxyOptions options = new ProxyOptions(proxyType, new InetSocketAddress(
                 proxy.getStringValue(Constants.HOST).getValue(),
-                ((Long) proxy.get(Constants.PORT)).intValue()));
+                Math.toIntExact((Long) proxy.get(Constants.PORT))));
         String username = ValueUtils.optString(proxy, Constants.USERNAME);
         String password = ValueUtils.optString(proxy, Constants.PASSWORD);
         if (username != null && password != null) {
