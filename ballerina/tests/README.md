@@ -37,14 +37,19 @@ liveAccountKey = "<key1>"
 # optional, defaults to "bal-azfiles-live-tests"
 # liveShareName = "my-test-share"
 
-# optional: enables the Microsoft Entra ID smoke test. Needs an app registration
-# holding the Storage File Data Privileged Contributor role on the account.
+# optional: enables the Microsoft Entra ID smoke test as a service principal; the app
+# registration needs a client secret and the Storage File Data Privileged Contributor
+# role on the account
 # liveEntraTenantId = "<tenant id>"
 # liveEntraClientId = "<application id>"
 # liveEntraClientSecret = "<client secret>"
 ```
 
-Note the location: for `bal test`, configurable values are read from `Config.toml` inside the `tests/` directory, not the package root.
+Note the location: for `bal test`, configurable values are read from `Config.toml` inside the `tests/` directory, not the package root. Role assignments can take a few minutes to propagate; if a freshly configured Entra test fails with an authorization error, wait and rerun.
+
+The credential values can also be supplied as environment variables instead of Config.toml entries: `LIVE_ACCOUNT_NAME`, `LIVE_ACCOUNT_KEY`, and for the service-principal Entra test `LIVE_ENTRA_TENANT_ID`, `LIVE_ENTRA_CLIENT_ID`, `LIVE_ENTRA_CLIENT_SECRET`. A Config.toml entry takes precedence over its environment variable. This is how the repository's CI runs the live group, from repository secrets of the same names; runs without those secrets (for example fork pull requests) skip the live group and stay green on the mock group.
+
+A second Entra smoke test covers the default credential chain. It enables itself when the standard Azure environment variables `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET` are set (environment only, no Config.toml entries: the default chain authenticates from the environment by design), and the identity they name needs the same Storage File Data Privileged Contributor role.
 
 ```sh
 cd ballerina

@@ -21,22 +21,39 @@
 //   liveAccountName = "<storage account>"
 //   liveAccountKey  = "<account key>"
 
+import ballerina/os;
 import ballerina/test;
 import ballerina/time;
 
-configurable string liveAccountName = "";
-configurable string liveAccountKey = "";
-configurable string liveShareName = "bal-azfiles-live-tests";
+// Credentials come from Config.toml, or from environment variables when no Config.toml
+// entry is present (how CI supplies them from repository secrets).
+configurable string liveAccountName = os:getEnv("LIVE_ACCOUNT_NAME");
+configurable string liveAccountKey = os:getEnv("LIVE_ACCOUNT_KEY");
+configurable string liveShareName = defaultLiveShareName();
 
-// Microsoft Entra ID smoke test: needs an app registration with the
-// Storage File Data Privileged Contributor role on the account.
-configurable string liveEntraTenantId = "";
-configurable string liveEntraClientId = "";
-configurable string liveEntraClientSecret = "";
+// Microsoft Entra ID smoke tests. Both need an identity holding the Storage File Data
+// Privileged Contributor role on the account. The service-principal variant reads its
+// credentials from configuration; the default-chain variant enables itself when the
+// standard Azure environment variables are present, which the default credential chain
+// consumes identically wherever the tests run (host shell, container, CI).
+configurable string liveEntraTenantId = os:getEnv("LIVE_ENTRA_TENANT_ID");
+configurable string liveEntraClientId = os:getEnv("LIVE_ENTRA_CLIENT_ID");
+configurable string liveEntraClientSecret = os:getEnv("LIVE_ENTRA_CLIENT_SECRET");
+
+// Concurrent CI runs must not share a test share, so the default name is scoped to the
+// GitHub Actions run when one is present. Local runs keep the fixed name.
+isolated function defaultLiveShareName() returns string {
+    string runId = os:getEnv("GITHUB_RUN_ID");
+    return runId == "" ? "bal-azfiles-live-tests" : string `bal-azfiles-live-tests-${runId}`;
+}
 
 final boolean liveEnabled = liveAccountName != "" && liveAccountKey != "";
 final boolean liveEntraEnabled = liveEnabled && liveEntraTenantId != ""
     && liveEntraClientId != "" && liveEntraClientSecret != "";
+final boolean liveEntraDefaultChainEnabled = liveEnabled
+    && os:getEnv("AZURE_TENANT_ID") != ""
+    && os:getEnv("AZURE_CLIENT_ID") != ""
+    && os:getEnv("AZURE_CLIENT_SECRET") != "";
 
 isolated function newLiveAdmin() returns AdminClient|Error =>
     new (auth = {accountName: liveAccountName, accountKey: liveAccountKey});
@@ -210,6 +227,50 @@ function testLiveCopyRangesAndRename() returns error? {
     check fileClient->deleteFile("/live-ranges.bin");
 }
 
+@test:Config {groups: ["live"], enable: liveEnabled, dependsOn: [testLiveCopyRangesAndRename]}
+function testLiveConnectionStringAuth() returns error? {
+    Client csClient = check new (liveShareName, auth = {
+        connectionString: string `DefaultEndpointsProtocol=https;AccountName=${liveAccountName};AccountKey=${liveAccountKey};EndpointSuffix=core.windows.net`
+    });
+    check csClient->uploadContent("via connection string", "/cs-probe.txt");
+    test:assertEquals(check readAll(csClient, "/cs-probe.txt"), "via connection string".toBytes());
+    check csClient->deleteFile("/cs-probe.txt");
+    check csClient.close();
+}
+
+@test:Config {groups: ["live"], enable: liveEnabled, dependsOn: [testLiveConnectionStringAuth]}
+function testLiveSasUrlAuth() returns error? {
+    Client keyClient = check newLiveClient();
+    check keyClient->uploadContent("via sas url", "/sasurl-probe.txt");
+    time:Utc expiry = time:utcAddSeconds(time:utcNow(), 3600);
+    string token = check keyClient->generateShareSas(
+            {expiryTime: expiry, permissions: {read: true, delete: true}});
+
+    // The minted token authenticates a fresh client through its full SAS URL.
+    Client sasUrlClient = check new (liveShareName, auth = {
+        sasUrl: string `https://${liveAccountName}.file.core.windows.net?${token}`
+    });
+    test:assertEquals(check readAll(sasUrlClient, "/sasurl-probe.txt"), "via sas url".toBytes());
+    check sasUrlClient->deleteFile("/sasurl-probe.txt");
+    check sasUrlClient.close();
+}
+
+@test:Config {groups: ["live"], enable: liveEntraDefaultChainEnabled}
+function testLiveEntraDefaultChainAuth() returns error? {
+    // Standalone (not in the cleanup chain) so a missing sign-in never skips cleanup.
+    // A NotFound answer for a nonexistent share proves the token was both authenticated
+    // and authorized; a missing role surfaces as an authorization error instead.
+    Client entraClient = check new ("entra-probe-share",
+            auth = {kind: "default", accountName: liveAccountName});
+    FileProperties|Error result = entraClient->getFileProperties("/probe.txt");
+    if result is FileProperties {
+        test:assertFail("expected NotFound for a nonexistent share, but got file properties");
+    } else if result !is NotFoundError {
+        test:assertFail("Entra call failed before an authorized NotFound: " + result.message());
+    }
+    check entraClient.close();
+}
+
 @test:Config {groups: ["live"], enable: liveEntraEnabled}
 function testLiveEntraAuth() returns error? {
     // Standalone (not in the cleanup chain) so missing Entra credentials never skip cleanup.
@@ -219,13 +280,16 @@ function testLiveEntraAuth() returns error? {
         clientId: liveEntraClientId,
         clientSecret: liveEntraClientSecret
     });
-    boolean|Error result = entraClient->hasFile("/probe.txt");
-    test:assertTrue(result is boolean,
-            "expected an authenticated Entra call to reach the service");
+    FileProperties|Error result = entraClient->getFileProperties("/probe.txt");
+    if result is FileProperties {
+        test:assertFail("expected NotFound for a nonexistent share, but got file properties");
+    } else if result !is NotFoundError {
+        test:assertFail("Entra call failed before an authorized NotFound: " + result.message());
+    }
     check entraClient.close();
 }
 
-@test:Config {groups: ["live"], enable: liveEnabled, dependsOn: [testLiveCopyRangesAndRename]}
+@test:Config {groups: ["live"], enable: liveEnabled, dependsOn: [testLiveSasUrlAuth]}
 function testLiveCleanup() returns error? {
     AdminClient admin = check newLiveAdmin();
     check admin->deleteShare(liveShareName, {deleteSnapshots: INCLUDE});
