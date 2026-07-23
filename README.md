@@ -24,7 +24,7 @@ Everyday development uses the Ballerina CLI directly:
 ```sh
 ./gradlew :azure.storage.files-native:build   # build the Java adaptor jar (needed once, and after native/ changes)
 bal build ./ballerina                          # compile the package
-bal test --groups mock ./ballerina             # run the credential-free test suite
+bal test ./ballerina                           # run the test suite (mock-backed without credentials)
 ```
 
 The full Gradle build compiles the Java adaptor, then builds and tests the Ballerina package inside a Docker container (this is how CI builds the repository):
@@ -35,10 +35,10 @@ The full Gradle build compiles the Java adaptor, then builds and tests the Balle
 
 ## Testing
 
-The test suite has two groups; see [`ballerina/tests/README.md`](ballerina/tests/README.md) for the full guide.
+There is one test suite; see [`ballerina/tests/README.md`](ballerina/tests/README.md) for the full guide.
 
-- **`mock`** runs against an in-process mock of the Azure Files REST service. It needs no credentials and no network, and runs on every build.
-- **`live`** runs smoke tests against a real Azure storage account. It is disabled unless credentials are supplied in `ballerina/tests/Config.toml`, so it never runs accidentally (on CI or forks it simply skips).
+- **Without credentials**, the suite runs against an in-process mock of the Azure Files REST service. It needs no Azure account and no network, and runs on every build (CI, forks).
+- **With credentials** in `ballerina/tests/Config.toml` (or the `LIVE_*` environment variables), the same tests run against the real storage account instead, verifying the connector and the mock's fidelity against live Azure.
 
 ## Contributing
 

@@ -14,66 +14,56 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// The credential-free "mock" test group: every test runs against the in-process mock FileREST
-// service through the SharedKeyConfig.serviceUrl override, so the whole group runs on any
-// machine with no Azure account.
+// The connector test suite. Every test treats live Azure as the ground truth: when live
+// credentials are configured (see backend.bal), the tests run against the real account;
+// otherwise they run against the in-process mock FileREST service, so the whole suite
+// works on any machine with no Azure account. A few tests are pinned to the mock because
+// the condition they exercise cannot be produced on a real account on demand (forced
+// service errors, transport failures, open SMB handles); the Microsoft Entra ID auth
+// tests run only live because mocking the identity service would exercise Microsoft's
+// SDK rather than this connector.
 
 import ballerina/file;
 import ballerina/io;
 import ballerina/test;
 import ballerina/time;
 
-// A syntactically valid (base64) but fake account key; the mock ignores authentication.
-const string MOCK_KEY = "bW9jay1hY2NvdW50LWtleS1mb3ItdGVzdHM=";
-
-isolated function newAdmin() returns AdminClient|Error => new (auth = {
-    accountName: "mockaccount",
-    accountKey: MOCK_KEY,
-    serviceUrl: string `http://localhost:${MOCK_PORT}`
-});
-
-isolated function newShareClient(string share) returns Client|Error => new (share, auth = {
-    accountName: "mockaccount",
-    accountKey: MOCK_KEY,
-    serviceUrl: string `http://localhost:${MOCK_PORT}`
-});
-
 // ---------------------------------------------------------------------------
 // init validation (no service involved)
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testInitRejectsBadBase64Key() {
     Client|Error result = new ("share", auth = {accountName: "acct", accountKey: "not base64!!!"});
     test:assertTrue(result is ProcessingError, "expected a ProcessingError for a non-base64 key");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testInitRejectsEmptyAccountName() {
     Client|Error result = new ("share", auth = {accountName: "  ", accountKey: MOCK_KEY});
     test:assertTrue(result is ProcessingError, "expected a ProcessingError for an empty account name");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testInitRejectsBadServiceUrl() {
     Client|Error result = new ("share",
             auth = {accountName: "acct", accountKey: MOCK_KEY, serviceUrl: "ftp://example.com"});
     test:assertTrue(result is ProcessingError, "expected a ProcessingError for a non-http serviceUrl");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testInitRejectsEmptyShareName() {
     Client|Error result = new ("", auth = {accountName: "acct", accountKey: MOCK_KEY});
     test:assertTrue(result is ProcessingError, "expected a ProcessingError for an empty share name");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testInitRejectsSasUrlWithoutSignature() {
     Client|Error result = new ("share", auth = {sasUrl: "https://acct.file.core.windows.net/?sv=2024"});
     test:assertTrue(result is ProcessingError, "expected a ProcessingError for a SAS URL without sig=");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testInitRejectsConnectionStringWithoutEndpoint() {
     Client|Error result = new ("share",
             auth = {connectionString: "DefaultEndpointsProtocol=https;AccountKey=" + MOCK_KEY});
@@ -81,15 +71,13 @@ function testInitRejectsConnectionStringWithoutEndpoint() {
             "expected a ProcessingError for a connection string without FileEndpoint/AccountName");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testInitAcceptsConnectionString() {
-    Client|Error result = new ("share", auth = {
-        connectionString: string `DefaultEndpointsProtocol=http;AccountName=mockaccount;AccountKey=${MOCK_KEY};FileEndpoint=http://localhost:${MOCK_PORT}/mockaccount`
-    });
+    Client|Error result = new ("share", auth = {connectionString: testConnectionString()});
     test:assertTrue(result is Client, "expected a connection-string client to initialize");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testInitEntraIdModes() returns error? {
     // Every Entra credential kind builds locally; tokens are requested only on first use.
     Client defaultChain = check new ("share", auth = {kind: "default", accountName: "acct"});
@@ -121,7 +109,7 @@ function testInitEntraIdModes() returns error? {
     check certificate.close();
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testInitEntraIdValidation() {
     Client|Error emptyTenant = new ("share",
             auth = {accountName: "acct", tenantId: " ", clientId: "client", clientSecret: "s3cret"});
@@ -140,13 +128,16 @@ function testInitEntraIdValidation() {
     test:assertTrue(emptyAccount is ProcessingError, "expected a blank account name to fail");
 }
 
-@test:Config {groups: ["mock"]}
+// Pinned to the mock: retry and proxy behavior only manifests against an endpoint that
+// can be made to fail on demand.
+@test:Config {}
 function testRetryAndTransportConfig() returns error? {
-    AdminClient admin = check newAdmin();
-    check admin->createShare("transport-config-share");
+    AdminClient admin = check newMockAdmin();
+    string share = testShare("transport-config");
+    check admin->createShare(share);
 
     // A tuned retry policy still round-trips content.
-    Client retryClient = check new ("transport-config-share", auth = {
+    Client retryClient = check new (share, auth = {
         accountName: "mockaccount",
         accountKey: MOCK_KEY,
         serviceUrl: string `http://localhost:${MOCK_PORT}`
@@ -162,7 +153,7 @@ function testRetryAndTransportConfig() returns error? {
     check retryClient.close();
 
     // A custom transport (connection pool + timeouts) still round-trips content.
-    Client pooledClient = check new ("transport-config-share", auth = {
+    Client pooledClient = check new (share, auth = {
         accountName: "mockaccount",
         accountKey: MOCK_KEY,
         serviceUrl: string `http://localhost:${MOCK_PORT}`
@@ -179,7 +170,7 @@ function testRetryAndTransportConfig() returns error? {
     check pooledClient.close();
 
     // A proxy is honored: pointing at a dead port fails the request, not the init.
-    Client proxied = check new ("transport-config-share", auth = {
+    Client proxied = check new (share, auth = {
         accountName: "mockaccount",
         accountKey: MOCK_KEY,
         serviceUrl: string `http://localhost:${MOCK_PORT}`
@@ -190,7 +181,7 @@ function testRetryAndTransportConfig() returns error? {
     check proxied.close();
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testTransportTlsConfig() returns error? {
     // Trust material as a PEM file.
     Client pemTrust = check new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
@@ -247,7 +238,7 @@ function testTransportTlsConfig() returns error? {
             "expected validateRevocation without trust material to fail");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testClosedClientFails() returns error? {
     Client fileClient = check newShareClient("closed-share");
     check fileClient.close();
@@ -259,40 +250,59 @@ function testClosedClientFails() returns error? {
 // AdminClient share management
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testShareLifecycle() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("lifecycle", {quotaInGb: 100, metadata: {owner: "tests"}});
-    var actionResult1 = check admin->hasShare("lifecycle");
+    string share = testShare("lifecycle");
+    check admin->createShare(share, {quotaInGb: 100, metadata: {owner: "tests"}});
+    var actionResult1 = check admin->hasShare(share);
     test:assertTrue(actionResult1);
-    var actionResult2 = check admin->hasShare("no-such-share");
+    var actionResult2 = check admin->hasShare(testShare("no-such-share"));
     test:assertFalse(actionResult2);
 
-    ShareInfo[] shares = check admin->listShares({prefix: "lifecycle", includeMetadata: true});
+    ShareInfo[] shares = check admin->listShares({prefix: share, includeMetadata: true});
     test:assertEquals(shares.length(), 1);
-    test:assertEquals(shares[0].name, "lifecycle");
+    test:assertEquals(shares[0].name, share);
     test:assertEquals(shares[0].properties.quotaInGb, 100);
     test:assertEquals(shares[0].metadata, {owner: "tests"});
 
-    check admin->deleteShare("lifecycle");
-    var actionResult3 = check admin->hasShare("lifecycle");
+    check admin->deleteShare(share);
+    var actionResult3 = check admin->hasShare(share);
     test:assertFalse(actionResult3);
 
-    ShareInfo[] deleted = check admin->listShares({prefix: "lifecycle", includeDeleted: true});
-    test:assertEquals(deleted.length(), 1);
+    // A soft-deleted share surfaces in the deleted listing only after the deletion
+    // settles, and undelete can conflict while it is still in progress.
+    check await(function() returns boolean|error {
+        ShareInfo[] deletedNow = check admin->listShares({prefix: share, includeDeleted: true});
+        return deletedNow.length() == 1 && deletedNow[0].isDeleted == true
+            && deletedNow[0].version is string;
+    });
+    ShareInfo[] deleted = check admin->listShares({prefix: share, includeDeleted: true});
     test:assertEquals(deleted[0].isDeleted, true);
     string version = deleted[0].version ?: "";
-    check admin->undeleteShare("lifecycle", version);
-    var actionResult4 = check admin->hasShare("lifecycle");
-    test:assertTrue(actionResult4);
+    check await(function() returns boolean|error {
+        Error? undeleted = admin->undeleteShare(share, version);
+        if undeleted is ConflictError {
+            return false;
+        }
+        if undeleted is Error {
+            return undeleted;
+        }
+        return true;
+    });
+    check await(function() returns boolean|error {
+        boolean|Error present = admin->hasShare(share);
+        return present;
+    });
     check admin.close();
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testCreateShareTwiceConflicts() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("dup-share");
-    Error? result = admin->createShare("dup-share");
+    string share = testShare("dup");
+    check admin->createShare(share);
+    Error? result = admin->createShare(share);
     test:assertTrue(result is ConflictError, "expected a ConflictError for a duplicate share");
 }
 
@@ -300,15 +310,19 @@ function testCreateShareTwiceConflicts() returns error? {
 // Client share ops
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testSharePropertiesAndUsage() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("props-share", {quotaInGb: 7});
-    Client fileClient = check newShareClient("props-share");
+    string share = testShare("props");
+    check admin->createShare(share, {quotaInGb: 40});
+    Client fileClient = check newShareClient(share);
 
     ShareProperties props = check fileClient->getShareProperties();
-    test:assertEquals(props.quotaInGb, 7);
-    test:assertEquals(props.accessTier, TRANSACTION_OPTIMIZED);
+    test:assertEquals(props.quotaInGb, 40);
+    // Premium accounts report the fixed Premium tier; standard accounts default to
+    // transaction optimized.
+    test:assertEquals(props.accessTier,
+            check isPremiumAccount() ? PREMIUM : TRANSACTION_OPTIMIZED);
     test:assertTrue(props.eTag.length() > 0);
 
     check fileClient->setShareMetadata({env: "mock"});
@@ -318,19 +332,23 @@ function testSharePropertiesAndUsage() returns error? {
     var actionResult15 = check fileClient->getShareUsage();
     test:assertEquals(actionResult15, 0);
     check fileClient->uploadContent("12345", "/usage.txt");
-    var actionResult16 = check fileClient->getShareUsage();
-    test:assertEquals(actionResult16, 5);
+    // Share statistics can lag recent writes.
+    check await(function() returns boolean|error {
+        int usage = check fileClient->getShareUsage();
+        return usage == 5;
+    });
 }
 
 // ---------------------------------------------------------------------------
 // Directories
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testDirectoryLifecycle() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("dir-share");
-    Client fileClient = check newShareClient("dir-share");
+    string share = testShare("dir");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     check fileClient->createDirectory("/docs");
     check fileClient->createDirectory("/docs/2026", {metadata: {year: "2026"}});
@@ -361,11 +379,12 @@ function testDirectoryLifecycle() returns error? {
     check fileClient->deleteDirectory("/docs");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testDeleteNonEmptyDirectoryConflicts() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("nonempty-share");
-    Client fileClient = check newShareClient("nonempty-share");
+    string share = testShare("nonempty");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->createDirectory("/keep");
     check fileClient->uploadContent("x", "/keep/file.txt");
     Error? result = fileClient->deleteDirectory("/keep");
@@ -376,11 +395,12 @@ function testDeleteNonEmptyDirectoryConflicts() returns error? {
 // Files
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testFileLifecycle() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("file-share");
-    Client fileClient = check newShareClient("file-share");
+    string share = testShare("file");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     check fileClient->createFile("/report.bin", 16, {metadata: {kind: "report"}});
     var actionResult9 = check fileClient->hasFile("/report.bin");
@@ -422,11 +442,12 @@ function testFileLifecycle() returns error? {
 // Transfer ops
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testUploadContentVariantsAndDownloadStream() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("content-share");
-    Client fileClient = check newShareClient("content-share");
+    string share = testShare("content");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     check fileClient->uploadContent("hello mock", "/text.txt");
     test:assertEquals(check readAll(fileClient, "/text.txt"), "hello mock".toBytes());
@@ -443,11 +464,12 @@ function testUploadContentVariantsAndDownloadStream() returns error? {
     test:assertEquals(check readAll(fileClient, "/doc.xml"), document.toString().toBytes());
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testUploadAndDownloadLocalFile() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("transfer-share");
-    Client fileClient = check newShareClient("transfer-share");
+    string share = testShare("transfer");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     string localSource = "target/mock-upload-source.txt";
     string localDestination = "target/mock-download-target.txt";
@@ -471,11 +493,12 @@ function testUploadAndDownloadLocalFile() returns error? {
     test:assertTrue(missingLocal is ProcessingError, "expected a missing local file to fail the upload");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testUploadFromStream() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("stream-share");
-    Client fileClient = check newShareClient("stream-share");
+    string share = testShare("stream");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     byte[][] chunks = ["abc".toBytes(), "defg".toBytes(), "hi".toBytes()];
     check fileClient->uploadFromStream(chunks.toStream(), 9, "/streamed.txt");
@@ -487,11 +510,12 @@ function testUploadFromStream() returns error? {
     test:assertTrue(shortResult is ProcessingError, "expected a short stream to fail");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testRangedDownload() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("range-read-share");
-    Client fileClient = check newShareClient("range-read-share");
+    string share = testShare("range-read");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("0123456789", "/digits.txt");
 
     stream<byte[], Error?> content =
@@ -503,11 +527,12 @@ function testRangedDownload() returns error? {
 // Listing
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testListFlatAndRecursive() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("list-share");
-    Client fileClient = check newShareClient("list-share");
+    string share = testShare("list");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->createDirectory("/a");
     check fileClient->createDirectory("/a/b");
     check fileClient->uploadContent("1", "/root.txt");
@@ -539,15 +564,21 @@ function testListFlatAndRecursive() returns error? {
 // Copy ops
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testCopyWithinShare() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("copy-share");
-    Client fileClient = check newShareClient("copy-share");
+    string share = testShare("copy");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("copy me", "/source.txt");
 
     CopyInfo info = check fileClient->copyFile("/source.txt", "/target.txt");
     test:assertTrue(info.copyId.length() > 0);
+    // A copy can be briefly pending even within a share.
+    check await(function() returns boolean|error {
+        CopyStatusInfo? pending = check fileClient->checkCopyStatus("/target.txt");
+        return pending is CopyStatusInfo && pending.copyStatus == SUCCESS;
+    });
     test:assertEquals(check readAll(fileClient, "/target.txt"), "copy me".toBytes());
 
     CopyStatusInfo? status = check fileClient->checkCopyStatus("/target.txt");
@@ -562,21 +593,31 @@ function testCopyWithinShare() returns error? {
     var actionResult17 = check fileClient->checkCopyStatus("/source.txt");
     test:assertEquals(actionResult17, ());
 
-    // The mock completes copies synchronously, so an abort always conflicts.
+    // The copy has already completed, so an abort conflicts.
     Error? abort = fileClient->abortCopy("/target.txt", info.copyId);
     test:assertTrue(abort is Error, "expected abortCopy on a finished copy to fail");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testCopyFromUrl() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("copy-url-share");
-    Client fileClient = check newShareClient("copy-url-share");
+    string share = testShare("copy-url");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("via url", "/origin.txt");
 
-    string sourceUrl = string `http://localhost:${MOCK_PORT}/copy-url-share/origin.txt`;
+    // The service fetches the source URL itself, so it carries a read SAS; the mock
+    // ignores the token while live Azure verifies it.
+    time:Utc sourceExpiry = time:utcAddSeconds(time:utcNow(), 3600);
+    string token = check fileClient->generateSas("/origin.txt",
+            {expiryTime: sourceExpiry, permissions: {read: true}});
+    string sourceUrl = string `${sasBaseUrl()}/${share}/origin.txt?${token}`;
     CopyInfo info = check fileClient->copyFileFromUrl(sourceUrl, "/copied.txt");
     test:assertTrue(info.copyId.length() > 0);
+    check await(function() returns boolean|error {
+        CopyStatusInfo? status = check fileClient->checkCopyStatus("/copied.txt");
+        return status is CopyStatusInfo && status.copyStatus == SUCCESS;
+    });
     test:assertEquals(check readAll(fileClient, "/copied.txt"), "via url".toBytes());
 }
 
@@ -584,11 +625,12 @@ function testCopyFromUrl() returns error? {
 // Range ops
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testRangeWriteClearAndList() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("ranges-share");
-    Client fileClient = check newShareClient("ranges-share");
+    string share = testShare("ranges");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->createFile("/ranges.bin", 8);
 
     Range[] empty = check fileClient->listRanges("/ranges.bin");
@@ -600,8 +642,14 @@ function testRangeWriteClearAndList() returns error? {
     test:assertEquals(check readAll(fileClient, "/ranges.bin"), "ABCDEFGH".toBytes());
 
     check fileClient->clearRange("/ranges.bin", 0, 8);
-    Range[] cleared = check fileClient->listRanges("/ranges.bin");
-    test:assertEquals(cleared.length(), 0);
+    // The cleared bytes read back as zeros. Live Azure deallocates ranges in 512-byte
+    // pages, so a sub-page clear zeroes the bytes while the range stays listed; the mock
+    // tracks exact ranges and drops it.
+    test:assertEquals(check readAll(fileClient, "/ranges.bin"), [0, 0, 0, 0, 0, 0, 0, 0]);
+    if !liveRun {
+        Range[] cleared = check fileClient->listRanges("/ranges.bin");
+        test:assertEquals(cleared.length(), 0);
+    }
 
     // Writing past the pre-allocated size is rejected by the service.
     Error? overflow = fileClient->uploadRange("/ranges.bin", 4, "TOO LONG!".toBytes());
@@ -613,11 +661,15 @@ function testRangeWriteClearAndList() returns error? {
 // Error mapping
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+// Pinned to the mock: these error codes (quota exhaustion, forced 500s) cannot be
+// provoked on a real account on demand; the realistic codes are covered live by the
+// negative assertions in the ordinary tests.
+@test:Config {}
 function testErrorCodeMapping() returns error? {
-    AdminClient admin = check newAdmin();
-    check admin->createShare("errors-share");
-    Client fileClient = check newShareClient("errors-share");
+    AdminClient admin = check newMockAdmin();
+    string share = testShare("errors");
+    check admin->createShare(share);
+    Client fileClient = check newMockShareClient(share);
 
     FileProperties|Error quota = fileClient->getFileProperties("/__err-403-ShareSizeLimitReached");
     test:assertTrue(quota is QuotaExceededError, "403 ShareSizeLimitReached should map to QuotaExceededError");
@@ -651,11 +703,12 @@ function testErrorCodeMapping() returns error? {
 // Leases
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testShareLeaseLifecycle() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("share-lease-share");
-    Client fileClient = check newShareClient("share-lease-share");
+    string share = testShare("share-lease");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     // An out-of-range duration is rejected before any request is made.
     string|Error invalid = fileClient->acquireShareLease(10);
@@ -688,25 +741,28 @@ function testShareLeaseLifecycle() returns error? {
 
     check fileClient->releaseShareLease(changed);
     props = check fileClient->getShareProperties();
-    test:assertTrue(props.leaseState is (), "expected no lease fields after release");
-
-    // Break reports how long until the lease is gone.
-    string reacquired = check fileClient->acquireShareLease(15);
-    test:assertTrue(reacquired.length() > 0);
-    int remaining = check fileClient->breakShareLease(5);
-    test:assertEquals(remaining, 5);
+    test:assertTrue(props.leaseState is ()|AVAILABLE, "expected no lease after release");
 
     // Breaking with no lease in place conflicts.
     int|Error nothingToBreak = fileClient->breakShareLease();
     test:assertTrue(nothingToBreak is ConflictError,
             "expected breaking without a lease to conflict");
+
+    // Break reports how long until the lease is gone; the service may round the
+    // remaining time down.
+    string reacquired = check fileClient->acquireShareLease(15);
+    test:assertTrue(reacquired.length() > 0);
+    int remaining = check fileClient->breakShareLease(5);
+    test:assertTrue(remaining >= 0 && remaining <= 5,
+            "expected the break period to be at most the requested 5s");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testFileLeaseLifecycle() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("file-lease-share");
-    Client fileClient = check newShareClient("file-lease-share");
+    string share = testShare("file-lease");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("locked", "/locked.txt");
 
     string leaseId = check fileClient->acquireLease("/locked.txt");
@@ -730,7 +786,7 @@ function testFileLeaseLifecycle() returns error? {
     check fileClient->releaseLease("/locked.txt", changed);
 
     props = check fileClient->getFileProperties("/locked.txt");
-    test:assertTrue(props.leaseState is (), "expected no lease fields after release");
+    test:assertTrue(props.leaseState is ()|AVAILABLE, "expected no lease after release");
 
     // Break needs no id; the file is immediately leasable again.
     string beforeBreak = check fileClient->acquireLease("/locked.txt",
@@ -746,11 +802,12 @@ function testFileLeaseLifecycle() returns error? {
 // Share snapshots
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testShareSnapshotLifecycle() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("snap-share");
-    Client fileClient = check newShareClient("snap-share");
+    string share = testShare("snap");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("version one", "/versioned.txt");
     check fileClient->createDirectory("/snapdir");
     check fileClient->uploadContent("stay", "/snapdir/keep.txt");
@@ -805,11 +862,12 @@ function testShareSnapshotLifecycle() returns error? {
     test:assertTrue(gone is NotFoundError, "expected a deleted snapshot to read as NotFound");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testListRangesDiff() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("diff-share");
-    Client fileClient = check newShareClient("diff-share");
+    string share = testShare("diff");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->createFile("/diff.bin", 16);
     check fileClient->uploadRange("/diff.bin", 0, "AAAABBBB".toBytes());
     ShareSnapshotInfo baseline = check fileClient->createShareSnapshot();
@@ -819,10 +877,17 @@ function testListRangesDiff() returns error? {
     check fileClient->clearRange("/diff.bin", 0, 4);
 
     RangeDiff diff = check fileClient->listRangesDiff("/diff.bin", baseline.snapshotId);
-    test:assertEquals(diff.ranges, [{startByte: 4, endByte: 7}]);
-    test:assertEquals(diff.clearRanges, [{startByte: 0, endByte: 3}]);
+    if liveRun {
+        // Live range accounting works in 512-byte pages, so only the presence of the
+        // change is stable.
+        test:assertTrue(diff.ranges.length() > 0, "expected the overwrite to appear in the diff");
+    } else {
+        test:assertEquals(diff.ranges, [{startByte: 4, endByte: 7}]);
+        test:assertEquals(diff.clearRanges, [{startByte: 0, endByte: 3}]);
+    }
 
-    RangeDiff|Error missing = fileClient->listRangesDiff("/diff.bin", "no-such-snapshot");
+    // A well-formed but nonexistent baseline snapshot fails.
+    RangeDiff|Error missing = fileClient->listRangesDiff("/diff.bin", "2020-01-01T00:00:00.0000000Z");
     test:assertTrue(missing is NotFoundError, "expected an unknown baseline snapshot to fail");
 }
 
@@ -830,29 +895,42 @@ function testListRangesDiff() returns error? {
 // Property setters, access policy, permissions
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testSetShareProperties() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("set-props-share", {quotaInGb: 5});
-    Client fileClient = check newShareClient("set-props-share");
+    string share = testShare("set-props");
+    check admin->createShare(share, {quotaInGb: 40});
+    Client fileClient = check newShareClient(share);
 
-    check fileClient->setShareProperties({quotaInGb: 10, accessTier: HOT});
+    if check isPremiumAccount() {
+        // Premium shares have no settable access tier, and the quota is the provisioned
+        // size, which only grows safely.
+        Error? tierSet = fileClient->setShareProperties({accessTier: HOT});
+        test:assertTrue(tierSet is Error, "expected setting a tier on a premium share to fail");
+        check fileClient->setShareProperties({quotaInGb: 50});
+        ShareProperties premiumProps = check fileClient->getShareProperties();
+        test:assertEquals(premiumProps.quotaInGb, 50);
+        return;
+    }
+
+    check fileClient->setShareProperties({quotaInGb: 50, accessTier: HOT});
     ShareProperties props = check fileClient->getShareProperties();
-    test:assertEquals(props.quotaInGb, 10);
+    test:assertEquals(props.quotaInGb, 50);
     test:assertEquals(props.accessTier, HOT);
 
     // Changing one property leaves the other in place.
-    check fileClient->setShareProperties({quotaInGb: 20});
+    check fileClient->setShareProperties({quotaInGb: 60});
     props = check fileClient->getShareProperties();
-    test:assertEquals(props.quotaInGb, 20);
+    test:assertEquals(props.quotaInGb, 60);
     test:assertEquals(props.accessTier, HOT);
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testSetFileProperties() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("set-file-share");
-    Client fileClient = check newShareClient("set-file-share");
+    string share = testShare("set-file");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("0123456789", "/resize.bin");
     check fileClient->setContentHeaders("/resize.bin", {contentType: "text/plain"});
 
@@ -879,25 +957,34 @@ function testSetFileProperties() returns error? {
     test:assertEquals(props.cacheControl, "no-store");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testSetDirectoryProperties() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("set-dir-share");
-    Client fileClient = check newShareClient("set-dir-share");
+    string share = testShare("set-dir");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->createDirectory("/tuned");
 
+    // A directory's attribute set must include the Directory flag; other attributes
+    // ride along with it.
     check fileClient->setDirectoryProperties("/tuned",
-            {smbProperties: {ntfsFileAttributes: [READ_ONLY, HIDDEN]}});
+            {smbProperties: {ntfsFileAttributes: [DIRECTORY, READ_ONLY, HIDDEN]}});
+
+    Error? withoutFlag = fileClient->setDirectoryProperties("/tuned",
+            {smbProperties: {ntfsFileAttributes: [HIDDEN]}});
+    test:assertTrue(withoutFlag is Error,
+            "expected an attribute set without Directory to be rejected on a directory");
 
     Error? missing = fileClient->setDirectoryProperties("/no-such-dir", {});
     test:assertTrue(missing is NotFoundError, "expected a missing directory to fail");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testShareAccessPolicyRoundtrip() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("acl-share");
-    Client fileClient = check newShareClient("acl-share");
+    string share = testShare("acl");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     SignedIdentifier[] initial = check fileClient->getShareAccessPolicy();
     test:assertEquals(initial.length(), 0);
@@ -925,32 +1012,48 @@ function testShareAccessPolicyRoundtrip() returns error? {
     test:assertEquals(cleared.length(), 0);
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testSharePermissionStore() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("permission-share");
-    Client fileClient = check newShareClient("permission-share");
+    string share = testShare("permission");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     string sddl = "O:S-1-5-21-2127521184-1604012920-1887927527-21560751G:S-1-5-21-2127521184-1604012920-1887927527-513D:AI(A;;FA;;;SY)";
     string key = check fileClient->createSharePermission(sddl);
     test:assertTrue(key.length() > 0);
 
     string fetched = check fileClient->getSharePermission(key);
-    test:assertEquals(fetched, sddl);
+    if liveRun {
+        // Azure normalizes stored SDDL, so only readability is stable.
+        test:assertTrue(fetched.length() > 0, "expected the stored SDDL to be readable");
+    } else {
+        test:assertEquals(fetched, sddl);
+    }
 
     string|Error missing = fileClient->getSharePermission("no-such-key");
-    test:assertTrue(missing is NotFoundError, "expected an unknown permission key to fail");
+    if liveRun {
+        // A fabricated key is rejected, though the error code differs from a plain miss.
+        test:assertTrue(missing is Error, "expected an unknown permission key to fail");
+    } else {
+        test:assertTrue(missing is NotFoundError, "expected an unknown permission key to fail");
+    }
 }
 
 // ---------------------------------------------------------------------------
 // SMB handles
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+// Pinned to the mock: an open SMB handle exists only while a real SMB client has the
+// share mounted with the file open, which no REST call can produce; the mock fabricates
+// one so the handle listing and force-close paths execute. testNoOpenHandles covers the
+// zero-handle behavior in both modes.
+@test:Config {}
 function testSmbHandles() returns error? {
-    AdminClient admin = check newAdmin();
-    check admin->createShare("handles-share");
-    Client fileClient = check newShareClient("handles-share");
+    AdminClient admin = check newMockAdmin();
+    string share = testShare("handles");
+    check admin->createShare(share);
+    Client fileClient = check newMockShareClient(share);
     check fileClient->uploadContent("held", "/held.txt");
     check fileClient->uploadContent("free", "/free.txt");
     check fileClient->createDirectory("/hdir");
@@ -983,9 +1086,37 @@ function testSmbHandles() returns error? {
 // Service properties and user delegation
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testServicePropertiesRoundtrip() returns error? {
     AdminClient admin = check newAdmin();
+
+    if liveRun {
+        // Non-destructive live check: write the account's current settings back to it,
+        // proving the service accepts this connector's serialization of what it
+        // returned. The echo carries only the groups every account accepts (the SMB
+        // multichannel protocol settings write back only on premium accounts). The full
+        // mutation round-trip below runs on the mock, where changing account-global
+        // settings harms nothing.
+        ServiceProperties current = check admin->getServiceProperties();
+        ServiceProperties echo = {};
+        Metrics? currentHour = current.hourMetrics;
+        if currentHour is Metrics {
+            echo.hourMetrics = currentHour;
+        }
+        Metrics? currentMinute = current.minuteMetrics;
+        if currentMinute is Metrics {
+            echo.minuteMetrics = currentMinute;
+        }
+        CorsRule[]? currentCors = current.cors;
+        if currentCors is CorsRule[] {
+            echo.cors = currentCors;
+        }
+        check admin->setServiceProperties(echo);
+        ServiceProperties reread = check admin->getServiceProperties();
+        test:assertEquals(reread.cors, current.cors);
+        check admin.close();
+        return;
+    }
 
     ServiceProperties desired = {
         hourMetrics: {enabled: true, includeApis: true, retentionDays: 7},
@@ -1025,31 +1156,42 @@ function testServicePropertiesRoundtrip() returns error? {
     test:assertEquals(protocol?.smbMultichannelEnabled, true);
 }
 
-@test:Config {groups: ["mock"]}
+// Azure serves user-delegation keys only to Entra-authenticated callers, so in live
+// runs this needs the Entra credentials and skips without them; mock runs always work.
+@test:Config {enable: !liveRun || liveEntraEnabled}
 function testGetUserDelegationKey() returns error? {
-    AdminClient admin = check newAdmin();
-    time:Utc keyStart = check time:utcFromString("2026-07-19T00:00:00.000Z");
-    time:Utc keyExpiry = check time:utcFromString("2026-07-20T00:00:00.000Z");
+    AdminClient admin = liveRun ? check newEntraAdmin() : check newMockAdmin();
+    time:Utc keyStart = [time:utcNow()[0], 0];
+    time:Utc keyExpiry = time:utcAddSeconds(keyStart, 3600);
 
     UserDelegationKey key = check admin->getUserDelegationKey(keyStart, keyExpiry);
-    test:assertEquals(key.signedObjectId, "mock-oid");
-    test:assertEquals(key.signedTenantId, "mock-tid");
+    if liveRun {
+        test:assertTrue(key.signedObjectId.length() > 0, "expected a signed object id");
+        test:assertTrue(key.signedTenantId.length() > 0, "expected a signed tenant id");
+        test:assertTrue(key.value.length() > 0, "expected key material");
+        test:assertTrue(key.signedVersion.length() > 0, "expected a signed version");
+    } else {
+        test:assertEquals(key.signedObjectId, "mock-oid");
+        test:assertEquals(key.signedTenantId, "mock-tid");
+        test:assertEquals(key.signedVersion, "2025-05-05");
+        test:assertEquals(key.value, "bW9jay11ZGstdmFsdWU=");
+    }
     test:assertEquals(key.signedStart, keyStart);
     test:assertEquals(key.signedExpiry, keyExpiry);
     test:assertEquals(key.signedService, "f");
-    test:assertEquals(key.signedVersion, "2025-05-05");
-    test:assertEquals(key.value, "bW9jay11ZGstdmFsdWU=");
+    check admin.close();
 }
 
 // ---------------------------------------------------------------------------
 // SAS generation
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testGenerateShareAndFileSas() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("sas-share");
-    Client fileClient = check newShareClient("sas-share");
+    string share = testShare("sas");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     time:Utc expiry = check time:utcFromString("2026-08-01T00:00:00Z");
 
     string shareSas = check fileClient->generateShareSas(
@@ -1075,8 +1217,8 @@ function testGenerateShareAndFileSas() returns error? {
     test:assertTrue(fileParams.hasKey("st"), "expected the start time to be included");
 
     // Signing needs the account key: a SAS-authenticated client cannot mint tokens.
-    Client sasClient = check new ("sas-share", auth = {
-        sasUrl: string `http://localhost:${MOCK_PORT}?sv=2025-05-05&sp=rl&se=2026-08-01T00%3A00%3A00Z&sig=ZmFrZQ%3D%3D`
+    Client sasClient = check new (share, auth = {
+        sasUrl: string `${sasBaseUrl()}?sv=2025-05-05&sp=rl&se=2026-08-01T00%3A00%3A00Z&sig=ZmFrZQ%3D%3D`
     });
     string|Error denied = sasClient->generateShareSas(
             {expiryTime: expiry, permissions: {read: true}});
@@ -1084,31 +1226,38 @@ function testGenerateShareAndFileSas() returns error? {
             "expected SAS generation without an account key to fail");
 }
 
-@test:Config {groups: ["mock"]}
+// Azure serves user-delegation keys only to Entra-authenticated callers, so in live
+// runs this needs the Entra credentials and skips without them; mock runs always work.
+// Signing with the fetched key needs no credentials, so the regular clients do the rest.
+@test:Config {enable: !liveRun || liveEntraEnabled}
 function testGenerateUserDelegationSas() returns error? {
+    AdminClient keyAdmin = liveRun ? check newEntraAdmin() : check newMockAdmin();
     AdminClient admin = check newAdmin();
-    check admin->createShare("uds-share");
-    Client fileClient = check newShareClient("uds-share");
-    UserDelegationKey key = check admin->getUserDelegationKey(
-            check time:utcFromString("2026-07-19T00:00:00.000Z"),
-            check time:utcFromString("2026-07-26T00:00:00.000Z"));
-    time:Utc expiry = check time:utcFromString("2026-07-25T00:00:00Z");
+    string share = testShare("uds");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+    time:Utc keyStart = [time:utcNow()[0], 0];
+    UserDelegationKey key = check keyAdmin->getUserDelegationKey(keyStart,
+            time:utcAddSeconds(keyStart, 86400));
+    time:Utc expiry = time:utcAddSeconds(keyStart, 3600);
 
     string shareToken = check fileClient->generateShareUserDelegationSas(
             {expiryTime: expiry, permissions: {read: true}}, key);
     map<string> shareParams = sasParams(shareToken);
     test:assertEquals(shareParams["sp"], "r");
-    test:assertEquals(shareParams["skoid"], "mock-oid");
+    test:assertEquals(shareParams["skoid"], key.signedObjectId);
     test:assertTrue(shareParams.hasKey("sig"), "expected a signature");
 
     string fileToken = check fileClient->generateUserDelegationSas("/f.txt",
             {expiryTime: expiry, permissions: {read: true, delete: true}}, key);
     map<string> fileParams = sasParams(fileToken);
     test:assertEquals(fileParams["sp"], "rd");
-    test:assertEquals(fileParams["sktid"], "mock-tid");
+    test:assertEquals(fileParams["sktid"], key.signedTenantId);
+    check keyAdmin.close();
+    check admin.close();
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testGenerateAccountSas() returns error? {
     AdminClient admin = check newAdmin();
     time:Utc expiry = check time:utcFromString("2026-08-01T00:00:00Z");
@@ -1129,11 +1278,18 @@ function testGenerateAccountSas() returns error? {
 // NFS links
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testNfsLinks() returns error? {
+    if liveRun && !(check isPremiumAccount()) {
+        // NFS shares exist only on premium (FileStorage) accounts, and a live run never
+        // falls back to the mock, so a standard-account live run skips this. Mock runs
+        // cover the operations.
+        return;
+    }
     AdminClient admin = check newAdmin();
-    check admin->createShare("nfs-share");
-    Client fileClient = check newShareClient("nfs-share");
+    string share = testShare("nfs");
+    check admin->createShare(share, {enabledProtocols: [NFS]});
+    Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("original", "/original.txt");
 
     // A hard link reads the same content as its target.
@@ -1157,11 +1313,12 @@ function testNfsLinks() returns error? {
 // Core gap-fills
 // ---------------------------------------------------------------------------
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testRenameReplaceIfExists() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("rename-share");
-    Client fileClient = check newShareClient("rename-share");
+    string share = testShare("rename");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("new", "/incoming.txt");
     check fileClient->uploadContent("old", "/settled.txt");
 
@@ -1175,11 +1332,12 @@ function testRenameReplaceIfExists() returns error? {
     test:assertFalse(sourceStillThere);
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testLargeUploadSplitsIntoRanges() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("large-share");
-    Client fileClient = check newShareClient("large-share");
+    string share = testShare("large");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     // 4 MiB is the service's maximum single-range size, so this upload must split.
     final int rangeCap = 4 * 1024 * 1024;
@@ -1195,11 +1353,12 @@ function testLargeUploadSplitsIntoRanges() returns error? {
     test:assertEquals(check collectBytes(boundary), "AATA".toBytes());
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testEarlyStreamClose() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("close-share");
-    Client fileClient = check newShareClient("close-share");
+    string share = testShare("close");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("0123456789", "/close.txt");
     check fileClient->createDirectory("/somedir");
 
@@ -1228,11 +1387,12 @@ class FailingByteSource {
     }
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testStreamFailurePaths() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("stream-fail-share");
-    Client fileClient = check newShareClient("stream-fail-share");
+    string share = testShare("stream-fail");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     stream<Entry, Error?>|Error missingDirectory = fileClient->list("/no-such-dir");
     test:assertTrue(missingDirectory is NotFoundError,
@@ -1252,11 +1412,12 @@ function testStreamFailurePaths() returns error? {
     test:assertTrue(aborted is ProcessingError, "expected a failing source stream to abort");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testUploadFromStreamOverflow() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("overflow-share");
-    Client fileClient = check newShareClient("overflow-share");
+    string share = testShare("overflow");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
 
     byte[][] longChunks = ["abcdef".toBytes(), "ghijkl".toBytes()];
     Error? overflow = fileClient->uploadFromStream(longChunks.toStream(), 5, "/overflow.txt");
@@ -1264,23 +1425,111 @@ function testUploadFromStreamOverflow() returns error? {
             "expected a stream longer than contentLength to fail");
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testConnectionStringClientOps() returns error? {
     AdminClient admin = check newAdmin();
-    check admin->createShare("cs-share");
-    Client fileClient = check new ("cs-share", auth = {
-        connectionString: string `DefaultEndpointsProtocol=http;AccountName=mockaccount;AccountKey=${MOCK_KEY};FileEndpoint=http://localhost:${MOCK_PORT}`
-    });
+    string share = testShare("cs");
+    check admin->createShare(share);
+    Client fileClient = check new (share, auth = {connectionString: testConnectionString()});
     check fileClient->uploadContent("via connection string", "/cs.txt");
     test:assertEquals(check readAll(fileClient, "/cs.txt"), "via connection string".toBytes());
 }
 
-@test:Config {groups: ["mock"]}
+@test:Config {}
 function testClosedAdminClientFails() returns error? {
     AdminClient admin = check newAdmin();
     check admin.close();
     boolean|Error result = admin->hasShare("any-share");
     test:assertTrue(result is ProcessingError, "expected an op on a closed admin client to fail");
+}
+
+// ---------------------------------------------------------------------------
+// SAS round-trip and open handles
+// ---------------------------------------------------------------------------
+
+@test:Config {}
+function testSasRoundtrip() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("sas-roundtrip");
+    check admin->createShare(share);
+    Client keyClient = check newShareClient(share);
+    check keyClient->uploadContent("sas readable", "/sas-probe.txt");
+
+    time:Utc expiry = time:utcAddSeconds(time:utcNow(), 3600);
+    string token = check keyClient->generateShareSas(
+            {expiryTime: expiry, permissions: {read: true, list: true, delete: true}});
+
+    // The minted token authenticates a fresh client through its full SAS URL. The mock
+    // ignores signatures, so the signature itself is verified only live; the client
+    // wiring runs in both modes.
+    Client sasUrlClient = check new (share, auth = {sasUrl: string `${sasBaseUrl()}?${token}`});
+    test:assertEquals(check readAll(sasUrlClient, "/sas-probe.txt"), "sas readable".toBytes());
+    check sasUrlClient.close();
+
+    if liveRun {
+        // SasConfig derives its endpoint from the account name, so it can only target
+        // the real service.
+        Client sasClient = check new (share,
+                auth = {accountName: liveAccountName, sasToken: token});
+        check sasClient->deleteFile("/sas-probe.txt");
+        check sasClient.close();
+    }
+    check keyClient.close();
+    check admin.close();
+}
+
+@test:Config {}
+function testNoOpenHandles() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("no-handles");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+    check fileClient->uploadContent("no handles", "/handle-probe.txt");
+
+    HandleInfo[] handles = check fileClient->listFileHandles("/handle-probe.txt");
+    test:assertEquals(handles.length(), 0, "REST clients hold no SMB handles");
+    CloseHandlesInfo closed = check fileClient->forceCloseFileHandles("/handle-probe.txt");
+    test:assertEquals(closed.closedHandles, 0);
+    test:assertEquals(closed.failedHandles, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Microsoft Entra ID auth (live only: mocking the identity service would test
+// Microsoft's SDK, not this connector)
+// ---------------------------------------------------------------------------
+
+@test:Config {enable: liveEntraEnabled}
+function testLiveEntraAuth() returns error? {
+    // A NotFound answer for a nonexistent share proves the token was both authenticated
+    // and authorized; a missing role surfaces as an authorization error instead.
+    Client entraClient = check new ("entra-probe-share", auth = {
+        accountName: liveAccountName,
+        tenantId: liveEntraTenantId,
+        clientId: liveEntraClientId,
+        clientSecret: liveEntraClientSecret
+    });
+    FileProperties|Error result = entraClient->getFileProperties("/probe.txt");
+    if result is FileProperties {
+        test:assertFail("expected NotFound for a nonexistent share, but got file properties");
+    } else if result !is NotFoundError {
+        test:assertFail("Entra call failed before an authorized NotFound: " + result.message());
+    }
+    check entraClient.close();
+}
+
+@test:Config {enable: liveEntraDefaultChainEnabled}
+function testLiveEntraDefaultChainAuth() returns error? {
+    // A NotFound answer for a nonexistent share proves the token was both authenticated
+    // and authorized; a missing role surfaces as an authorization error instead.
+    Client entraClient = check new ("entra-probe-share",
+            auth = {kind: "default", accountName: liveAccountName});
+    FileProperties|Error result = entraClient->getFileProperties("/probe.txt");
+    if result is FileProperties {
+        test:assertFail("expected NotFound for a nonexistent share, but got file properties");
+    } else if result !is NotFoundError {
+        test:assertFail("Entra call failed before an authorized NotFound: " + result.message());
+    }
+    check entraClient.close();
 }
 
 // ---------------------------------------------------------------------------

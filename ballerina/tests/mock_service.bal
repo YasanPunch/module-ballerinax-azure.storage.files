@@ -496,6 +496,11 @@ function directoryDispatch(string method, string shareName, string path, string 
         if path != "" && !share.dirs.hasKey(path) {
             return errorResponse(404, "ResourceNotFound");
         }
+        // Azure requires a directory's attribute set to include the Directory flag.
+        string attributes = headers["x-ms-file-attributes"] ?: "";
+        if attributes != "" && !attributes.includes("Directory") {
+            return errorResponse(400, "InvalidHeaderValue");
+        }
         return okResponse(200);
     }
     if comp == "listhandles" {
@@ -938,13 +943,18 @@ function rangeDiffResponse(MockFile live, MockFile? baseline) returns MockRespon
 
 function startCopy(MockShare share, string path, map<string> headers) returns MockResponse {
     string sourceHeader = checkpanic url:decode(headers["x-ms-copy-source"] ?: "", "UTF-8");
-    // The source URL has the form http://host:port/{share}/{path...}.
+    // The source URL has the form http://host:port/{share}/{path...}, optionally with a
+    // SAS query string, which the mock ignores.
     int schemeEnd = sourceHeader.indexOf("://") is int ? <int>sourceHeader.indexOf("://") + 3 : 0;
     int? hostEnd = sourceHeader.indexOf("/", schemeEnd);
     if hostEnd is () {
         return errorResponse(404, "CannotVerifyCopySource");
     }
     string sourceFull = sourceHeader.substring(hostEnd + 1);
+    int? queryStart = sourceFull.indexOf("?");
+    if queryStart is int {
+        sourceFull = sourceFull.substring(0, queryStart);
+    }
     int? firstSlash = sourceFull.indexOf("/");
     if firstSlash is () {
         return errorResponse(404, "CannotVerifyCopySource");
