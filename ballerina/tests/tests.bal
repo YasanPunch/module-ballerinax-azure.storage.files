@@ -257,9 +257,16 @@ function testShareLifecycle() returns error? {
     check admin->createShare(share, {quotaInGb: 100, metadata: {owner: "tests"}});
     var actionResult1 = check admin->hasShare(share);
     test:assertTrue(actionResult1);
-    var actionResult2 = check admin->hasShare(testShare("no-such-share"));
+    // Built directly, not via testShare: a second testShare call inside a test would
+    // roll-clean the test's own share.
+    var actionResult2 = check admin->hasShare(string `${share}-absent`);
     test:assertFalse(actionResult2);
 
+    // Listing can lag share creation.
+    check await(function() returns boolean|error {
+        ShareInfo[] listed = check admin->listShares({prefix: share, includeMetadata: true});
+        return listed.length() == 1;
+    });
     ShareInfo[] shares = check admin->listShares({prefix: share, includeMetadata: true});
     test:assertEquals(shares.length(), 1);
     test:assertEquals(shares[0].name, share);
@@ -269,6 +276,14 @@ function testShareLifecycle() returns error? {
     check admin->deleteShare(share);
     var actionResult3 = check admin->hasShare(share);
     test:assertFalse(actionResult3);
+
+    if check isPremiumAccount() {
+        // The premium test account runs without share soft delete (a soft-deleted premium
+        // share keeps holding its provisioned IOPS against the account limit), so the
+        // undelete tail is exercised on standard accounts and the mock.
+        check admin.close();
+        return;
+    }
 
     // A soft-deleted share surfaces in the deleted listing only after the deletion
     // settles, and undelete can conflict while it is still in progress.
@@ -319,10 +334,14 @@ function testSharePropertiesAndUsage() returns error? {
 
     ShareProperties props = check fileClient->getShareProperties();
     test:assertEquals(props.quotaInGb, 40);
-    // Premium accounts report the fixed Premium tier; standard accounts default to
-    // transaction optimized.
-    test:assertEquals(props.accessTier,
-            check isPremiumAccount() ? PREMIUM : TRANSACTION_OPTIMIZED);
+    if check isPremiumAccount() {
+        // Premium shares carry provisioned throughput figures. (The tier label is not
+        // asserted: classic accounts report Premium, provisioned v2 a legacy label.)
+        test:assertTrue(props.provisionedIops is int,
+                "expected provisioned IOPS on a premium share");
+    } else {
+        test:assertEquals(props.accessTier, TRANSACTION_OPTIMIZED);
+    }
     test:assertTrue(props.eTag.length() > 0);
 
     check fileClient->setShareMetadata({env: "mock"});
@@ -680,9 +699,34 @@ function testErrorCodeMapping() returns error? {
     FileProperties|Error auth = fileClient->getFileProperties("/__err-403-AuthenticationFailed");
     test:assertTrue(auth is AuthorizationError, "403 AuthenticationFailed should map to AuthorizationError");
 
+    // The code Azure returns for an Entra ID identity lacking the required RBAC role.
+    FileProperties|Error rbac = fileClient->getFileProperties("/__err-403-AuthorizationPermissionMismatch");
+    test:assertTrue(rbac is AuthorizationError,
+            "403 AuthorizationPermissionMismatch should map to AuthorizationError");
+
+    // A SAS used outside its permitted IP range.
+    FileProperties|Error sasIp = fileClient->getFileProperties("/__err-403-AuthorizationSourceIPMismatch");
+    test:assertTrue(sasIp is AuthorizationError,
+            "403 AuthorizationSourceIPMismatch should map to AuthorizationError");
+
     FileProperties|Error precondition = fileClient->getFileProperties("/__err-412-ConditionNotMet");
     test:assertTrue(precondition is PreconditionFailedError,
             "412 ConditionNotMet should map to PreconditionFailedError");
+
+    // Lease-id requirements on data operations are preconditions, unlike the 409 conflicts
+    // the lease operations themselves raise.
+    FileProperties|Error leaseMissing = fileClient->getFileProperties("/__err-412-LeaseIdMissing");
+    test:assertTrue(leaseMissing is PreconditionFailedError,
+            "412 LeaseIdMissing should map to PreconditionFailedError");
+
+    FileProperties|Error leaseMismatch =
+            fileClient->getFileProperties("/__err-412-LeaseIdMismatchWithFileOperation");
+    test:assertTrue(leaseMismatch is PreconditionFailedError,
+            "412 LeaseIdMismatchWithFileOperation should map to PreconditionFailedError");
+
+    FileProperties|Error leaseLost = fileClient->getFileProperties("/__err-412-LeaseLost");
+    test:assertTrue(leaseLost is PreconditionFailedError,
+            "412 LeaseLost should map to PreconditionFailedError");
 
     FileProperties|Error sharing = fileClient->getFileProperties("/__err-409-SharingViolation");
     test:assertTrue(sharing is ConflictError, "409 SharingViolation should map to ConflictError");
@@ -903,26 +947,34 @@ function testSetShareProperties() returns error? {
     Client fileClient = check newShareClient(share);
 
     if check isPremiumAccount() {
-        // Premium shares have no settable access tier, and the quota is the provisioned
+        // Premium shares have no working access tier: classic accounts reject the set,
+        // provisioned v2 accounts accept and ignore it. The quota is the provisioned
         // size, which only grows safely.
         Error? tierSet = fileClient->setShareProperties({accessTier: HOT});
-        test:assertTrue(tierSet is Error, "expected setting a tier on a premium share to fail");
+        if tierSet is () {
+            ShareProperties ignored = check fileClient->getShareProperties();
+            test:assertTrue(ignored.accessTier != HOT,
+                    "expected the tier change to be ignored on a premium share");
+        }
         check fileClient->setShareProperties({quotaInGb: 50});
         ShareProperties premiumProps = check fileClient->getShareProperties();
         test:assertEquals(premiumProps.quotaInGb, 50);
         return;
     }
 
+    // A tier change can apply asynchronously, so the read-back is polled.
     check fileClient->setShareProperties({quotaInGb: 50, accessTier: HOT});
-    ShareProperties props = check fileClient->getShareProperties();
-    test:assertEquals(props.quotaInGb, 50);
-    test:assertEquals(props.accessTier, HOT);
+    check await(function() returns boolean|error {
+        ShareProperties props = check fileClient->getShareProperties();
+        return props.quotaInGb == 50 && props.accessTier == HOT;
+    }, timeoutSeconds = 120);
 
     // Changing one property leaves the other in place.
     check fileClient->setShareProperties({quotaInGb: 60});
-    props = check fileClient->getShareProperties();
-    test:assertEquals(props.quotaInGb, 60);
-    test:assertEquals(props.accessTier, HOT);
+    check await(function() returns boolean|error {
+        ShareProperties props = check fileClient->getShareProperties();
+        return props.quotaInGb == 60 && props.accessTier == HOT;
+    }, timeoutSeconds = 120);
 }
 
 @test:Config {}

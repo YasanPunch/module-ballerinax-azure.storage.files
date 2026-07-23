@@ -622,7 +622,8 @@ function fileDispatch(string method, string shareName, string path, string comp,
         if linkText is () {
             return errorResponse(409, "InvalidResourceType");
         }
-        return okResponse(200, {"x-ms-link-text": linkText});
+        // Azure serves the link text percent-encoded.
+        return okResponse(200, {"x-ms-link-text": checkpanic url:encode(linkText, "UTF-8")});
     }
     if method == "PUT" && comp == "rename" {
         return renameEntry(share, shareName, path, headers, false);

@@ -63,7 +63,50 @@ isolated function buildSharePrefix() returns string {
     return string `azft-${tag}`;
 }
 
-isolated function testShare(string base) returns string => string `${sharePrefix}-${base}`;
+isolated string? previousTestShare = ();
+
+// Hands out the test's share name and, in live runs, deletes the PREVIOUS test's share.
+// Tests run serially, so this rolling cleanup keeps a live run to a couple of concurrent
+// shares. That matters on premium accounts, where every share (and, with soft delete
+// enabled, every soft-deleted share) holds provisioned IOPS against an account-wide
+// limit that ~50 accumulated shares would exceed mid-run.
+function testShare(string base) returns string {
+    string share = string `${sharePrefix}-${base}`;
+    string? previous;
+    lock {
+        previous = previousTestShare;
+        previousTestShare = share;
+    }
+    if liveRun && previous is string && previous != share {
+        releaseShare(previous);
+    }
+    return share;
+}
+
+// Best-effort immediate deletion, breaking a stray lease if one blocks it. Anything left
+// behind is caught by the AfterSuite prefix cleanup.
+function releaseShare(string share) {
+    AdminClient|Error admin = newAdmin();
+    if admin is Error {
+        return;
+    }
+    Error? deleted = admin->deleteShare(share, {deleteSnapshots: INCLUDE});
+    if deleted is Error && deleted !is NotFoundError {
+        Client|Error shareClient = newShareClient(share);
+        if shareClient is Client {
+            int|Error broken = shareClient->breakShareLease();
+            Error? closed = shareClient.close();
+            Error? retried = admin->deleteShare(share, {deleteSnapshots: INCLUDE});
+            if broken is Error || closed is Error || retried is Error {
+                // Left for the AfterSuite sweep.
+            }
+        }
+    }
+    Error? adminClosed = admin.close();
+    if adminClosed is Error {
+        // Nothing further to do.
+    }
+}
 
 // Backend-switching factories: tests obtain their clients here and stay unaware of
 // which backend the run uses.
@@ -109,8 +152,11 @@ isolated function sasBaseUrl() returns string => liveRun
 
 // Whether the live account is a premium (FileStorage) account. Premium and standard
 // accounts speak the same wire contract but differ in a few observable behaviors
-// (access tiers, quota-as-provisioned-size, NFS availability), so the affected
-// assertions branch on this. Probed once per run from a created share's access tier.
+// (access-tier handling, quota-as-provisioned-size, NFS availability), so the affected
+// assertions branch on this. Probed once per run from a created share's properties:
+// provisioned shares carry provisioned IOPS figures (provisioned v2 accounts report a
+// legacy tier label, so the tier alone is not a reliable signal; the PREMIUM tier check
+// covers classic provisioned v1 accounts).
 boolean? premiumAccountCache = ();
 
 function isPremiumAccount() returns boolean|error {
@@ -121,11 +167,13 @@ function isPremiumAccount() returns boolean|error {
     boolean premium = false;
     if liveRun {
         AdminClient admin = check newAdmin();
-        string probe = testShare("kind-probe");
+        // Built directly (not via testShare), because this probe runs INSIDE other tests
+        // and testShare's rolling cleanup would delete the calling test's own share.
+        string probe = string `${sharePrefix}-kind-probe`;
         check admin->createShare(probe, {quotaInGb: 40});
         Client probeClient = check newShareClient(probe);
         ShareProperties props = check probeClient->getShareProperties();
-        premium = props.accessTier == PREMIUM;
+        premium = props.provisionedIops is int || props.accessTier == PREMIUM;
         check probeClient.close();
         check admin->deleteShare(probe);
         check admin.close();

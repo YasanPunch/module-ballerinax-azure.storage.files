@@ -23,7 +23,8 @@ public type SharedKeyConfig record {|
     string accountName;
     # A base64-encoded access key of the storage account
     string accountKey;
-    # The file service endpoint URL, including the scheme. Omit to use the default `https://{accountName}.file.core.windows.net`.
+    # The file service endpoint URL, including the scheme. Omit to use the default
+    # `https://{accountName}.file.core.windows.net`.
     # Set it to reach an account that is not on the global public cloud. It changes only where requests are sent.
     # They still authenticate as `accountName`, so the URL must address that same account.
     string serviceUrl?;
@@ -151,7 +152,8 @@ public type WorkloadIdentityConfig record {|
 # tokens only on requests carrying the backup intent, which the connector sets automatically.
 # The intent bypasses file and directory ACLs and requires the identity to hold the
 # `Storage File Data Privileged Reader` or `Storage File Data Privileged Contributor` role.
-public type EntraIdConfig DefaultEntraIdConfig|ManagedIdentityConfig|ClientSecretConfig|ClientCertificateConfig|WorkloadIdentityConfig;
+public type EntraIdConfig DefaultEntraIdConfig|ManagedIdentityConfig|ClientSecretConfig|
+    ClientCertificateConfig|WorkloadIdentityConfig;
 
 # The authentication configuration: one credential-artifact record (an account key, a bare SAS
 # token, a full SAS URL, a connection string, or a Microsoft Entra ID identity).
@@ -163,7 +165,7 @@ public type AuthConfig SharedKeyConfig|SasConfig|SasUrlConfig|ConnectionStringCo
 
 # The retry policy kinds: `EXPONENTIAL` grows the delay between tries exponentially;
 # `FIXED` keeps the same delay between every try.
-public enum RETRY_POLICY_TYPE {
+public enum RetryPolicyType {
     # Delays grow exponentially between tries
     EXPONENTIAL = "exponential",
     // FIXED is a module-level constant shared with LeaseDuration (enum members merge when
@@ -175,7 +177,7 @@ public enum RETRY_POLICY_TYPE {
 # defaults, so omitting the record leaves behaviour unchanged.
 public type RetryConfig record {|
     # How the delay between tries grows
-    RETRY_POLICY_TYPE retryPolicyType = EXPONENTIAL;
+    RetryPolicyType retryPolicyType = EXPONENTIAL;
     # The maximum number of tries (the first attempt plus retries)
     int maxTries = 4;
     # The timeout applied to each individual try, in seconds
@@ -189,7 +191,7 @@ public type RetryConfig record {|
 |};
 
 # The proxy protocol kinds.
-public enum PROXY_TYPE {
+public enum ProxyType {
     # An HTTP proxy
     HTTP,
     # A SOCKS4 proxy
@@ -201,7 +203,7 @@ public enum PROXY_TYPE {
 # Routes the connector's traffic through a proxy server.
 public type ProxyConfig record {|
     # The proxy protocol
-    PROXY_TYPE proxyType;
+    ProxyType proxyType;
     # The proxy host name or IP address
     string host;
     # The proxy port

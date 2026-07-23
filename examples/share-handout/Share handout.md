@@ -9,7 +9,7 @@ This example shares a file with a third party without sharing the account creden
 
 ## Configuration
 
-Create a `Config.toml` file in the example directory:
+Copy `Config.toml.template` in the example directory to `Config.toml` and fill in the values:
 
 ```toml
 accountName = "<storage account name>"

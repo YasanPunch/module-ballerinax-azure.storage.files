@@ -17,7 +17,7 @@ import ballerinax/azure.storage.files;
 
 ### Step 2: Create a client
 
-A `Client` is bound to a single share. Authenticate with a Shared Key, a SAS token, or a connection string.
+A `Client` is bound to a single share. Authenticate with a Shared Key, a SAS token, a SAS URL, a connection string, or Microsoft Entra ID.
 
 ```ballerina
 files:Client fileClient = check new (

@@ -38,11 +38,11 @@ When extending the mock:
 2. Keep **Allow storage account key access** enabled (it is by default); the tests authenticate with the account key.
 3. After deployment, open **Security + networking → Access keys** and copy the storage account name and the key1 value.
 
-The suite is account-kind adaptive: pointed at a **premium (FileStorage)** account instead, it detects the kind at runtime and adjusts the tier and quota assertions, and `testNfsLinks` runs live against a real NFS share. A standard account remains the primary target (it is what most users run); a premium run is an optional second pass for the premium-specific behaviors.
+The suite is account-kind adaptive: pointed at a **premium (FileStorage)** account instead, it detects the kind at runtime (a created share carrying provisioned IOPS figures), adjusts the tier and quota assertions, and `testNfsLinks` runs live against a real NFS share. A standard account remains the primary target (it is what most users run); a premium run is an optional second pass for the premium-specific behaviors. Two premium-specific account settings matter: create it with the **provisioned v2** billing model (v1's 100 GiB minimum share size is above what the suite provisions), and **disable share soft delete** on it — a soft-deleted premium share keeps holding its provisioned IOPS against the account-wide limit, so retained shares from earlier runs would starve later ones. Because soft delete is off there, the share-lifecycle test exercises its undelete tail only on standard accounts and the mock.
 
 ### Configure and run
 
-Create `ballerina/tests/Config.toml` (gitignored; never commit it) with:
+Copy `ballerina/tests/Config.toml.template` to `ballerina/tests/Config.toml` (gitignored; never commit it) and fill in the values:
 
 ```toml
 liveAccountName = "<storage account name>"
@@ -64,7 +64,7 @@ A second Entra test covers the default credential chain. It enables itself when 
 
 ### Share naming, cost, and cleanup
 
-Each test creates its own share under a per-run prefix, `azft-<run id>-` on GitHub Actions or `azft-<epoch seconds>-` locally, so reruns never collide with leftovers from an interrupted run. An `AfterSuite` cleanup deletes every share carrying the run's prefix (snapshots included), breaking stray leases where needed. A live run churns roughly fifty small shares; with soft delete enabled the deleted shares sit in the 7-day retention window at negligible cost for test-sized data. Shares abandoned by a crashed run keep their run's prefix and can be swept manually (`az storage share list --include-deleted` filtered on `azft-`).
+Each test creates its own share under a per-run prefix, `azft-<run id>-` on GitHub Actions or `azft-<epoch seconds>-` locally, so reruns never collide with leftovers from an interrupted run. Tests run serially, and in live runs the share hand-out deletes the previous test's share (this rolling cleanup keeps a run to a couple of concurrent shares, which is what lets the suite fit a premium account's provisioned-IOPS envelope); an `AfterSuite` cleanup then deletes every share carrying the run's prefix (snapshots included), breaking stray leases where needed. A live run churns roughly fifty small shares; with soft delete enabled the deleted shares sit in the 7-day retention window at negligible cost for test-sized data. Shares abandoned by a crashed run keep their run's prefix and can be swept manually (`az storage share list --include-deleted` filtered on `azft-`).
 
 Treat the account key as a development-only secret: it can be regenerated at any time under **Access keys**, which immediately invalidates the old value.
 

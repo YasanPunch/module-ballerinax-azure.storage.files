@@ -16,15 +16,6 @@
 
 import ballerina/jballerina.java;
 
-// Captures the module reference for the native layer during module initialization.
-function init() {
-    setModule();
-}
-
-isolated function setModule() = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.ModuleUtils"
-} external;
-
 // ---------------------------------------------------------------------------
 // Client lifecycle
 // ---------------------------------------------------------------------------

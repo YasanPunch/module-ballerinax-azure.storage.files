@@ -23,7 +23,8 @@
 # and how to treat it.
 public type ContentHeaders record {|
     # The MIME (Multipurpose Internet Mail Extensions) is a standardized identifier for the type of data in the file,
-    # (e.g. `application/pdf`, `image/png`, `text/html`), served as `Content-Type` on downloads so clients know how to handle the bytes
+    # (e.g. `application/pdf`, `image/png`, `text/html`), served as `Content-Type` on
+    # downloads so clients know how to handle the bytes
     string contentType?;
     # Any encoding applied to the stored content (e.g. `gzip`),
     # so consumers know to decode before use
@@ -151,7 +152,9 @@ public type RenameOptions record {|
 
 # Options for `Client.createFile` (creating an empty file of a given size).
 public type CreateOptions record {|
-    # Content headers to set on the file (`Content-Type`, `Content-Encoding`, `Content-Language`, `Content-Disposition`, `Cache-Control`, and `Content-MD5` on downloads).
+    # Content headers to set on the file (`Content-Type`, `Content-Encoding`,
+    # `Content-Language`, `Content-Disposition`, `Cache-Control`, and `Content-MD5` on
+    # downloads).
     ContentHeaders contentHeaders?;
     # User-defined metadata to set on the file
     map<string> metadata?;
@@ -166,7 +169,9 @@ public type CreateOptions record {|
 # Options for the upload operations (`uploadFile`, `uploadContent`, `uploadFromStream`).
 # Upload creates the destination file, so the create-time attributes are available here too.
 public type UploadOptions record {|
-    # Content headers to set on the file (`Content-Type`, `Content-Encoding`, `Content-Language`, `Content-Disposition`, `Cache-Control`, and `Content-MD5` on downloads).
+    # Content headers to set on the file (`Content-Type`, `Content-Encoding`,
+    # `Content-Language`, `Content-Disposition`, `Cache-Control`, and `Content-MD5` on
+    # downloads).
     ContentHeaders contentHeaders?;
     # User-defined metadata to set on the file
     map<string> metadata?;

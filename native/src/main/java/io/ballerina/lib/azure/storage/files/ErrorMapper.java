@@ -38,11 +38,18 @@ public final class ErrorMapper {
     private static final Set<String> CONFLICT_CODES =
             Set.of("ResourceAlreadyExists", "ShareAlreadyExists", "DirectoryNotEmpty", "ShareBeingDeleted",
                     "SharingViolation", "TotalSharesProvisionedCapacityExceedsAccountLimit",
-                    "ContainerQuotaDowngradeNotAllowed", "LeaseAlreadyPresent", "LeaseIdMissing",
+                    "TotalSharesProvisionedIopsExceedsAccountLimit",
+                    "ContainerQuotaDowngradeNotAllowed", "LeaseAlreadyPresent",
                     "LeaseIdMismatchWithLeaseOperation", "LeaseNotPresentWithLeaseOperation",
                     "LeaseIsBreakingAndCannotBeChanged", "LeaseIsBrokenAndCannotBeRenewed");
+    private static final Set<String> PRECONDITION_CODES =
+            Set.of("ConditionNotMet", "LeaseIdMissing", "LeaseIdMismatchWithFileOperation",
+                    "LeaseNotPresentWithFileOperation", "LeaseLost");
     private static final Set<String> AUTHORIZATION_CODES =
-            Set.of("AuthenticationFailed", "AuthorizationFailure", "InsufficientAccountPermissions", "ShareDisabled");
+            Set.of("AuthenticationFailed", "AuthorizationFailure", "InsufficientAccountPermissions", "ShareDisabled",
+                    "AuthorizationPermissionMismatch", "AuthorizationSourceIPMismatch", "AuthorizationProtocolMismatch",
+                    "AuthorizationServiceMismatch", "AuthorizationResourceTypeMismatch", "InvalidAuthenticationInfo",
+                    "AccountIsDisabled");
     private static final Set<String> QUOTA_CODES =
             Set.of("ShareSizeLimitReached", "SmbShareFull");
 
@@ -71,7 +78,7 @@ public final class ErrorMapper {
         if (AUTHORIZATION_CODES.contains(code)) {
             return "AuthorizationError";
         }
-        if ("ConditionNotMet".equals(code)) {
+        if (PRECONDITION_CODES.contains(code)) {
             return "PreconditionFailedError";
         }
         if ("InvalidRange".equals(code)) {

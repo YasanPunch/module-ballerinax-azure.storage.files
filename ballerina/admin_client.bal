@@ -142,7 +142,7 @@ public isolated client class AdminClient {
     # Closes the client. Subsequent operations on a closed client fail. Releases any
     # connector-owned resources; the SDK's default HTTP transport is shared and
     # process-managed, so with the default transport this is a lifecycle guard. No call is
-    # made to Azure, so it is an ordinary method, not a remote one.
+    # made to Azure.
     #
     # + return - An `Error` if the client could not be closed, otherwise `()`
     public isolated function close() returns Error? {

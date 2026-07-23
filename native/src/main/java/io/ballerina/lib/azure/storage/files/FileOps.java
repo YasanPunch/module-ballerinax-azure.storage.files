@@ -156,8 +156,10 @@ public final class FileOps {
     }
 
     public static Object getSymbolicLink(Environment env, BObject self, BString path) {
+        // The service returns the link text percent-encoded.
         return Ops.invoke(env, () -> io.ballerina.runtime.api.utils.StringUtils.fromString(
-                fileClient(self, path).getSymbolicLink().getLinkText()));
+                java.net.URLDecoder.decode(fileClient(self, path).getSymbolicLink().getLinkText(),
+                        java.nio.charset.StandardCharsets.UTF_8)));
     }
 
     /** Returns the SDK file client for a combined share-relative path. */

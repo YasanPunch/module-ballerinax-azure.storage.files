@@ -2,6 +2,7 @@
 
 [![Build](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/ci.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/ballerina-platform/module-ballerinax-azure.storage.files/branch/main/graph/badge.svg)](https://codecov.io/gh/ballerina-platform/module-ballerinax-azure.storage.files)
+[![GraalVM Check](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-with-bal-test-native.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-with-bal-test-native.yml)
 [![GitHub Last Commit](https://img.shields.io/github/last-commit/ballerina-platform/module-ballerinax-azure.storage.files.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/commits/main)
 [![GitHub Issues](https://img.shields.io/github/issues/ballerina-platform/ballerina-library/module%2Fazure.storage.files.svg?label=Open%20Issues)](https://github.com/ballerina-platform/ballerina-library/issues?q=is%3Aopen+label%3Amodule%2Fazure.storage.files)
 
@@ -49,9 +50,17 @@ There is one test suite; see [`ballerina/tests/README.md`](ballerina/tests/READM
 - **Without credentials**, the suite runs against an in-process mock of the Azure Files REST service. It needs no Azure account and no network, and runs on every build (CI, forks).
 - **With credentials** in `ballerina/tests/Config.toml` (or the `LIVE_*` environment variables), the same tests run against the real storage account instead, verifying the connector and the mock's fidelity against live Azure.
 
-## Contributing
+## Issues and projects
+
+The **Issues** tab of this repository is disabled; report bugs and request features in the central [Ballerina library repository](https://github.com/ballerina-platform/ballerina-library/issues), which also tracks the project boards.
+
+## Contribute to Ballerina
 
 As an open-source project, Ballerina welcomes contributions from the community. For more information, see [the contribution guidelines](https://github.com/ballerina-platform/ballerina-lang/blob/master/CONTRIBUTING.md).
+
+## Code of conduct
+
+All contributors are encouraged to read the [Ballerina code of conduct](https://ballerina.io/code-of-conduct).
 
 ## Useful links
 

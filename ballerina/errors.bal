@@ -40,7 +40,8 @@ public type ConflictError distinct Error;
 # permissions (HTTP 403).
 public type AuthorizationError distinct Error;
 
-# A precondition such as an ETag `If-Match`/`If-None-Match` condition was not met (HTTP 412).
+# A precondition such as an ETag `If-Match`/`If-None-Match` condition or a lease-id
+# requirement on a file operation was not met (HTTP 412).
 public type PreconditionFailedError distinct Error;
 
 # The requested byte range cannot be satisfied for the target file (HTTP 416).

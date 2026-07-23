@@ -186,10 +186,12 @@ public type SmbProperties record {|
     string filePermissionKey?;
     # The creation time (UTC)
     time:Utc fileCreationTime?;
-    # The last-write time (UTC)
-    time:Utc fileLastWriteTime?; // last time data was written to the file (excludes metadata changes)
-    # The change time (UTC)
-    time:Utc fileChangeTime?; // last time the file content or metadata (permissions, size, attributes etc.) was modified
+    # The last-write time (UTC): the last time data was written to the file, excluding
+    # metadata changes
+    time:Utc fileLastWriteTime?;
+    # The change time (UTC): the last time the file's content or metadata (permissions,
+    # size, attributes) was modified
+    time:Utc fileChangeTime?;
     # The file identifier
     string fileId?;
     # The parent directory identifier
@@ -201,7 +203,7 @@ public type SmbProperties record {|
 public type PosixProperties record {|
     # The owner user id (UID)
     string owner?;
-    # The owning group id (GID) 
+    # The owning group id (GID)
     string group?;
     # The file mode (permissions), octal or symbolic.
     string fileMode?;
@@ -571,6 +573,8 @@ public enum NtfsFileAttribute {
 public enum NfsFileType {
     # A regular file
     REGULAR = "Regular",
+    // DIRECTORY is a module-level constant shared with NtfsFileAttribute (enum members merge
+    // when their values match), so its doc line lives on the NtfsFileAttribute member.
     DIRECTORY = "Directory",
     # A symbolic link
     SYMLINK = "SymLink"

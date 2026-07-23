@@ -9,7 +9,7 @@ This example backs up a local folder to an Azure file share and restores a file 
 
 ## Configuration
 
-Create a `Config.toml` file in the example directory:
+Copy `Config.toml.template` in the example directory to `Config.toml` and fill in the values:
 
 ```toml
 accountName = "<storage account name>"

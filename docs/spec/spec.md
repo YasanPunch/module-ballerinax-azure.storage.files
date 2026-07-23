@@ -101,10 +101,14 @@ public type ConnectionStringConfig record {|
 public type ClientConfiguration record {|
     # The authentication configuration
     AuthConfig auth;
+    # Retry behaviour for service requests; omit for the service defaults (section 6)
+    RetryConfig retryConfig?;
+    # HTTP transport settings (proxy, connection pool, TLS); omit for the defaults (section 6)
+    TransportConfig transportConfig?;
 |};
 ```
 
-Every member has a unique required field, so both the compiler and `Config.toml` select the right member by structural matching, with no discriminator field:
+Each of the four credential-artifact records has a unique required field, so both the compiler and `Config.toml` select the right member by structural matching, with no discriminator field. (The two Entra ID chain records, which are structurally identical, are the exception: they carry a `kind` discriminator.)
 
 ```toml
 # The fields present select the union member:

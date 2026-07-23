@@ -52,9 +52,8 @@ public isolated client class Client {
 
     # Replaces the metadata of the bound share. Metadata is free-form, user-defined annotation
     # (Azure stores and returns it verbatim; it has no service-side meaning). Violations
-    # fail with an `Error` carrying Azure's error code. There is deliberately no matching
-    # getter: metadata arrives with `getShareProperties` (the underlying SDK exposes no
-    # separate metadata read).
+    # fail with an `Error` carrying Azure's error code. Read metadata back with
+    # `getShareProperties`.
     #
     # + metadata - The complete metadata set (replaces all existing metadata)
     # + return - An `Error` if the metadata could not be set, otherwise `()`
@@ -109,8 +108,7 @@ public isolated client class Client {
     } external;
 
     # Replaces the metadata of a directory. Metadata is free-form, user-defined annotation.
-    # There is deliberately no matching getter: metadata arrives with
-    # `getDirectoryProperties` (the underlying SDK exposes no separate metadata read).
+    # Read metadata back with `getDirectoryProperties`.
     #
     # + directoryPath - The share-relative path of the directory
     # + metadata - The complete metadata set (replaces all existing metadata)
@@ -200,9 +198,8 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.FileOps"
     } external;
 
-    # Replaces the metadata of a file. Metadata is free-form, user-defined annotation. There is deliberately no
-    # matching getter: metadata arrives with `getFileProperties` (the underlying SDK exposes no
-    # separate metadata read).
+    # Replaces the metadata of a file. Metadata is free-form, user-defined annotation.
+    # Read metadata back with `getFileProperties`.
     #
     # + path - The share-relative path of the file
     # + metadata - The complete metadata set (replaces all existing metadata)
@@ -315,7 +312,7 @@ public isolated client class Client {
             byte[] bytes = chunk.value;
             if offset + bytes.length() > contentLength {
                 return error ProcessingError(
-                        string `the source stream provided more than the declared contentLength of ${contentLength} bytes`,
+                        string `the source stream exceeded the declared contentLength of ${contentLength} bytes`,
                         errorCode = "ProcessingError");
             }
             check writeStreamChunk(self, destinationPath, offset, bytes);
@@ -435,7 +432,8 @@ public isolated client class Client {
     # chunk internally.
     #
     # + path - The share-relative path of the file
-    # + offset - The zero-based byte offset at which to begin writing, relative to the start of the file being written to.
+    # + offset - The zero-based byte offset at which to begin writing, relative to the start
+    # of the file being written to
     # + content - The bytes to write (at most 4 MiB)
     # + return - An `Error` if the range could not be written, otherwise `()`
     isolated remote function uploadRange(string path, int offset, byte[] content) returns Error? = @java:Method {
@@ -459,7 +457,8 @@ public isolated client class Client {
     # + path - The share-relative path of the file
     # + options - Optional range-listing options
     # + return - The list of written `Range`s, or an `Error`
-    isolated remote function listRanges(string path, RangeListOptions? options = ()) returns Range[]|Error = @java:Method {
+    isolated remote function listRanges(string path, RangeListOptions? options = ())
+            returns Range[]|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.RangeOps"
     } external;
 
@@ -837,7 +836,7 @@ public isolated client class Client {
     # Closes the client. Subsequent operations on a closed client fail. Releases any
     # connector-owned resources; the SDK's default HTTP transport is shared and
     # process-managed, so with the default transport this is a lifecycle guard. No call is
-    # made to Azure, so it is an ordinary method, not a remote one.
+    # made to Azure.
     #
     # + return - An `Error` if the client could not be closed, otherwise `()`
     public isolated function close() returns Error? {
