@@ -41,6 +41,13 @@ files:AdminClient admin = check new (auth = {accountName: "<account>", accountKe
 check admin->createShare("reports");
 ```
 
+## Examples
+
+The [examples](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples) cover common scenarios end to end, each as a standalone Ballerina project with its own walkthrough:
+
+1. [File backup](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples/file-backup) backs up a local folder to a share and restores a file from it.
+2. [Share handout](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples/share-handout) uploads a report and generates a time-limited, read-only SAS URL to hand to a third party.
+
 ## Report issues
 
 To report bugs, request new features, start discussions, or ask questions, open an issue in the [Ballerina library repository](https://github.com/ballerina-platform/ballerina-library/issues).

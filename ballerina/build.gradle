@@ -62,10 +62,16 @@ task updateTomlFiles {
     }
 }
 
-// The io.ballerina.plugin wires this task into the build. Kept as a no-op so local builds never
-// auto-commit the generated toml files; restore the git-commit body when wiring the release flow.
 task commitTomlFiles {
     doLast {
+        project.exec {
+            ignoreExitValue true
+            if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+                commandLine 'cmd', '/c', "git commit -m \"[Automated] Update the toml files\" Ballerina.toml Dependencies.toml"
+            } else {
+                commandLine 'sh', '-c', "git commit -m '[Automated] Update the toml files' Ballerina.toml Dependencies.toml"
+            }
+        }
     }
 }
 

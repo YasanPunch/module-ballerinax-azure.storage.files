@@ -25,7 +25,6 @@ import com.azure.storage.file.share.models.LeaseStateType;
 import com.azure.storage.file.share.models.LeaseStatusType;
 import com.azure.storage.file.share.models.NtfsFileAttributes;
 import com.azure.storage.file.share.models.ShareDirectoryProperties;
-import com.azure.storage.file.share.models.ShareFileCopyInfo;
 import com.azure.storage.file.share.models.ShareFileItem;
 import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.models.ShareFileRange;
@@ -253,7 +252,11 @@ final class RecordMapper {
     static BMap<BString, Object> range(ShareFileRange r) {
         BMap<BString, Object> record = newRecord(Constants.RECORD_RANGE);
         record.put(Constants.START_BYTE, r.getStart());
-        record.put(Constants.END_BYTE, r.getEnd() == null ? r.getStart() : r.getEnd());
+        Long end = r.getEnd();
+        if (end == null) {
+            end = r.getStart();
+        }
+        record.put(Constants.END_BYTE, end);
         return record;
     }
 

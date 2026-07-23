@@ -59,8 +59,8 @@ final class ValueUtils {
         Instant instant = time.toInstant();
         BArray tuple = ValueCreator.createTupleValue(UTC_TUPLE_TYPE);
         tuple.add(0, instant.getEpochSecond());
-        tuple.add(1, ValueCreator.createDecimalValue(
-                BigDecimal.valueOf(instant.getNano()).divide(BigDecimal.valueOf(1_000_000_000), MathContext.DECIMAL128)));
+        tuple.add(1, ValueCreator.createDecimalValue(BigDecimal.valueOf(instant.getNano())
+                .divide(BigDecimal.valueOf(1_000_000_000), MathContext.DECIMAL128)));
         tuple.freezeDirect();
         return tuple;
     }

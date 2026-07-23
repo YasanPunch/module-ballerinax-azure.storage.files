@@ -566,11 +566,11 @@ public enum NtfsFileAttribute {
     NO_SCRUB_DATA = "NoScrubData"
 }
 
-# The type of an NFS file-system entry.
+# The type of an NFS file-system entry: a regular file (`Regular`), a directory
+# (`Directory`), or a symbolic link (`SymLink`).
 public enum NfsFileType {
     # A regular file
     REGULAR = "Regular",
-    # A directory
     DIRECTORY = "Directory",
     # A symbolic link
     SYMLINK = "SymLink"
