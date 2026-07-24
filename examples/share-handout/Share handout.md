@@ -1,6 +1,6 @@
 # Share handout
 
-This example shares a file with a third party without sharing the account credentials. It creates a share, uploads a report to it, and generates a time-limited, read-only shared access signature (SAS) URL that can be handed out. Anyone with the URL can read the report for 24 hours; after that the link expires on its own.
+This example shares a file with a third party without sharing the account credentials. It creates a share, uploads a report to it, and generates a time-limited, read-only shared access signature (SAS) URL scoped to that single file. Anyone with the URL can read the report, and nothing else on the share, for 24 hours; after that the link expires on its own.
 
 ## Prerequisites
 

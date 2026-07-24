@@ -36,14 +36,14 @@ public function main() returns error? {
     files:Client share = check new (shareName, auth = {accountName, accountKey});
     check share->uploadContent("Quarterly revenue is up 14%.", "/q2-summary.txt");
 
-    // Mint a read-only shared access signature that expires in 24 hours.
+    // Mint a read-only shared access signature for that one file, expiring in 24 hours.
     time:Utc expiry = time:utcAddSeconds(time:utcNow(), 86400);
-    string sasToken = check share->generateShareSas({
+    string sasToken = check share->generateSas("/q2-summary.txt", {
         expiryTime: expiry,
-        permissions: {read: true, list: true}
+        permissions: {read: true}
     });
 
-    io:println("Hand out this URL; it grants read-only access for 24 hours:");
+    io:println("Hand out this URL; it grants read access to this file only, for 24 hours:");
     io:println(string `https://${accountName}.file.core.windows.net/${shareName}/q2-summary.txt?${sasToken}`);
 
     check share.close();

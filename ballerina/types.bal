@@ -36,15 +36,12 @@ public type ShareInfo record {|
     string version?;
 |};
 
-# Properties of a file share (maps to the SDK `ShareProperties`). A point-in-time snapshot of
-# one service response — never updated after it is returned; call `getShareProperties` again for
-# current state (the lease fields in particular can change server-side at any moment).
+# Properties of a file share (maps to the SDK `ShareProperties`). A point-in-time snapshot;
+# call `getShareProperties` again for current state.
 public type ShareProperties record {|
     # The provisioned capacity of the share, in GiB
     int quotaInGb;
-    # The share's access tier. On pay-as-you-go (GPv2) accounts this is `TRANSACTION_OPTIMIZED`
-    # unless set otherwise at creation; shares on premium (FileStorage) accounts always report
-    # `PREMIUM`
+    # The share's access tier. Shares on premium (FileStorage) accounts always report `PREMIUM`
     ShareAccessTier accessTier;
     # The entity tag for optimistic concurrency
     string eTag;
@@ -56,11 +53,9 @@ public type ShareProperties record {|
     ShareProtocol[] enabledProtocols?;
     # The NFS root-squash setting (NFS shares only)
     NfsRootSquash rootSquash?;
-    # Where the lease stands in its lifecycle (available/leased/expired/breaking/broken) —
-    # the detailed view; present only while a lease exists
+    # Where the lease stands in its lifecycle; present only while a lease exists
     LeaseState leaseState?;
-    # The binary summary of the lease: `LOCKED` while a lease is in force (writes need the
-    # lease id), `UNLOCKED` otherwise; present only while a lease exists
+    # `LOCKED` while a lease is in force, `UNLOCKED` otherwise; present only while a lease exists
     LeaseStatus leaseStatus?;
     # Whether the active lease is infinite or fixed-duration; present only while a lease
     # exists
@@ -72,7 +67,7 @@ public type ShareProperties record {|
 |};
 
 # Properties of a directory (maps to the SDK `ShareDirectoryProperties`). A point-in-time
-# snapshot of one service response — re-fetch via `getDirectoryProperties` for current state.
+# snapshot; call `getDirectoryProperties` again for current state.
 public type DirectoryProperties record {|
     # The entity tag for optimistic concurrency
     string eTag;
@@ -80,7 +75,7 @@ public type DirectoryProperties record {|
     time:Utc lastModified;
     # User-defined metadata
     map<string> metadata?;
-    # Whether the service has encrypted the directory (basically metadata) at rest (server-side encryption)
+    # Whether the service has encrypted the directory at rest
     boolean isServerEncrypted;
     # SMB-specific properties; populated on SMB shares, absent on NFS shares
     SmbProperties smbProperties?;
@@ -88,11 +83,8 @@ public type DirectoryProperties record {|
     PosixProperties posixProperties?;
 |};
 
-# Properties of a file (curated from the SDK `ShareFileProperties`). A point-in-time snapshot
-# of one service response — never updated after it is returned; call `getFileProperties` again for
-# current state (the lease and copy fields in particular change server-side as leases transition
-# and pending copies progress). Stale values cannot corrupt writes: Azure re-checks leases and
-# eTag preconditions on every request (a mismatch fails with `PreconditionFailedError`).
+# Properties of a file (curated from the SDK `ShareFileProperties`). A point-in-time snapshot;
+# call `getFileProperties` again for current state.
 public type FileProperties record {|
     # The entity tag for optimistic concurrency
     string eTag;
@@ -101,30 +93,24 @@ public type FileProperties record {|
     # The size of the file in bytes
     int contentLength;
     # The MIME type of the content (e.g. `application/pdf`), served as `Content-Type` on
-    # downloads so clients know how to handle the bytes; `application/octet-stream` (the
-    # service default) when no content type was ever set
+    # downloads. `application/octet-stream` when no content type was ever set
     string contentType = "application/octet-stream";
-    # The encoding applied to the stored content (e.g. `gzip`), served as `Content-Encoding`
-    # so consumers know to decode before use
+    # The encoding applied to the stored content (e.g. `gzip`)
     string contentEncoding?;
-    # How receivers should present the content of the file (e.g. `attachment` to
-    # force a save dialog, `inline` to display in the browser, etc.)
+    # How receivers should present the content (e.g. `attachment` or `inline`)
     string contentDisposition?;
-    # Caching directives served with the file (e.g. `max-age=3600, private`), telling
-    # browsers/proxies whether and how long they may cache it
+    # Caching directives served with the file (e.g. `max-age=3600, private`)
     string cacheControl?;
-    # Base64-encoded MD5 of the content, for integrity verification of stored/transferred data
+    # Base64-encoded MD5 of the content, for integrity verification
     string contentMd5?;
     # User-defined metadata
     map<string> metadata?;
     # Whether the service has encrypted the file at rest (server-side encryption, covering
     # the file data and its metadata)
     boolean isServerEncrypted;
-    # Where the lease stands in its lifecycle (available/leased/expired/breaking/broken) —
-    # the detailed view; present only while a lease exists
+    # Where the lease stands in its lifecycle; present only while a lease exists
     LeaseState leaseState?;
-    # The binary summary of the lease: `LOCKED` while a lease is in force (writes need the
-    # lease id), `UNLOCKED` otherwise; present only while a lease exists
+    # `LOCKED` while a lease is in force, `UNLOCKED` otherwise; present only while a lease exists
     LeaseStatus leaseStatus?;
     # Whether the active lease is infinite or fixed-duration; present only while a lease
     # exists
@@ -151,10 +137,8 @@ public type CopyProgress record {|
     int totalBytes;
 |};
 
-# One entry returned by `Client.list` (maps to the SDK `ShareFileItem`). The service returns
-# only the entry's leaf name; the connector synthesizes the full share-relative `path` while
-# it walks the listing, so every entry can be passed directly to the path-taking operations
-# (`getFileProperties`, `deleteFile`, `getFileContent`, ...).
+# One entry returned by `Client.list` (maps to the SDK `ShareFileItem`). Every entry carries
+# its full share-relative `path`, so it can be passed directly to the path-taking operations.
 public type Entry record {|
     # The share-relative path of the entry, e.g. `/dir1/dir2/file.ext`
     string path;
@@ -175,9 +159,8 @@ public type Entry record {|
 |};
 
 # SMB-specific properties of a file or directory (maps to the SDK `FileSmbProperties`).
-# On SMB shares, property reads populate every field; on NFS shares the record is absent.
-# The same record supplies SMB properties on the create/upload/copy options, where every
-# field is optional.
+# Populated on SMB shares and absent on NFS shares. The same record supplies SMB properties
+# on the create, upload, and copy options.
 public type SmbProperties record {|
     # The NTFS attributes of the file or directory. More than one attribute can be set at a
     # time (e.g. read-only and hidden)
@@ -214,14 +197,12 @@ public type PosixProperties record {|
 |};
 
 # The result of starting a copy operation (maps to the SDK `ShareFileCopyInfo`). Copies are
-# asynchronous, and this record is a point-in-time snapshot taken when the copy started — it is
-# never updated afterwards. To observe progress, call `Client.checkCopyStatus` on the
-# destination path; cancel via `Client.abortCopy`.
+# asynchronous; observe progress with `Client.checkCopyStatus` and cancel with
+# `Client.abortCopy`.
 public type CopyInfo record {|
     # The copy operation identifier; pass to `Client.abortCopy` to cancel a pending copy
     string copyId;
-    # The copy status at the moment the copy started — the `CopyStatus` enum value `PENDING`
-    # while the server-side copy is still in progress
+    # The copy status at the moment the copy started, `PENDING` while the copy is still in progress
     CopyStatus copyStatus;
     # The entity tag of the destination after the copy started
     string eTag;
@@ -230,8 +211,8 @@ public type CopyInfo record {|
 |};
 
 # The state of the most recent copy operation that targeted a file, as returned by
-# `Client.checkCopyStatus`. A point-in-time snapshot fetched from the file's properties —
-# call `checkCopyStatus` again to observe the progress of a pending copy.
+# `Client.checkCopyStatus`. A point-in-time snapshot; call `checkCopyStatus` again to
+# observe the progress of a pending copy.
 public type CopyStatusInfo record {|
     # The identifier of the copy operation; pass to `Client.abortCopy` to cancel a pending copy
     string copyId;
@@ -346,7 +327,8 @@ public type AccessPolicy record {|
     time:Utc startsOn?;
     # The end of the policy's validity period (UTC); omit for no expiry
     time:Utc expiresOn?;
-    # The permission string, in the service's fixed letter order (e.g. `rwdl` (i.e. read, write, delete, list))
+    # The permission string, in the service's fixed letter order (e.g. `rwdl` for read,
+    # write, delete, list)
     string permissions;
 |};
 
@@ -489,7 +471,6 @@ public type FileSasSignatureValues record {|
 |};
 
 # The permissions granted by a file-scoped SAS. Every permission is off unless enabled.
-# There is no list permission at file scope, because a single file cannot be listed.
 public type FileSasPermissions record {|
     # Read the file's content, properties, and metadata
     boolean read = false;
@@ -544,7 +525,7 @@ public enum NfsRootSquash {
 }
 
 # An NTFS attribute of a file or directory. A file or directory can carry several attributes
-# at once, so the attributes are handled as an array (`NtfsFileAttribute[]`).
+# at once, as an `NtfsFileAttribute[]`.
 public enum NtfsFileAttribute {
     # The file is read-only
     READ_ONLY = "ReadOnly",
@@ -592,8 +573,8 @@ public enum CopyStatus {
     FAILED = "failed"
 }
 
-# The lifecycle state of a share's or file's lease — the detailed view of where the lease
-# stands. For the binary locked-or-not answer, read `LeaseStatus` instead.
+# The lifecycle state of a share's or file's lease. For the binary locked-or-not answer,
+# read `LeaseStatus`.
 public enum LeaseState {
     # No lease is held and a new lease can be acquired
     AVAILABLE = "available",
@@ -607,9 +588,8 @@ public enum LeaseState {
     BROKEN = "broken"
 }
 
-# Whether a lease currently locks the share or file — the two-valued summary of `LeaseState`
-# (`LOCKED` while a lease is in force, including while it is breaking; `UNLOCKED` once it is
-# available, expired, or broken).
+# Whether a lease currently locks the share or file: `LOCKED` while a lease is in force,
+# `UNLOCKED` otherwise.
 public enum LeaseStatus {
     # A lease is held and the resource is locked
     LOCKED = "locked",

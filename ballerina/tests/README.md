@@ -1,9 +1,6 @@
 # Running the tests
 
-There is one test suite, and every test is just a test. Each test targets live Azure as the ground truth and also runs against an in-process mock of the Azure Files REST service. The backend for a run is chosen by credential presence:
-
-- **No credentials configured**: the whole suite runs against the mock. No Azure account, no network, works on every machine. This is what CI and fork pull requests run.
-- **Credentials configured** (Config.toml or environment): the suite runs against the real storage account instead. One backend per run; a live run never silently falls back to the mock.
+There is one suite and two interchangeable backends, and a run uses exactly one. When both `liveAccountName` and `liveAccountKey` are configured, the whole suite runs against that real storage account; otherwise it runs against an in-process mock of the Azure Files REST service — no Azure account, no network, works on every machine. CI without secrets, including fork pull requests, is a mock run.
 
 ```sh
 cd ballerina
@@ -12,19 +9,13 @@ bal test
 
 ## Backend selection
 
-`backend.bal` reads `liveAccountName`/`liveAccountKey` (Config.toml entries, or the `LIVE_ACCOUNT_NAME`/`LIVE_ACCOUNT_KEY` environment variables; a Config.toml entry takes precedence). When both are set, the client factories build clients against the real account; otherwise they point at the mock on `localhost:9099`. To force a mock run on a machine that has credentials, move `tests/Config.toml` aside for that run.
+`backend.bal` reads `liveAccountName`/`liveAccountKey` from Config.toml, or from the `LIVE_ACCOUNT_NAME`/`LIVE_ACCOUNT_KEY` environment variables (a Config.toml entry takes precedence). A live run never silently falls back to the mock. To force a mock run on a machine that has credentials, move `tests/Config.toml` aside for that run.
 
-A small number of tests deviate from the both-backends rule, each for a stated physical reason:
-
-- **Pinned to the mock** (their bodies use the explicit mock factories): `testErrorCodeMapping` (forces service error codes such as quota exhaustion and internal errors that a real account cannot produce on demand), `testRetryAndTransportConfig` (retry and proxy behavior needs an endpoint that can be made to fail), and `testSmbHandles` (an open SMB handle exists only while a real SMB client has the share mounted, which no REST call can produce; `testNoOpenHandles` covers the zero-handle case in both modes). These still run in every run, including live runs, because the mock listener is always up.
-- **Entra-gated**: `testGetUserDelegationKey` and `testGenerateUserDelegationSas` always run on the mock, but live they need the Entra credentials below (Azure rejects user-delegation requests made with shared key) and skip without them. `testLiveEntraAuth` and `testLiveEntraDefaultChainAuth` are live-only: mocking the identity service would exercise Microsoft's SDK rather than this connector.
-- **Account-kind-gated**: `testNfsLinks` needs a premium account when live (see below) and skips in a live run on a standard account.
+A few tests deviate from the one-backend rule for physical reasons and self-select, so no action is needed: `testErrorCodeMapping`, `testRetryAndTransportConfig`, and `testSmbHandles` always use the mock; the user-delegation and Entra tests need the Entra credentials below when live; `testNfsLinks` needs a premium account when live. The comment on each of these tests states its reason.
 
 ## The mock
 
-`mock_service.bal` starts an in-process HTTP service on `localhost:9099` that speaks enough of the Azure Files REST protocol for the real `azure-storage-file-share` SDK to run against it, statefully (uploaded bytes are stored and served back). The mock ignores authentication, which is why the SAS signature tests only prove real verification in live runs. The mock must keep up with the tests, never the reverse: a test is written to pass against Azure first.
-
-When extending the mock:
+`mock_service.bal` starts a stateful in-process HTTP service on `localhost:9099` that speaks enough of the Azure Files REST protocol for the real `azure-storage-file-share` SDK to run against it. When extending it:
 
 - The mock is a non `isolated` service: requests dispatch serially, so its in-memory state needs no locking (the compiler hint about this is expected).
 - A path segment of the form `__err-<status>-<AzureErrorCode>` (for example `/__err-403-ShareSizeLimitReached`) makes the mock return that error response; the error-mapping test uses this.
@@ -38,7 +29,7 @@ When extending the mock:
 2. Keep **Allow storage account key access** enabled (it is by default); the tests authenticate with the account key.
 3. After deployment, open **Security + networking → Access keys** and copy the storage account name and the key1 value.
 
-The suite is account-kind adaptive: pointed at a **premium (FileStorage)** account instead, it detects the kind at runtime (a created share carrying provisioned IOPS figures), adjusts the tier and quota assertions, and `testNfsLinks` runs live against a real NFS share. A standard account remains the primary target (it is what most users run); a premium run is an optional second pass for the premium-specific behaviors. Two premium-specific account settings matter: create it with the **provisioned v2** billing model (v1's 100 GiB minimum share size is above what the suite provisions), and **disable share soft delete** on it — a soft-deleted premium share keeps holding its provisioned IOPS against the account-wide limit, so retained shares from earlier runs would starve later ones. Because soft delete is off there, the share-lifecycle test exercises its undelete tail only on standard accounts and the mock.
+Pointed at a **premium (FileStorage)** account instead, the suite adapts its tier and quota assertions and `testNfsLinks` runs live against a real NFS share — an optional second pass for the premium-specific behaviors. Two premium account settings matter: create it with the **provisioned v2** billing model (v1's 100 GiB minimum share size is above what the suite provisions), and **disable share soft delete** on it — a soft-deleted premium share keeps holding its provisioned IOPS against the account-wide limit, so retained shares from earlier runs would starve later ones. Because soft delete is off there, the share-lifecycle test exercises its undelete tail only on standard accounts and the mock.
 
 ### Configure and run
 
@@ -58,16 +49,20 @@ liveAccountKey = "<key1>"
 
 Note the location: for `bal test`, configurable values are read from `Config.toml` inside the `tests/` directory, not the package root. Role assignments can take a few minutes to propagate; if a freshly configured Entra test fails with an authorization error, wait and rerun.
 
-The credential values can also be supplied as environment variables: `LIVE_ACCOUNT_NAME`, `LIVE_ACCOUNT_KEY`, `LIVE_ENTRA_TENANT_ID`, `LIVE_ENTRA_CLIENT_ID`, `LIVE_ENTRA_CLIENT_SECRET`. This is how the repository's CI receives them from repository secrets of the same names; runs without those secrets (for example fork pull requests) run the suite against the mock and stay green.
+The credential values can also be supplied as environment variables: `LIVE_ACCOUNT_NAME`, `LIVE_ACCOUNT_KEY`, `LIVE_ENTRA_TENANT_ID`, `LIVE_ENTRA_CLIENT_ID`, `LIVE_ENTRA_CLIENT_SECRET`. This is how the repository's CI receives them from repository secrets of the same names.
 
 A second Entra test covers the default credential chain. It enables itself when the standard Azure environment variables `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET` are set (environment only, no Config.toml entries: the default chain authenticates from the environment by design), and the identity they name needs the same Storage File Data Privileged Contributor role.
 
 ### Share naming, cost, and cleanup
 
-Each test creates its own share under a per-run prefix, `azft-<run id>-` on GitHub Actions or `azft-<epoch seconds>-` locally, so reruns never collide with leftovers from an interrupted run. Tests run serially, and in live runs the share hand-out deletes the previous test's share (this rolling cleanup keeps a run to a couple of concurrent shares, which is what lets the suite fit a premium account's provisioned-IOPS envelope); an `AfterSuite` cleanup then deletes every share carrying the run's prefix (snapshots included), breaking stray leases where needed. A live run churns roughly fifty small shares; with soft delete enabled the deleted shares sit in the 7-day retention window at negligible cost for test-sized data. Shares abandoned by a crashed run keep their run's prefix and can be swept manually (`az storage share list --include-deleted` filtered on `azft-`).
+Each test creates its own share under a per-run prefix, `azft-<run id>-` on GitHub Actions or `azft-<epoch seconds>-` locally, so reruns never collide with leftovers from an interrupted run. Shares are deleted automatically as the run proceeds and swept again at suite end. A live run churns roughly fifty small shares; with soft delete enabled the deleted shares sit in the 7-day retention window at negligible cost for test-sized data. Shares abandoned by a crashed run keep their run's prefix and can be listed for manual sweeping:
+
+```sh
+az storage share-rm list --storage-account <account-name> --include-deleted --query "[?starts_with(name, 'azft-')]"
+```
 
 Treat the account key as a development-only secret: it can be regenerated at any time under **Access keys**, which immediately invalidates the old value.
 
 ## Gradle and Docker
 
-`./gradlew build` runs `bal test` inside the `ballerina/ballerina` Docker container (standard behavior of the Ballerina Gradle plugin for connectors), mounting the repository. The same credential rule applies: with `ballerina/tests/Config.toml` present the containerized suite runs live, and without it the run is mock-backed.
+`./gradlew build` runs `bal test` inside the `ballerina/ballerina` Docker container (standard behavior of the Ballerina Gradle plugin for connectors), mounting the repository. The same credential rule applies to the containerized run.

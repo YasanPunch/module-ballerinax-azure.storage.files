@@ -47,9 +47,8 @@ public type PreconditionFailedError distinct Error;
 # The requested byte range cannot be satisfied for the target file (HTTP 416).
 public type RangeNotSatisfiableError distinct Error;
 
-# The share is full: a write was rejected because the share's provisioned capacity is exhausted
-# (HTTP 403; `ShareSizeLimitReached` / `SmbShareFull`). Note that 403 is also used by
-# `AuthorizationError`, so the two are distinguished by the Azure error code, not the status alone.
+# The share is full: a write was rejected because the share's provisioned capacity is
+# exhausted (HTTP 403).
 public type QuotaExceededError distinct Error;
 
 # A client-side failure occurred while preparing the request or decoding the response

@@ -19,25 +19,19 @@
 // ---------------------------------------------------------------------------
 
 # The standard content headers that can be set on a file. Azure serves these back verbatim
-# on every download, so they are how a stored file tells its eventual consumers what it is
-# and how to treat it.
+# on every download.
 public type ContentHeaders record {|
-    # The MIME (Multipurpose Internet Mail Extensions) is a standardized identifier for the type of data in the file,
-    # (e.g. `application/pdf`, `image/png`, `text/html`), served as `Content-Type` on
-    # downloads so clients know how to handle the bytes
+    # The MIME type of the content (e.g. `application/pdf`), served as `Content-Type` on downloads
     string contentType?;
-    # Any encoding applied to the stored content (e.g. `gzip`),
-    # so consumers know to decode before use
+    # Any encoding applied to the stored content (e.g. `gzip`)
     string contentEncoding?;
     # The natural language of the content (e.g. `en-US`)
     string contentLanguage?;
-    # How receivers should present the content (e.g. `attachment` to
-    # force a save dialog, `inline` to display in the browser, etc.)
+    # How receivers should present the content (e.g. `attachment` or `inline`)
     string contentDisposition?;
-    # Caching directives served with the file (e.g. `max-age=3600, private`), telling
-    # browsers/proxies whether and how long they may cache it
+    # Caching directives served with the file (e.g. `max-age=3600, private`)
     string cacheControl?;
-    # Base64-encoded MD5 of the content, for integrity verification of stored/transferred data
+    # Base64-encoded MD5 of the content, for integrity verification
     string contentMd5?;
 |};
 
@@ -117,12 +111,10 @@ public type ListOptions record {|
     string prefix?;
     # List entries in subdirectories as well
     boolean recursive = false;
-    # The number of entries fetched per service round-trip (page). Tunes latency/memory of the
-    # lazy stream; it does NOT cap the total number of results. 5,000 is the service maximum.
+    # The number of entries fetched per service round-trip, up to the service maximum of
+    # 5,000. Does not cap the total number of results
     int pageSize = 5000;
-    # Include the ETag and timestamps on each entry (needed for change detection). Requesting
-    # extended info makes the listing a more expensive service operation, so it is off by
-    # default
+    # Include the ETag and timestamps on each entry, at the cost of a more expensive listing
     boolean includeExtendedInfo = false;
     # List from the share snapshot with this id instead of the live share
     string snapshotId?;
@@ -134,11 +126,9 @@ public type ListOptions record {|
 
 # Options for `Client.renameFile` and `Client.renameDirectory`.
 public type RenameOptions record {|
-    # If a **file** already occupies the destination path, delete it and give its path to the
-    # renamed entry (paths are one namespace shared by files and directories, so a rename can
-    # collide with either kind). A **directory** occupying the destination always fails the
-    # operation regardless of this flag — the service never destroys a directory (and possibly
-    # its subtree) as a side effect of a rename.
+    # If a file already occupies the destination path, delete it and give its path to the
+    # renamed entry. A directory occupying the destination always fails the operation
+    # regardless of this flag
     boolean replaceIfExists = false;
     # Rename even if the destination has the read-only attribute set (requires `replaceIfExists`)
     boolean ignoreReadOnly = false;
@@ -152,9 +142,7 @@ public type RenameOptions record {|
 
 # Options for `Client.createFile` (creating an empty file of a given size).
 public type CreateOptions record {|
-    # Content headers to set on the file (`Content-Type`, `Content-Encoding`,
-    # `Content-Language`, `Content-Disposition`, `Cache-Control`, and `Content-MD5` on
-    # downloads).
+    # Content headers to set on the file, such as `Content-Type` and `Cache-Control`
     ContentHeaders contentHeaders?;
     # User-defined metadata to set on the file
     map<string> metadata?;
@@ -169,9 +157,7 @@ public type CreateOptions record {|
 # Options for the upload operations (`uploadFile`, `uploadContent`, `uploadFromStream`).
 # Upload creates the destination file, so the create-time attributes are available here too.
 public type UploadOptions record {|
-    # Content headers to set on the file (`Content-Type`, `Content-Encoding`,
-    # `Content-Language`, `Content-Disposition`, `Cache-Control`, and `Content-MD5` on
-    # downloads).
+    # Content headers to set on the file, such as `Content-Type` and `Cache-Control`
     ContentHeaders contentHeaders?;
     # User-defined metadata to set on the file
     map<string> metadata?;
@@ -232,8 +218,7 @@ public type FileSetPropertiesOptions record {|
     PosixProperties posixProperties?;
 |};
 
-# Options for `Client.setDirectoryProperties`. Only what is set is changed. Directories carry
-# no content headers or size, so those fields do not appear here.
+# Options for `Client.setDirectoryProperties`. Only what is set is changed.
 public type DirectorySetPropertiesOptions record {|
     # SMB properties to apply
     SmbProperties smbProperties?;

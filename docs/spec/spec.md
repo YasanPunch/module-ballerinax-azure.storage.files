@@ -63,7 +63,7 @@ Each union member is exactly one real-world credential artifact, the thing the p
 public type AuthConfig SharedKeyConfig|SasConfig|SasUrlConfig|ConnectionStringConfig|EntraIdConfig;
 ```
 
-`EntraIdConfig` covers Microsoft Entra ID authentication (DefaultAzureCredential, managed identity, client secret, client certificate, workload identity).
+The first four members are simple credential artifacts (section 2.2). `EntraIdConfig` is itself a union of five Microsoft Entra ID records, one per credential kind (section 2.3).
 
 #### 2.2 Credential records
 
@@ -97,7 +97,94 @@ public type ConnectionStringConfig record {|
     # The connection string as shown in the portal
     string connectionString;
 |};
+```
 
+#### 2.3 Entra ID records
+
+Azure Files honors OAuth tokens only on requests carrying the backup intent, which the connector sets automatically. The intent bypasses file and directory ACLs and requires the identity to hold the `Storage File Data Privileged Reader` or `Storage File Data Privileged Contributor` role.
+
+```ballerina
+# Microsoft Entra ID authentication: one record per credential kind.
+public type EntraIdConfig DefaultEntraIdConfig|ManagedIdentityConfig|ClientSecretConfig|
+    ClientCertificateConfig|WorkloadIdentityConfig;
+
+# The credential-kind discriminator value selecting `DefaultEntraIdConfig`.
+public const DEFAULT_AZURE_CREDENTIAL = "default";
+
+# The credential-kind discriminator value selecting `ManagedIdentityConfig`.
+public const MANAGED_IDENTITY = "managed-identity";
+
+# Authentication through the default credential chain, which tries the environment, a
+# managed identity, and developer sign-ins in turn.
+public type DefaultEntraIdConfig record {|
+    # Selects the default credential chain
+    DEFAULT_AZURE_CREDENTIAL kind = "default";
+    # The storage account name (determines the service URL unless `serviceUrl` overrides it)
+    string accountName;
+    # The file service endpoint URL; omit for `https://{accountName}.file.core.windows.net`
+    string serviceUrl?;
+|};
+
+# Authentication as an Azure managed identity, for workloads running on Azure compute.
+public type ManagedIdentityConfig record {|
+    # Selects the managed-identity credential
+    MANAGED_IDENTITY kind = "managed-identity";
+    # The storage account name (determines the service URL unless `serviceUrl` overrides it)
+    string accountName;
+    # The client id of a user-assigned managed identity; omit for the system-assigned identity
+    string clientId?;
+    # The file service endpoint URL; omit for `https://{accountName}.file.core.windows.net`
+    string serviceUrl?;
+|};
+
+# Authentication as a service principal with a client secret.
+public type ClientSecretConfig record {|
+    # The storage account name (determines the service URL unless `serviceUrl` overrides it)
+    string accountName;
+    # The Entra ID tenant (directory) id
+    string tenantId;
+    # The application (client) id of the service principal
+    string clientId;
+    # The client secret of the service principal
+    string clientSecret;
+    # The file service endpoint URL; omit for `https://{accountName}.file.core.windows.net`
+    string serviceUrl?;
+|};
+
+# Authentication as a service principal with a client certificate.
+public type ClientCertificateConfig record {|
+    # The storage account name (determines the service URL unless `serviceUrl` overrides it)
+    string accountName;
+    # The Entra ID tenant (directory) id
+    string tenantId;
+    # The application (client) id of the service principal
+    string clientId;
+    # The path to the certificate file (PEM, or PFX when `certificatePassword` is set)
+    string certificatePath;
+    # The password protecting the certificate file, when it has one
+    string certificatePassword?;
+    # The file service endpoint URL; omit for `https://{accountName}.file.core.windows.net`
+    string serviceUrl?;
+|};
+
+# Workload-identity authentication, for Kubernetes workloads federated with Entra ID.
+public type WorkloadIdentityConfig record {|
+    # The storage account name (determines the service URL unless `serviceUrl` overrides it)
+    string accountName;
+    # The Entra ID tenant (directory) id
+    string tenantId;
+    # The application (client) id federated with the workload
+    string clientId;
+    # The path to the file holding the federated service-account token
+    string tokenFilePath;
+    # The file service endpoint URL; omit for `https://{accountName}.file.core.windows.net`
+    string serviceUrl?;
+|};
+```
+
+#### 2.4 Client configuration and member selection
+
+```ballerina
 public type ClientConfiguration record {|
     # The authentication configuration
     AuthConfig auth;
@@ -108,7 +195,7 @@ public type ClientConfiguration record {|
 |};
 ```
 
-Each of the four credential-artifact records has a unique required field, so both the compiler and `Config.toml` select the right member by structural matching, with no discriminator field. (The two Entra ID chain records, which are structurally identical, are the exception: they carry a `kind` discriminator.)
+Every `AuthConfig` member has a unique required field or field combination, so both the compiler and `Config.toml` select the right member by structural matching, with no discriminator field. The two Entra ID chain records (`DefaultEntraIdConfig` and `ManagedIdentityConfig`), which share the same remaining fields, are the exception: they carry a `kind` discriminator.
 
 ```toml
 # The fields present select the union member:
@@ -117,6 +204,9 @@ auth = {accountName = "myacct", accountKey = "..."}               # SharedKeyCon
 # auth = {accountName = "myacct", sasToken = "sv=..."}            # SasConfig
 # auth = {sasUrl = "https://myacct.file.core.windows.net/?sv=..."}# SasUrlConfig
 # auth = {connectionString = "..."}                               # ConnectionStringConfig
+# auth = {kind = "default", accountName = "myacct"}               # DefaultEntraIdConfig
+# auth = {kind = "managed-identity", accountName = "myacct"}      # ManagedIdentityConfig
+# auth = {accountName = "myacct", tenantId = "...", clientId = "...", clientSecret = "..."}  # ClientSecretConfig
 ```
 
 Every auth mode is validated at `init` with local computation and no call to Azure: connection strings run the SDK's own strict parser plus a file-endpoint check, and the explicit records get non-empty, base64, and URL-scheme checks. A malformed credential surfaces a specific error at `init` rather than an opaque failure at first use.
@@ -281,7 +371,7 @@ Mapping keys on the Azure error code string, not the HTTP status alone: `ShareSi
 
 Beyond the core surface above, the same classes carry the full Azure Files capability set as additive methods and configuration, kept out of the core so the common path stays small:
 
-* **Authentication:** the `EntraIdConfig` union members (DefaultAzureCredential, managed identity, client secret, client certificate, workload identity). The connector sets the required `ShareTokenIntent.BACKUP` request intent implicitly.
+* **Authentication:** the `EntraIdConfig` union members defined in section 2.3. The connector sets the required `ShareTokenIntent.BACKUP` request intent implicitly.
 * **Resilience and transport configuration:** a retry record mirroring the SDK's `RequestRetryOptions` (with the SDK's own defaults) plus proxy, TLS, and connection-pool settings.
 * **`AdminClient`:** `getServiceProperties`, `setServiceProperties`, `getUserDelegationKey`, `generateAccountSas`.
 * **`Client`:** share snapshots (`createShareSnapshot`, `listShareSnapshots`, `deleteShareSnapshot`, `listRangesDiff`, and snapshot-scoped reads via a `snapshotId` option on the download and list operations); share and file leases (share: acquire, renew, release, break, change; file: acquire, release, break, change, since file leases are always infinite); SMB handle enumeration and force-close; post-create property updates (`setShareProperties` quota/tier, `setFileProperties` including resize, `setDirectoryProperties`); SAS generation (`generateShareSas`, `generateSas`) and user-delegation SAS; stored access policies; SDDL permission get/create; NFS hard and symbolic links plus POSIX owner, group, and mode writes via a `posixProperties` option on the create, upload, and property-setter operations.

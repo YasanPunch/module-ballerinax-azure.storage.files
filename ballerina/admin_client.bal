@@ -20,14 +20,11 @@ import ballerina/time;
 # Account-level client for Azure Files. Manages the shares within a storage account
 # (create, list, delete, restore, existence checks). For operations scoped to a single share,
 # use `Client`.
-#
-# The client is `isolated` and holds only immutable configuration, so its operations are
-# safe to invoke concurrently.
 public isolated client class AdminClient {
 
     # Initializes the account-level client for the given storage account.
     #
-    # + config - The client configuration (authentication, etc.), passed as named arguments
+    # + config - The client configuration (authentication, retry, transport)
     # + return - An `Error` if the client could not be initialized, otherwise `()`
     public isolated function init(*ClientConfiguration config) returns Error? {
         return initAdminClient(self, config);
@@ -66,9 +63,7 @@ public isolated client class AdminClient {
 
     # Deletes a share from the storage account. When the account's soft-delete retention
     # policy is enabled (the default for new accounts), the share is retained for the
-    # configured period and can be restored with `undeleteShare`; there is no per-call
-    # hard-delete option. The retention policy itself is configured on the storage account
-    # (Azure management plane), not through this connector.
+    # configured period and can be restored with `undeleteShare`.
     #
     # + shareName - The name of the share to delete
     # + options - Optional deletion options (snapshot handling, lease id)
@@ -78,8 +73,7 @@ public isolated client class AdminClient {
         'class: "io.ballerina.lib.azure.storage.files.AdminOps"
     } external;
 
-    # Restores a soft-deleted share (see `deleteShare` — deletes are soft while the account's
-    # retention policy is enabled). Find restorable shares and their versions with
+    # Restores a soft-deleted share. Find restorable shares and their versions with
     # `listShares(includeDeleted = true)`.
     #
     # + shareName - The name of the soft-deleted share to restore
@@ -139,10 +133,8 @@ public isolated client class AdminClient {
         'class: "io.ballerina.lib.azure.storage.files.SasOps"
     } external;
 
-    # Closes the client. Subsequent operations on a closed client fail. Releases any
-    # connector-owned resources; the SDK's default HTTP transport is shared and
-    # process-managed, so with the default transport this is a lifecycle guard. No call is
-    # made to Azure.
+    # Closes the client and releases any connector-owned resources. Subsequent operations on
+    # a closed client fail. No call is made to Azure.
     #
     # + return - An `Error` if the client could not be closed, otherwise `()`
     public isolated function close() returns Error? {

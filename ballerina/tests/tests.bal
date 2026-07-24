@@ -1357,6 +1357,12 @@ function testNfsLinks() returns error? {
     string linkText = check fileClient->getSymbolicLink("/pointer.txt");
     test:assertEquals(linkText, "../elsewhere/target.txt");
 
+    // Targets survive characters the wire percent-encodes, including a literal plus,
+    // which naive form-decoding would corrupt into a space.
+    check fileClient->createSymbolicLink("/tricky.txt", "../else where/a+b.txt");
+    string trickyText = check fileClient->getSymbolicLink("/tricky.txt");
+    test:assertEquals(trickyText, "../else where/a+b.txt");
+
     string|Error notALink = fileClient->getSymbolicLink("/original.txt");
     test:assertTrue(notALink is Error, "expected reading a non-link to fail");
 }

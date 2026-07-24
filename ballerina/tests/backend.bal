@@ -208,23 +208,24 @@ function await(function () returns boolean|error probe, decimal timeoutSeconds =
 // green run leaves the account clean. Best effort on purpose: a share that resists
 // deletion (for example a lease left by a failed test) must not flip the suite red.
 @test:AfterSuite {alwaysRun: true}
-function cleanupTestShares() returns error? {
+function cleanupTestShares() {
     if !liveRun {
         return;
     }
-    AdminClient admin = check newAdmin();
-    ShareInfo[] leftovers = check admin->listShares({prefix: sharePrefix});
-    foreach ShareInfo shareInfo in leftovers {
-        Error? deleted = admin->deleteShare(shareInfo.name, {deleteSnapshots: INCLUDE});
-        if deleted is Error {
-            Client shareClient = check newShareClient(shareInfo.name);
-            int|Error broken = shareClient->breakShareLease();
-            check shareClient.close();
-            Error? retried = admin->deleteShare(shareInfo.name, {deleteSnapshots: INCLUDE});
-            if broken is Error || retried is Error {
-                // Left behind; the next run's fresh prefix keeps it out of the way.
-            }
+    AdminClient|Error admin = newAdmin();
+    if admin is Error {
+        return;
+    }
+    // The trailing separator keeps the sweep inside this run's namespace: the bare
+    // prefix of run azft-123 would also match run azft-1234's shares.
+    ShareInfo[]|Error leftovers = admin->listShares({prefix: string `${sharePrefix}-`});
+    if leftovers is ShareInfo[] {
+        foreach ShareInfo shareInfo in leftovers {
+            releaseShare(shareInfo.name);
         }
     }
-    check admin.close();
+    Error? adminClosed = admin.close();
+    if adminClosed is Error {
+        // Nothing further to do.
+    }
 }

@@ -19,9 +19,6 @@ import ballerina/jballerina.java;
 # Share-scoped client for Azure Files. Bound to a single share at initialization, it operates
 # on that share and the directories and files within it. For account-level share management
 # (create/list/delete shares, existence checks), use `AdminClient`.
-#
-# The client is `isolated` and holds only immutable configuration, so its operations are safe to
-# invoke concurrently.
 public isolated client class Client {
 
     private final string shareName;
@@ -32,7 +29,7 @@ public isolated client class Client {
     # `AdminClient.hasShare` to check up front.
     #
     # + shareName - The name of the share this client operates on
-    # + config - The client configuration (authentication, etc.), passed as named arguments
+    # + config - The client configuration (authentication, retry, transport)
     # + return - An `Error` if the client could not be initialized, otherwise `()`
     public isolated function init(string shareName, *ClientConfiguration config) returns Error? {
         self.shareName = shareName;
@@ -118,14 +115,10 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.DirectoryOps"
     } external;
 
-    # Lists the entries (files and subdirectories) under a directory. Entries stream lazily
-    # (the service pages at 5,000 entries per round-trip), so memory stays bounded on large
-    # directories.
-    #
-    # Every `Entry` carries its full share-relative `path`, so results feed
-    # directly into the path-taking operations; filter on `Entry.isDirectory` to separate
-    # files from directories. The service lists one directory level per call, so recursive
-    # listing (`ListOptions.recursive`) is performed by the connector walking subdirectories.
+    # Lists the entries (files and subdirectories) under a directory. Entries stream lazily,
+    # so memory stays bounded on large directories. Every `Entry` carries its full
+    # share-relative `path`; filter on `Entry.isDirectory` to separate files from
+    # directories. Use `ListOptions.recursive` to include subdirectory levels.
     #
     # + directoryPath - The share-relative path of the directory to list
     # + options - Optional listing options (prefix, recursion, extended info)
@@ -140,14 +133,11 @@ public isolated client class Client {
         return new stream<Entry, Error?>(generator);
     }
 
-    # Renames or moves a directory within the bound share — together with its entire contents
-    # (the directory need not be empty, unlike `deleteDirectory`; but files inside with open handles
-    # block the rename).
-    #
-    # The destination is a full share-relative path, so this also moves across
-    # parents (e.g. `/X/A` to `/Y/A`), but never into the directory's own subtree. A directory can
-    # never overwrite an existing directory; with `RenameOptions.replaceIfExists` it may overwrite
-    # an existing **file** at the destination. Moving across shares is not possible.
+    # Renames or moves a directory within the bound share, together with its entire contents.
+    # The destination is a full share-relative path, so this also moves across parents
+    # (e.g. `/X/A` to `/Y/A`), but never into the directory's own subtree. A directory can
+    # never overwrite an existing directory; with `RenameOptions.replaceIfExists` it may
+    # overwrite an existing file at the destination. Moving across shares is not possible.
     #
     # + sourcePath - The current share-relative path of the directory
     # + destinationPath - The new share-relative path
@@ -208,12 +198,9 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.FileOps"
     } external;
 
-    # Sets the content headers of a file — the standard headers Azure serves back verbatim on
-    # every download (`Content-Type`, `Content-Encoding`, `Content-Language`,
-    # `Content-Disposition`, `Cache-Control`, and `Content-MD5`). This **replaces the complete
-    # content-header set**: any header omitted from `headers` is cleared on the file (the
-    # underlying Set File Properties operation is a destructive replace, not a merge). SMB
-    # properties, permissions, and metadata are unaffected.
+    # Sets the content headers of a file, such as `Content-Type` and `Cache-Control`. This
+    # replaces the complete content-header set: any header omitted from `headers` is cleared
+    # on the file. SMB properties, permissions, and metadata are unaffected.
     #
     # + path - The share-relative path of the file
     # + headers - The full set of content headers the file should carry
@@ -241,21 +228,17 @@ public isolated client class Client {
     // File transfer
     // -----------------------------------------------------------------------
 
-    # Uploads a **local file on disk** to the bound share (use `uploadContent`/`uploadFromStream`
+    # Uploads a local file on disk to the bound share (use `uploadContent`/`uploadFromStream`
     # for in-memory or streamed content). Both parameters are full paths including the file
-    # name — the destination's leaf names the uploaded file, so a file can be renamed in flight:
+    # name. Large content is transferred internally in service-compliant chunks.
     #
     # ```ballerina
     # // ./reports/q1.pdf (local disk) --> /2026/q1/report.pdf (on the share)
     # check client->uploadFile("./reports/q1.pdf", "/2026/q1/report.pdf");
     # ```
     #
-    # Large content is transferred internally in service-compliant chunks (at most 4 MiB per
-    # range write — the Azure Files service limit).
-    #
-    # + sourcePath - The path of the local file to upload (full path, including the file name)
-    # + destinationPath - The share-relative path the file is written to (full path, including
-    #                     the file name — not a directory)
+    # + sourcePath - The path of the local file to upload, including the file name
+    # + destinationPath - The share-relative path the file is written to, including the file name
     # + options - Optional upload options (headers, metadata, permission, SMB properties)
     # + return - An `Error` if the upload failed, otherwise `()`
     isolated remote function uploadFile(string sourcePath, string destinationPath,
@@ -263,22 +246,19 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.TransferOps"
     } external;
 
-    # Uploads in-memory content to the bound share. Dispatch is by the value's **runtime** type:
-    # `byte[]` is written as-is; a `string` is written as raw text; `xml` is serialized to its
-    # textual form; a `map<json>` is serialized as a JSON document — and because closed records
-    # with JSON-compatible fields are subtypes of `map<json>`, records are accepted directly and
-    # converted to JSON automatically:
+    # Uploads in-memory content to the bound share. Dispatch is by the value's runtime type:
+    # `byte[]` is written as-is, a `string` as raw text, `xml` as its textual form, and a
+    # `map<json>` (including compatible records) as a JSON document:
     #
     # ```ballerina
     # check client->uploadContent({revenue: 1250000, growth: 0.12}, "/2026/q1/metrics.json");
     # ```
     #
-    # To store a top-level JSON array or scalar, serialize it explicitly first — for example
-    # with the `toJsonString` langlib method — and pass the resulting string.
+    # To store a top-level JSON array or scalar, serialize it explicitly first (for example
+    # with `toJsonString`) and pass the resulting string.
     #
     # + content - The content to upload
-    # + destinationPath - The share-relative path the content is written to (full path,
-    #                     including the file name)
+    # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, permission, SMB properties)
     # + return - An `Error` if the upload failed, otherwise `()`
     isolated remote function uploadContent(byte[]|string|xml|map<json> content,
@@ -292,8 +272,7 @@ public isolated client class Client {
     #
     # + content - The byte stream to upload
     # + contentLength - The total length of the content, in bytes
-    # + destinationPath - The share-relative path the content is written to (full path,
-    #                     including the file name)
+    # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, permission, SMB properties)
     # + return - An `Error` if the upload failed, otherwise `()`
     isolated remote function uploadFromStream(stream<byte[], error?> content,
@@ -327,16 +306,14 @@ public isolated client class Client {
     }
 
     # Downloads a file to a local path. Both parameters are full paths including the file name.
-    # The local file must not already exist — an existing file at `destinationPath` fails the
-    # download with a `ProcessingError` (delete it first to re-download).
+    # An existing local file at `destinationPath` fails the download with a `ProcessingError`.
     #
     # ```ballerina
     # // /2026/q1/report.pdf (on the share) --> ./reports/q1.pdf (local disk)
     # check client->downloadFile("/2026/q1/report.pdf", "./reports/q1.pdf");
     # ```
     #
-    # + sourcePath - The share-relative path of the file to download (full path, including the
-    #                file name)
+    # + sourcePath - The share-relative path of the file to download, including the file name
     # + destinationPath - The local path to write the downloaded file to (must not exist)
     # + options - Optional download options (range)
     # + return - An `Error` if the download failed, otherwise `()`
@@ -373,10 +350,9 @@ public isolated client class Client {
     // File copy
     // -----------------------------------------------------------------------
 
-    # Copies a file within the bound share. The source needs no separate authorization — a
-    # same-account copy is authorized by this client's credentials. The copy is asynchronous;
-    # inspect the returned `CopyInfo.copyStatus` and, if pending, observe progress via
-    # `checkCopyStatus` or cancel via `abortCopy`.
+    # Copies a file within the bound share, authorized by this client's credentials. The copy
+    # is asynchronous; inspect the returned `CopyInfo.copyStatus` and, if pending, observe
+    # progress with `checkCopyStatus` or cancel with `abortCopy`.
     #
     # + sourcePath - The source share-relative path
     # + destinationPath - The destination share-relative path
@@ -387,10 +363,10 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.CopyOps"
     } external;
 
-    # Copies a file from an external URL into the bound share. A source in a **different**
-    # storage account — or any blob source — must carry its own authorization in the URL
-    # (typically a SAS token); a source file URL in the same account is authorized by this
-    # client's credentials, and a public blob URL needs none.
+    # Copies a file from an external URL into the bound share. A source in a different storage
+    # account, or any blob source, must carry its own authorization in the URL (typically a
+    # SAS token). A source file URL in the same account is authorized by this client's
+    # credentials, and a public blob URL needs none.
     #
     # + sourceUrl - The URL of the source file
     # + destinationPath - The destination share-relative path
@@ -401,9 +377,8 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.CopyOps"
     } external;
 
-    # Checks the state of the most recent copy operation that targeted a file. The state is
-    # fetched from the file's current properties, so it is a point-in-time snapshot — call
-    # again to observe the progress of a pending copy.
+    # Checks the state of the most recent copy operation that targeted a file. A point-in-time
+    # snapshot; call again to observe the progress of a pending copy.
     #
     # + path - The destination share-relative path of the copy
     # + return - The `CopyStatusInfo`, `()` if the file has never been the destination of a
@@ -425,15 +400,12 @@ public isolated client class Client {
     // File ranges
     // -----------------------------------------------------------------------
 
-    # Writes a range of bytes into a file at a given offset. This is a single low-level range
-    # write: the service caps one range write at **4 MiB**, and larger content is rejected with
-    # HTTP 413 (`RequestBodyTooLarge`) — no chunking is performed here. For content of arbitrary
-    # size, use the transfer operations (`uploadFile`/`uploadContent`/`uploadFromStream`), which
-    # chunk internally.
+    # Writes a range of bytes into a file at a given offset. A single range write is capped at
+    # 4 MiB by the service; no chunking is performed here. For content of arbitrary size, use
+    # the transfer operations (`uploadFile`/`uploadContent`/`uploadFromStream`).
     #
     # + path - The share-relative path of the file
-    # + offset - The zero-based byte offset at which to begin writing, relative to the start
-    # of the file being written to
+    # + offset - The zero-based byte offset at which to begin writing
     # + content - The bytes to write (at most 4 MiB)
     # + return - An `Error` if the range could not be written, otherwise `()`
     isolated remote function uploadRange(string path, int offset, byte[] content) returns Error? = @java:Method {
@@ -518,10 +490,8 @@ public isolated client class Client {
     # lease is fixed-duration (15 to 60 seconds) or infinite (-1) and can be kept alive with
     # `renewShareLease`.
     #
-    # + leaseDurationSeconds - The lease duration: 15 to 60 seconds, or -1 for an infinite
-    #                          lease
-    # + proposedLeaseId - A proposed lease id (a UUID string); when absent, the service
-    #                     generates one
+    # + leaseDurationSeconds - The lease duration: 15 to 60 seconds, or -1 for an infinite lease
+    # + proposedLeaseId - A proposed lease id (a UUID string); when absent, the service generates one
     # + return - The lease id to present with subsequent operations, or an `Error`
     isolated remote function acquireShareLease(int leaseDurationSeconds,
             string? proposedLeaseId = ()) returns string|Error = @java:Method {
@@ -549,8 +519,7 @@ public isolated client class Client {
     # acquired after the break period elapses.
     #
     # + breakPeriodSeconds - How long the lease keeps running before it is broken; when
-    #                        absent, the lease's own remaining time (fixed-duration) or 0
-    #                        (infinite) applies
+    #                        absent, the lease's own remaining time applies (0 for infinite)
     # + return - The remaining seconds until the lease is broken, or an `Error`
     isolated remote function breakShareLease(int? breakPeriodSeconds = ()) returns int|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.LeaseOps"
@@ -572,8 +541,7 @@ public isolated client class Client {
     # or reclaim it with `breakLease`.
     #
     # + path - The share-relative path of the file
-    # + proposedLeaseId - A proposed lease id (a UUID string); when absent, the service
-    #                     generates one
+    # + proposedLeaseId - A proposed lease id (a UUID string); when absent, the service generates one
     # + return - The lease id to present with subsequent operations, or an `Error`
     isolated remote function acquireLease(string path, string? proposedLeaseId = ())
             returns string|Error = @java:Method {
@@ -752,8 +720,7 @@ public isolated client class Client {
     # authenticated with `SharedKeyConfig` (or a connection string carrying an account key).
     # Note that rotating the account key revokes every SAS minted from it.
     #
-    # + values - What the SAS grants: validity window and permissions, or a stored access
-    #            policy reference
+    # + values - What the SAS grants: validity window and permissions, or a stored policy reference
     # + return - The SAS token, or an `Error`
     isolated remote function generateShareSas(ShareSasSignatureValues values)
             returns string|Error = @java:Method {
@@ -765,8 +732,7 @@ public isolated client class Client {
     # authenticated with `SharedKeyConfig` (or a connection string carrying an account key).
     #
     # + path - The share-relative path of the file the SAS grants access to
-    # + values - What the SAS grants: validity window and permissions, or a stored access
-    #            policy reference
+    # + values - What the SAS grants: validity window and permissions, or a stored policy reference
     # + return - The SAS token, or an `Error`
     isolated remote function generateSas(string path, FileSasSignatureValues values)
             returns string|Error = @java:Method {
@@ -833,10 +799,8 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.FileOps"
     } external;
 
-    # Closes the client. Subsequent operations on a closed client fail. Releases any
-    # connector-owned resources; the SDK's default HTTP transport is shared and
-    # process-managed, so with the default transport this is a lifecycle guard. No call is
-    # made to Azure.
+    # Closes the client and releases any connector-owned resources. Subsequent operations on
+    # a closed client fail. No call is made to Azure.
     #
     # + return - An `Error` if the client could not be closed, otherwise `()`
     public isolated function close() returns Error? {

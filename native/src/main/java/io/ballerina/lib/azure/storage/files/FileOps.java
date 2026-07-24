@@ -156,9 +156,11 @@ public final class FileOps {
     }
 
     public static Object getSymbolicLink(Environment env, BObject self, BString path) {
-        // The service returns the link text percent-encoded.
+        // The service returns the link text percent-encoded. URLDecoder alone would also turn a
+        // literal + into a space (form semantics), so pluses are escaped first to preserve them.
         return Ops.invoke(env, () -> io.ballerina.runtime.api.utils.StringUtils.fromString(
-                java.net.URLDecoder.decode(fileClient(self, path).getSymbolicLink().getLinkText(),
+                java.net.URLDecoder.decode(
+                        fileClient(self, path).getSymbolicLink().getLinkText().replace("+", "%2B"),
                         java.nio.charset.StandardCharsets.UTF_8)));
     }
 

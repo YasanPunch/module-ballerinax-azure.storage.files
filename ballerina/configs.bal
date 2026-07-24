@@ -18,15 +18,12 @@ import ballerina/crypto;
 
 # Shared Key authentication using one of the storage account's access keys.
 public type SharedKeyConfig record {|
-    # The storage account name. Every request is signed for this account (the name is part of
-    # the request signature), and it determines the service URL unless `serviceUrl` overrides it
+    # The storage account name, used to sign requests and to derive the service URL
     string accountName;
     # A base64-encoded access key of the storage account
     string accountKey;
     # The file service endpoint URL, including the scheme. Omit to use the default
-    # `https://{accountName}.file.core.windows.net`.
-    # Set it to reach an account that is not on the global public cloud. It changes only where requests are sent.
-    # They still authenticate as `accountName`, so the URL must address that same account.
+    # `https://{accountName}.file.core.windows.net`
     string serviceUrl?;
 |};
 
@@ -40,19 +37,16 @@ public type SasConfig record {|
     string sasToken;
 |};
 
-# Shared Access Signature (SAS) authentication with a full SAS URL — the service URL and the
-# SAS token in one string, as issued by the Azure portal's shared-access-signature page. For a
-# custom-DNS endpoint with a separately held token, join them as `<url> + "?" + <token>`.
+# Shared Access Signature (SAS) authentication with a full SAS URL, which carries the service
+# URL and the SAS token in one string, as issued by the Azure portal.
 public type SasUrlConfig record {|
     # A full file-service SAS URL, including the scheme and the SAS query string
     # (e.g. `https://{account}.file.core.windows.net/?sv=...&sig=...`)
     string sasUrl;
 |};
 
-# Connection-string authentication. The connection string is a key-value map that carries the account name, the
-# credential (an account key OR a SAS token — never both), and the service endpoints. A
-# SAS-form connection string must include `FileEndpoint=` or `AccountName=`; otherwise the
-# file-service endpoint cannot be derived.
+# Connection-string authentication. The connection string carries the account name, the
+# credential (an account key or a SAS token), and the service endpoints.
 public type ConnectionStringConfig record {|
     # An Azure Storage connection string, as issued by the Azure portal, the Azure CLI, or
     # infrastructure tooling
@@ -73,8 +67,7 @@ public const MANAGED_IDENTITY = "managed-identity";
 # environment, a managed identity, and developer sign-ins (Azure CLI, IDE accounts) in turn, so
 # one configuration works both locally and when deployed.
 public type DefaultEntraIdConfig record {|
-    # Selects the default credential chain (`DefaultEntraIdConfig` and `ManagedIdentityConfig`
-    # share the same remaining fields, so this discriminator tells them apart)
+    # Selects the default credential chain
     DEFAULT_AZURE_CREDENTIAL kind = "default";
     # The storage account name (determines the service URL unless `serviceUrl` overrides it)
     string accountName;
@@ -86,9 +79,7 @@ public type DefaultEntraIdConfig record {|
 # Microsoft Entra ID authentication as an Azure managed identity, for workloads running on
 # Azure compute (VMs, App Service, AKS, Functions).
 public type ManagedIdentityConfig record {|
-    # Selects the managed-identity credential (`ManagedIdentityConfig` and
-    # `DefaultEntraIdConfig` share the same remaining fields, so this discriminator tells
-    # them apart)
+    # Selects the managed-identity credential
     MANAGED_IDENTITY kind = "managed-identity";
     # The storage account name (determines the service URL unless `serviceUrl` overrides it)
     string accountName;
@@ -278,8 +269,7 @@ public type CertKey record {|
     string keyPassword?;
 |};
 
-# Configuration for an `azure.storage.files` client (`Client` or `AdminClient`). Supplied to
-# `init` as an included record parameter, so its fields are passed as named arguments.
+# Configuration for an `azure.storage.files` client (`Client` or `AdminClient`).
 public type ClientConfiguration record {|
     # The authentication configuration (see `AuthConfig`)
     AuthConfig auth;

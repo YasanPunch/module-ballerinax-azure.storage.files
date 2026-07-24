@@ -610,7 +610,8 @@ function fileDispatch(string method, string shareName, string path, string comp,
                 metadata: metadataFrom(headers),
                 contentHeaders: {},
                 etag: nextEtag(),
-                linkText: checkpanic url:decode(headers["x-ms-link-text"] ?: "", "UTF-8")
+                // The SDK sends the link text raw in this header; store it verbatim.
+                linkText: headers["x-ms-link-text"] ?: ""
             };
             return okResponse(201);
         }
