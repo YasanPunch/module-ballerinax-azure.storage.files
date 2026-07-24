@@ -118,7 +118,7 @@ public const MANAGED_IDENTITY = "managed-identity";
 # managed identity, and developer sign-ins in turn.
 public type DefaultEntraIdConfig record {|
     # Selects the default credential chain
-    DEFAULT_AZURE_CREDENTIAL kind = "default";
+    DEFAULT_AZURE_CREDENTIAL kind;
     # The storage account name (determines the service URL unless `serviceUrl` overrides it)
     string accountName;
     # The file service endpoint URL; omit for `https://{accountName}.file.core.windows.net`
@@ -128,7 +128,7 @@ public type DefaultEntraIdConfig record {|
 # Authentication as an Azure managed identity, for workloads running on Azure compute.
 public type ManagedIdentityConfig record {|
     # Selects the managed-identity credential
-    MANAGED_IDENTITY kind = "managed-identity";
+    MANAGED_IDENTITY kind;
     # The storage account name (determines the service URL unless `serviceUrl` overrides it)
     string accountName;
     # The client id of a user-assigned managed identity; omit for the system-assigned identity
@@ -206,7 +206,9 @@ auth = {accountName = "myacct", accountKey = "..."}               # SharedKeyCon
 # auth = {connectionString = "..."}                               # ConnectionStringConfig
 # auth = {kind = "default", accountName = "myacct"}               # DefaultEntraIdConfig
 # auth = {kind = "managed-identity", accountName = "myacct"}      # ManagedIdentityConfig
-# auth = {accountName = "myacct", tenantId = "...", clientId = "...", clientSecret = "..."}  # ClientSecretConfig
+# auth = {accountName = "myacct", tenantId = "...", clientId = "...", clientSecret = "..."}                # ClientSecretConfig
+# auth = {accountName = "myacct", tenantId = "...", clientId = "...", certificatePath = "/path/cert.pem"}  # ClientCertificateConfig
+# auth = {accountName = "myacct", tenantId = "...", clientId = "...", tokenFilePath = "/path/token"}       # WorkloadIdentityConfig
 ```
 
 Every auth mode is validated at `init` with local computation and no call to Azure: connection strings run the SDK's own strict parser plus a file-endpoint check, and the explicit records get non-empty, base64, and URL-scheme checks. A malformed credential surfaces a specific error at `init` rather than an opaque failure at first use.

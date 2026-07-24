@@ -68,7 +68,7 @@ public const MANAGED_IDENTITY = "managed-identity";
 # one configuration works both locally and when deployed.
 public type DefaultEntraIdConfig record {|
     # Selects the default credential chain
-    DEFAULT_AZURE_CREDENTIAL kind = "default";
+    DEFAULT_AZURE_CREDENTIAL kind;
     # The storage account name (determines the service URL unless `serviceUrl` overrides it)
     string accountName;
     # The file service endpoint URL, including the scheme. Omit to use the default
@@ -80,7 +80,7 @@ public type DefaultEntraIdConfig record {|
 # Azure compute (VMs, App Service, AKS, Functions).
 public type ManagedIdentityConfig record {|
     # Selects the managed-identity credential
-    MANAGED_IDENTITY kind = "managed-identity";
+    MANAGED_IDENTITY kind;
     # The storage account name (determines the service URL unless `serviceUrl` overrides it)
     string accountName;
     # The client id of a user-assigned managed identity; omit to use the system-assigned
