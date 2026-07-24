@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -38,6 +38,9 @@ import java.util.Iterator;
  */
 public final class ListOps {
 
+    // Key under which the native iterator state is stored on a stream generator object.
+    static final String NATIVE_ITERATOR = "azure.storage.files.native.iterator";
+
     private ListOps() {
     }
 
@@ -49,14 +52,14 @@ public final class ListOps {
     public static Object newEntryIterator(Environment env, BObject self, BObject generator,
                                           BString directoryPath, BMap<BString, Object> options) {
         return Ops.invoke(env, () -> {
-            String prefix = ValueUtils.optString(options, Constants.PREFIX);
-            boolean recursive = options.getBooleanValue(Constants.RECURSIVE);
-            Integer pageSize = Math.toIntExact((Long) options.get(Constants.PAGE_SIZE));
-            boolean extendedInfo = options.getBooleanValue(Constants.INCLUDE_EXTENDED_INFO);
-            String snapshotId = ValueUtils.optString(options, Constants.SNAPSHOT_ID);
+            String prefix = ValueUtils.optString(options, OptionsReader.PREFIX);
+            boolean recursive = options.getBooleanValue(OptionsReader.RECURSIVE);
+            Integer pageSize = Math.toIntExact((Long) options.get(OptionsReader.PAGE_SIZE));
+            boolean extendedInfo = options.getBooleanValue(OptionsReader.INCLUDE_EXTENDED_INFO);
+            String snapshotId = ValueUtils.optString(options, OptionsReader.SNAPSHOT_ID);
             EntryIterator iterator = new EntryIterator(Ops.shareClient(self, snapshotId),
                     Ops.directoryPath(directoryPath), prefix, recursive, pageSize, extendedInfo);
-            generator.addNativeData(Constants.NATIVE_ITERATOR, iterator);
+            generator.addNativeData(NATIVE_ITERATOR, iterator);
             return null;
         });
     }
@@ -64,14 +67,14 @@ public final class ListOps {
     /** Pulls the next entry: an `Entry` record, {@code null} at the end, or an error. */
     public static Object nextEntry(Environment env, BObject generator) {
         return Ops.invoke(env, () -> {
-            EntryIterator iterator = (EntryIterator) generator.getNativeData(Constants.NATIVE_ITERATOR);
+            EntryIterator iterator = (EntryIterator) generator.getNativeData(NATIVE_ITERATOR);
             return iterator == null ? null : iterator.next();
         });
     }
 
     /** Stops an in-progress listing early. */
     public static Object closeEntryIterator(BObject generator) {
-        generator.addNativeData(Constants.NATIVE_ITERATOR, null);
+        generator.addNativeData(NATIVE_ITERATOR, null);
         return null;
     }
 

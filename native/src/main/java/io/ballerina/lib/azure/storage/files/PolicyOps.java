@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -41,7 +41,7 @@ public final class PolicyOps {
 
     public static Object getShareAccessPolicy(Environment env, BObject self) {
         return Ops.invoke(env, () -> {
-            BArray result = RecordMapper.recordArray(Constants.RECORD_SIGNED_IDENTIFIER);
+            BArray result = RecordMapper.recordArray(RecordMapper.RECORD_SIGNED_IDENTIFIER);
             for (ShareSignedIdentifier identifier : Ops.shareClient(self).getAccessPolicy()) {
                 result.append(RecordMapper.signedIdentifier(identifier));
             }
@@ -56,19 +56,19 @@ public final class PolicyOps {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) identifiers.get(i);
                 @SuppressWarnings("unchecked")
-                BMap<BString, Object> policy = (BMap<BString, Object>) record.get(Constants.ACCESS_POLICY);
+                BMap<BString, Object> policy = (BMap<BString, Object>) record.get(RecordMapper.ACCESS_POLICY);
                 ShareAccessPolicy sdkPolicy = new ShareAccessPolicy()
-                        .setPermissions(record(policy, Constants.PERMISSIONS));
-                Object startsOn = policy.get(Constants.STARTS_ON);
+                        .setPermissions(record(policy, RecordMapper.PERMISSIONS));
+                Object startsOn = policy.get(RecordMapper.STARTS_ON);
                 if (startsOn != null) {
                     sdkPolicy.setStartsOn(ValueUtils.fromUtc((BArray) startsOn));
                 }
-                Object expiresOn = policy.get(Constants.EXPIRES_ON);
+                Object expiresOn = policy.get(RecordMapper.EXPIRES_ON);
                 if (expiresOn != null) {
                     sdkPolicy.setExpiresOn(ValueUtils.fromUtc((BArray) expiresOn));
                 }
                 sdkIdentifiers.add(new ShareSignedIdentifier()
-                        .setId(record.getStringValue(Constants.ID).getValue())
+                        .setId(record.getStringValue(RecordMapper.ID).getValue())
                         .setAccessPolicy(sdkPolicy));
             }
             Ops.shareClient(self).setAccessPolicy(sdkIdentifiers);

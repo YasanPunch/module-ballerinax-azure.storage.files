@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -53,15 +53,15 @@ public final class ShareOps {
     public static Object setShareProperties(Environment env, BObject self, BMap<BString, Object> options) {
         return Ops.invoke(env, () -> {
             ShareSetPropertiesOptions sdkOptions = new ShareSetPropertiesOptions();
-            Object quota = options.get(Constants.QUOTA_IN_GB);
+            Object quota = options.get(OptionsReader.QUOTA_IN_GB);
             if (quota != null) {
                 sdkOptions.setQuotaInGb(Math.toIntExact((Long) quota));
             }
-            String tier = ValueUtils.optString(options, Constants.ACCESS_TIER);
+            String tier = ValueUtils.optString(options, OptionsReader.ACCESS_TIER);
             if (tier != null) {
                 sdkOptions.setAccessTier(ShareAccessTier.fromString(tier));
             }
-            String leaseId = ValueUtils.optString(options, Constants.LEASE_ID);
+            String leaseId = ValueUtils.optString(options, OptionsReader.LEASE_ID);
             if (leaseId != null) {
                 sdkOptions.setRequestConditions(new ShareRequestConditions().setLeaseId(leaseId));
             }

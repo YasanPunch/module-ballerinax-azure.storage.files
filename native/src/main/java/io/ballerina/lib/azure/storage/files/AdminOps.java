@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -55,12 +55,12 @@ public final class AdminOps {
             if (options != null) {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) options;
-                sdkOptions.setPrefix(ValueUtils.optString(record, Constants.PREFIX))
-                        .setIncludeMetadata(record.getBooleanValue(Constants.INCLUDE_METADATA))
-                        .setIncludeSnapshots(record.getBooleanValue(Constants.INCLUDE_SNAPSHOTS))
-                        .setIncludeDeleted(record.getBooleanValue(Constants.INCLUDE_DELETED));
+                sdkOptions.setPrefix(ValueUtils.optString(record, OptionsReader.PREFIX))
+                        .setIncludeMetadata(record.getBooleanValue(OptionsReader.INCLUDE_METADATA))
+                        .setIncludeSnapshots(record.getBooleanValue(OptionsReader.INCLUDE_SNAPSHOTS))
+                        .setIncludeDeleted(record.getBooleanValue(OptionsReader.INCLUDE_DELETED));
             }
-            BArray result = RecordMapper.recordArray(Constants.RECORD_SHARE_INFO);
+            BArray result = RecordMapper.recordArray(RecordMapper.RECORD_SHARE_INFO);
             for (ShareItem item : Ops.serviceClient(self).listShares(sdkOptions, null, null)) {
                 result.append(RecordMapper.shareInfo(item));
             }
@@ -74,16 +74,16 @@ public final class AdminOps {
             if (options != null) {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) options;
-                sdkOptions.setMetadata(ValueUtils.optStringMap(record, Constants.METADATA));
-                Object quota = record.get(Constants.QUOTA_IN_GB);
+                sdkOptions.setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA));
+                Object quota = record.get(OptionsReader.QUOTA_IN_GB);
                 if (quota != null) {
                     sdkOptions.setQuotaInGb(Math.toIntExact((Long) quota));
                 }
-                String tier = ValueUtils.optString(record, Constants.ACCESS_TIER);
+                String tier = ValueUtils.optString(record, OptionsReader.ACCESS_TIER);
                 if (tier != null) {
                     sdkOptions.setAccessTier(ShareAccessTier.fromString(tier));
                 }
-                Object protocols = record.get(Constants.ENABLED_PROTOCOLS);
+                Object protocols = record.get(OptionsReader.ENABLED_PROTOCOLS);
                 if (protocols != null) {
                     BArray array = (BArray) protocols;
                     ShareProtocols sdkProtocols = new ShareProtocols();
@@ -97,7 +97,7 @@ public final class AdminOps {
                     }
                     sdkOptions.setProtocols(sdkProtocols);
                 }
-                String rootSquash = ValueUtils.optString(record, Constants.ROOT_SQUASH);
+                String rootSquash = ValueUtils.optString(record, OptionsReader.ROOT_SQUASH);
                 if (rootSquash != null) {
                     sdkOptions.setRootSquash(ShareRootSquash.fromString(rootSquash));
                 }
@@ -116,19 +116,19 @@ public final class AdminOps {
             }
             @SuppressWarnings("unchecked")
             BMap<BString, Object> record = (BMap<BString, Object>) options;
-            String snapshotId = ValueUtils.optString(record, Constants.SNAPSHOT_ID);
+            String snapshotId = ValueUtils.optString(record, OptionsReader.SNAPSHOT_ID);
             if (snapshotId != null) {
                 serviceClient.deleteShareWithResponse(shareName.getValue(), snapshotId, null, null);
                 return null;
             }
             ShareDeleteOptions sdkOptions = new ShareDeleteOptions();
-            String deleteSnapshots = ValueUtils.optString(record, Constants.DELETE_SNAPSHOTS);
+            String deleteSnapshots = ValueUtils.optString(record, OptionsReader.DELETE_SNAPSHOTS);
             if (deleteSnapshots != null) {
                 sdkOptions.setDeleteSnapshotsOptions("include-leased".equals(deleteSnapshots)
                         ? ShareSnapshotsDeleteOptionType.INCLUDE_WITH_LEASED
                         : ShareSnapshotsDeleteOptionType.INCLUDE);
             }
-            String leaseId = ValueUtils.optString(record, Constants.LEASE_ID);
+            String leaseId = ValueUtils.optString(record, OptionsReader.LEASE_ID);
             if (leaseId != null) {
                 sdkOptions.setRequestConditions(new ShareRequestConditions().setLeaseId(leaseId));
             }

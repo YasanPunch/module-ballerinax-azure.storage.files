@@ -1,4 +1,4 @@
-// Copyright (c) 2026 WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
 //
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -255,11 +255,11 @@ function testShareLifecycle() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("lifecycle");
     check admin->createShare(share, {quotaInGb: 100, metadata: {owner: "tests"}});
-    var actionResult1 = check admin->hasShare(share);
+    boolean actionResult1 = check admin->hasShare(share);
     test:assertTrue(actionResult1);
     // Built directly, not via testShare: a second testShare call inside a test would
     // roll-clean the test's own share.
-    var actionResult2 = check admin->hasShare(string `${share}-absent`);
+    boolean actionResult2 = check admin->hasShare(string `${share}-absent`);
     test:assertFalse(actionResult2);
 
     // Listing can lag share creation.
@@ -274,7 +274,7 @@ function testShareLifecycle() returns error? {
     test:assertEquals(shares[0].metadata, {owner: "tests"});
 
     check admin->deleteShare(share);
-    var actionResult3 = check admin->hasShare(share);
+    boolean actionResult3 = check admin->hasShare(share);
     test:assertFalse(actionResult3);
 
     if check isPremiumAccount() {
@@ -348,7 +348,7 @@ function testSharePropertiesAndUsage() returns error? {
     props = check fileClient->getShareProperties();
     test:assertEquals(props.metadata, {env: "mock"});
 
-    var actionResult15 = check fileClient->getShareUsage();
+    int actionResult15 = check fileClient->getShareUsage();
     test:assertEquals(actionResult15, 0);
     check fileClient->uploadContent("12345", "/usage.txt");
     // Share statistics can lag recent writes.
@@ -371,9 +371,9 @@ function testDirectoryLifecycle() returns error? {
 
     check fileClient->createDirectory("/docs");
     check fileClient->createDirectory("/docs/2026", {metadata: {year: "2026"}});
-    var actionResult5 = check fileClient->hasDirectory("/docs/2026");
+    boolean actionResult5 = check fileClient->hasDirectory("/docs/2026");
     test:assertTrue(actionResult5);
-    var actionResult6 = check fileClient->hasDirectory("/docs/2030");
+    boolean actionResult6 = check fileClient->hasDirectory("/docs/2030");
     test:assertFalse(actionResult6);
 
     DirectoryProperties props = check fileClient->getDirectoryProperties("/docs/2026");
@@ -390,9 +390,9 @@ function testDirectoryLifecycle() returns error? {
 
     // Deleting a non-empty directory conflicts; after moving out, it deletes.
     check fileClient->renameDirectory("/docs/2026", "/archive");
-    var actionResult7 = check fileClient->hasDirectory("/archive");
+    boolean actionResult7 = check fileClient->hasDirectory("/archive");
     test:assertTrue(actionResult7);
-    var actionResult8 = check fileClient->hasDirectory("/docs/2026");
+    boolean actionResult8 = check fileClient->hasDirectory("/docs/2026");
     test:assertFalse(actionResult8);
     check fileClient->deleteDirectory("/archive");
     check fileClient->deleteDirectory("/docs");
@@ -422,9 +422,9 @@ function testFileLifecycle() returns error? {
     Client fileClient = check newShareClient(share);
 
     check fileClient->createFile("/report.bin", 16, {metadata: {kind: "report"}});
-    var actionResult9 = check fileClient->hasFile("/report.bin");
+    boolean actionResult9 = check fileClient->hasFile("/report.bin");
     test:assertTrue(actionResult9);
-    var actionResult10 = check fileClient->hasFile("/missing.bin");
+    boolean actionResult10 = check fileClient->hasFile("/missing.bin");
     test:assertFalse(actionResult10);
 
     FileProperties props = check fileClient->getFileProperties("/report.bin");
@@ -444,13 +444,13 @@ function testFileLifecycle() returns error? {
     test:assertEquals(props.cacheControl, "max-age=60");
 
     check fileClient->renameFile("/report.bin", "/final.bin");
-    var actionResult11 = check fileClient->hasFile("/report.bin");
+    boolean actionResult11 = check fileClient->hasFile("/report.bin");
     test:assertFalse(actionResult11);
-    var actionResult12 = check fileClient->hasFile("/final.bin");
+    boolean actionResult12 = check fileClient->hasFile("/final.bin");
     test:assertTrue(actionResult12);
 
     check fileClient->deleteFile("/final.bin");
-    var actionResult13 = check fileClient->hasFile("/final.bin");
+    boolean actionResult13 = check fileClient->hasFile("/final.bin");
     test:assertFalse(actionResult13);
 
     FileProperties|Error missing = fileClient->getFileProperties("/final.bin");
@@ -476,11 +476,19 @@ function testUploadContentVariantsAndDownloadStream() returns error? {
     test:assertEquals(check readAll(fileClient, "/binary.bin"), binary);
 
     check fileClient->uploadContent({metric: 42}, "/data.json");
-    test:assertEquals(check readAll(fileClient, "/data.json"), "{\"metric\":42}".toBytes());
+    byte[] jsonBytes = check readAll(fileClient, "/data.json");
+    test:assertEquals(jsonBytes, "{\"metric\":42}".toBytes());
+    // The downloaded bytes parse back to the value that was uploaded.
+    string jsonText = check string:fromBytes(jsonBytes);
+    json reparsedJson = check jsonText.fromJsonString();
+    test:assertEquals(reparsedJson, <json>{metric: 42});
 
     xml document = xml `<report><value>1</value></report>`;
     check fileClient->uploadContent(document, "/doc.xml");
-    test:assertEquals(check readAll(fileClient, "/doc.xml"), document.toString().toBytes());
+    byte[] xmlBytes = check readAll(fileClient, "/doc.xml");
+    test:assertEquals(xmlBytes, document.toString().toBytes());
+    xml reparsedXml = check xml:fromString(check string:fromBytes(xmlBytes));
+    test:assertEquals(reparsedXml, document);
 }
 
 @test:Config {}
@@ -498,7 +506,7 @@ function testUploadAndDownloadLocalFile() returns error? {
     }
 
     check fileClient->uploadFile(localSource, "/roundtrip.txt");
-    var actionResult14 = check fileClient->hasFile("/roundtrip.txt");
+    boolean actionResult14 = check fileClient->hasFile("/roundtrip.txt");
     test:assertTrue(actionResult14);
 
     check fileClient->downloadFile("/roundtrip.txt", localDestination);
@@ -609,7 +617,7 @@ function testCopyWithinShare() returns error? {
     }
 
     // A file that was never a copy destination reports no status.
-    var actionResult17 = check fileClient->checkCopyStatus("/source.txt");
+    CopyStatusInfo? actionResult17 = check fileClient->checkCopyStatus("/source.txt");
     test:assertEquals(actionResult17, ());
 
     // The copy has already completed, so an abort conflicts.

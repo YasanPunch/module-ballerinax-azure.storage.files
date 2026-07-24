@@ -1,3 +1,5 @@
+## Overview
+
 [Azure Files](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-introduction) offers fully managed file shares in the cloud, accessible via the industry-standard SMB and NFS protocols and a REST API.
 
 This package provides a Ballerina connector for Azure Files, backed by the official [`azure-storage-file-share`](https://learn.microsoft.com/en-us/java/api/overview/azure/storage-file-share-readme) Java SDK. It exposes:
@@ -17,13 +19,18 @@ import ballerinax/azure.storage.files;
 
 ### Step 2: Create a client
 
-A `Client` is bound to a single share. Authenticate with a Shared Key, a SAS token, a SAS URL, a connection string, or Microsoft Entra ID.
+A `Client` is bound to a single share. Authenticate with a Shared Key, a SAS token, a SAS URL, a connection string, or Microsoft Entra ID. Supply the credentials through configurable variables, filled from a `Config.toml` file:
+
+```toml
+accountName = "<storage account name>"
+accountKey = "<storage account key>"
+```
 
 ```ballerina
-files:Client fileClient = check new (
-    "<share-name>",
-    auth = {accountName: "<account>", accountKey: "<key>"}
-);
+configurable string accountName = ?;
+configurable string accountKey = ?;
+
+files:Client fileClient = check new ("reports", auth = {accountName, accountKey});
 ```
 
 ### Step 3: Invoke an operation
@@ -37,7 +44,7 @@ files:FileProperties props = check fileClient->getFileProperties("/reports/q1.pd
 ### Manage shares with `AdminClient`
 
 ```ballerina
-files:AdminClient admin = check new (auth = {accountName: "<account>", accountKey: "<key>"});
+files:AdminClient admin = check new (auth = {accountName, accountKey});
 check admin->createShare("reports");
 ```
 

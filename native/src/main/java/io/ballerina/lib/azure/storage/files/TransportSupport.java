@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -22,6 +22,7 @@ import com.azure.core.http.ProxyOptions;
 import com.azure.core.http.netty.NettyAsyncHttpClientBuilder;
 import com.azure.storage.common.policy.RequestRetryOptions;
 import com.azure.storage.common.policy.RetryPolicyType;
+import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BDecimal;
 import io.ballerina.runtime.api.values.BMap;
@@ -66,39 +67,81 @@ import javax.net.ssl.TrustManagerFactory;
  */
 final class TransportSupport {
 
+    // Ballerina RetryPolicyType and ProxyType enum values matched against the config.
+    private static final String RETRY_POLICY_FIXED = "fixed";
+    // The path field of the truststore and keystore records. Distinct from Entry.path
+    // (RecordMapper): same spelling, unrelated concept.
+    private static final BString STORE_PATH = StringUtils.fromString("path");
+    private static final String PROXY_TYPE_SOCKS4 = "SOCKS4";
+    private static final String PROXY_TYPE_SOCKS5 = "SOCKS5";
+
+    // Field names of the retry, connection-pool, proxy, and TLS records (read only here).
+    private static final BString RETRY_POLICY_TYPE = StringUtils.fromString("retryPolicyType");
+    private static final BString MAX_TRIES = StringUtils.fromString("maxTries");
+    private static final BString TRY_TIMEOUT_SECONDS = StringUtils.fromString("tryTimeoutSeconds");
+    private static final BString RETRY_DELAY_SECONDS = StringUtils.fromString("retryDelaySeconds");
+    private static final BString MAX_RETRY_DELAY_SECONDS = StringUtils.fromString("maxRetryDelaySeconds");
+    private static final BString SECONDARY_HOST_URL = StringUtils.fromString("secondaryHostUrl");
+    private static final BString CONNECTION_POOL = StringUtils.fromString("connectionPool");
+    private static final BString MAX_CONNECTIONS = StringUtils.fromString("maxConnections");
+    private static final BString IDLE_TIMEOUT_SECONDS = StringUtils.fromString("idleTimeoutSeconds");
+    private static final BString CONNECT_TIMEOUT_SECONDS = StringUtils.fromString("connectTimeoutSeconds");
+    private static final BString READ_TIMEOUT_SECONDS = StringUtils.fromString("readTimeoutSeconds");
+    private static final BString SECURE_SOCKET = StringUtils.fromString("secureSocket");
+    private static final BString PROXY = StringUtils.fromString("proxy");
+    private static final BString PROXY_TYPE = StringUtils.fromString("proxyType");
+    private static final BString HOST = StringUtils.fromString("host");
+    private static final BString PORT = StringUtils.fromString("port");
+    private static final BString USERNAME = StringUtils.fromString("username");
+    private static final BString PASSWORD = StringUtils.fromString("password");
+    private static final BString NON_PROXY_HOSTS = StringUtils.fromString("nonProxyHosts");
+    private static final BString CERT = StringUtils.fromString("cert");
+    private static final BString KEY = StringUtils.fromString("key");
+    private static final BString TLS_VERSIONS = StringUtils.fromString("tlsVersions");
+    private static final BString CIPHERS = StringUtils.fromString("ciphers");
+    private static final BString VERIFY_HOST_NAME = StringUtils.fromString("verifyHostName");
+    private static final BString SHARE_SESSION = StringUtils.fromString("shareSession");
+    private static final BString VALIDATE_REVOCATION = StringUtils.fromString("validateRevocation");
+    private static final BString HANDSHAKE_TIMEOUT_SECONDS = StringUtils.fromString("handshakeTimeoutSeconds");
+    private static final BString SESSION_TIMEOUT_SECONDS = StringUtils.fromString("sessionTimeoutSeconds");
+    private static final BString SERVER_NAME = StringUtils.fromString("serverName");
+    private static final BString CERT_FILE = StringUtils.fromString("certFile");
+    private static final BString KEY_FILE = StringUtils.fromString("keyFile");
+    private static final BString KEY_PASSWORD = StringUtils.fromString("keyPassword");
+
     private TransportSupport() {
     }
 
     static RequestRetryOptions retryOptions(BMap<BString, Object> retry) {
-        String policy = retry.getStringValue(Constants.RETRY_POLICY_TYPE).getValue();
+        String policy = retry.getStringValue(RETRY_POLICY_TYPE).getValue();
         return new RequestRetryOptions(
-                "fixed".equals(policy) ? RetryPolicyType.FIXED : RetryPolicyType.EXPONENTIAL,
-                Math.toIntExact((Long) retry.get(Constants.MAX_TRIES)),
-                seconds(retry.get(Constants.TRY_TIMEOUT_SECONDS)),
-                seconds(retry.get(Constants.RETRY_DELAY_SECONDS)),
-                seconds(retry.get(Constants.MAX_RETRY_DELAY_SECONDS)),
-                ValueUtils.optString(retry, Constants.SECONDARY_HOST_URL));
+                RETRY_POLICY_FIXED.equals(policy) ? RetryPolicyType.FIXED : RetryPolicyType.EXPONENTIAL,
+                Math.toIntExact((Long) retry.get(MAX_TRIES)),
+                seconds(retry.get(TRY_TIMEOUT_SECONDS)),
+                seconds(retry.get(RETRY_DELAY_SECONDS)),
+                seconds(retry.get(MAX_RETRY_DELAY_SECONDS)),
+                ValueUtils.optString(retry, SECONDARY_HOST_URL));
     }
 
     @SuppressWarnings("unchecked")
     static com.azure.core.http.HttpClient httpClient(BMap<BString, Object> transport) {
-        BMap<BString, Object> pool = (BMap<BString, Object>) transport.get(Constants.CONNECTION_POOL);
+        BMap<BString, Object> pool = (BMap<BString, Object>) transport.get(CONNECTION_POOL);
         ConnectionProvider provider = ConnectionProvider.builder("azure-storage-files")
-                .maxConnections(Math.toIntExact((Long) pool.get(Constants.MAX_CONNECTIONS)))
-                .maxIdleTime(seconds(pool.get(Constants.IDLE_TIMEOUT_SECONDS)))
+                .maxConnections(Math.toIntExact((Long) pool.get(MAX_CONNECTIONS)))
+                .maxIdleTime(seconds(pool.get(IDLE_TIMEOUT_SECONDS)))
                 .build();
         HttpClient reactorClient = HttpClient.create(provider);
 
-        BMap<BString, Object> secureSocket = (BMap<BString, Object>) transport.get(Constants.SECURE_SOCKET);
+        BMap<BString, Object> secureSocket = (BMap<BString, Object>) transport.get(SECURE_SOCKET);
         if (secureSocket != null) {
             reactorClient = applyTls(reactorClient, secureSocket);
         }
 
         NettyAsyncHttpClientBuilder builder = new NettyAsyncHttpClientBuilder(reactorClient)
-                .connectTimeout(seconds(pool.get(Constants.CONNECT_TIMEOUT_SECONDS)))
-                .readTimeout(seconds(pool.get(Constants.READ_TIMEOUT_SECONDS)));
+                .connectTimeout(seconds(pool.get(CONNECT_TIMEOUT_SECONDS)))
+                .readTimeout(seconds(pool.get(READ_TIMEOUT_SECONDS)));
 
-        BMap<BString, Object> proxy = (BMap<BString, Object>) transport.get(Constants.PROXY);
+        BMap<BString, Object> proxy = (BMap<BString, Object>) transport.get(PROXY);
         if (proxy != null) {
             builder.proxy(proxyOptions(proxy));
         }
@@ -106,21 +149,21 @@ final class TransportSupport {
     }
 
     private static ProxyOptions proxyOptions(BMap<BString, Object> proxy) {
-        String type = proxy.getStringValue(Constants.PROXY_TYPE).getValue();
+        String type = proxy.getStringValue(PROXY_TYPE).getValue();
         ProxyOptions.Type proxyType = switch (type) {
-            case "SOCKS4" -> ProxyOptions.Type.SOCKS4;
-            case "SOCKS5" -> ProxyOptions.Type.SOCKS5;
+            case PROXY_TYPE_SOCKS4 -> ProxyOptions.Type.SOCKS4;
+            case PROXY_TYPE_SOCKS5 -> ProxyOptions.Type.SOCKS5;
             default -> ProxyOptions.Type.HTTP;
         };
         ProxyOptions options = new ProxyOptions(proxyType, new InetSocketAddress(
-                proxy.getStringValue(Constants.HOST).getValue(),
-                Math.toIntExact((Long) proxy.get(Constants.PORT))));
-        String username = ValueUtils.optString(proxy, Constants.USERNAME);
-        String password = ValueUtils.optString(proxy, Constants.PASSWORD);
+                proxy.getStringValue(HOST).getValue(),
+                Math.toIntExact((Long) proxy.get(PORT))));
+        String username = ValueUtils.optString(proxy, USERNAME);
+        String password = ValueUtils.optString(proxy, PASSWORD);
         if (username != null && password != null) {
             options.setCredentials(username, password);
         }
-        BArray nonProxyHosts = (BArray) proxy.get(Constants.NON_PROXY_HOSTS);
+        BArray nonProxyHosts = (BArray) proxy.get(NON_PROXY_HOSTS);
         if (nonProxyHosts != null && nonProxyHosts.size() > 0) {
             options.setNonProxyHosts(String.join("|", nonProxyHosts.getStringArray()));
         }
@@ -134,24 +177,24 @@ final class TransportSupport {
             configureTrust(sslBuilder, secureSocket);
             configureKey(sslBuilder, secureSocket);
 
-            BArray tlsVersions = (BArray) secureSocket.get(Constants.TLS_VERSIONS);
+            BArray tlsVersions = (BArray) secureSocket.get(TLS_VERSIONS);
             if (tlsVersions != null && tlsVersions.size() > 0) {
                 sslBuilder.protocols(tlsVersions.getStringArray());
             }
-            BArray ciphers = (BArray) secureSocket.get(Constants.CIPHERS);
+            BArray ciphers = (BArray) secureSocket.get(CIPHERS);
             if (ciphers != null && ciphers.size() > 0) {
                 sslBuilder.ciphers(Arrays.asList(ciphers.getStringArray()));
             }
-            Object sessionTimeout = secureSocket.get(Constants.SESSION_TIMEOUT_SECONDS);
+            Object sessionTimeout = secureSocket.get(SESSION_TIMEOUT_SECONDS);
             if (sessionTimeout != null) {
                 sslBuilder.sessionTimeout(seconds(sessionTimeout).toSeconds());
             }
             SslContext sslContext = sslBuilder.build();
 
-            boolean verifyHostName = secureSocket.getBooleanValue(Constants.VERIFY_HOST_NAME);
-            boolean shareSession = secureSocket.getBooleanValue(Constants.SHARE_SESSION);
-            String serverName = ValueUtils.optString(secureSocket, Constants.SERVER_NAME);
-            Object handshakeTimeout = secureSocket.get(Constants.HANDSHAKE_TIMEOUT_SECONDS);
+            boolean verifyHostName = secureSocket.getBooleanValue(VERIFY_HOST_NAME);
+            boolean shareSession = secureSocket.getBooleanValue(SHARE_SESSION);
+            String serverName = ValueUtils.optString(secureSocket, SERVER_NAME);
+            Object handshakeTimeout = secureSocket.get(HANDSHAKE_TIMEOUT_SECONDS);
 
             return reactorClient.secure(spec -> {
                 reactor.netty.tcp.SslProvider.Builder providerBuilder = spec.sslContext(sslContext)
@@ -186,13 +229,13 @@ final class TransportSupport {
      */
     private static void configureTrust(SslContextBuilder sslBuilder, BMap<BString, Object> secureSocket)
             throws GeneralSecurityException, IOException {
-        Object cert = secureSocket.get(Constants.CERT);
-        boolean validateRevocation = secureSocket.getBooleanValue(Constants.VALIDATE_REVOCATION);
+        Object cert = secureSocket.get(CERT);
+        boolean validateRevocation = secureSocket.getBooleanValue(VALIDATE_REVOCATION);
+        if (cert == null && validateRevocation) {
+            throw FilesErrorCreator.processingError(
+                    "validateRevocation requires trust material (`cert`) to validate against", null);
+        }
         if (cert == null) {
-            if (validateRevocation) {
-                throw FilesErrorCreator.processingError(
-                        "validateRevocation requires trust material (`cert`) to validate against", null);
-            }
             return;
         }
         KeyStore trustStore;
@@ -206,8 +249,8 @@ final class TransportSupport {
         } else {
             @SuppressWarnings("unchecked")
             BMap<BString, Object> store = (BMap<BString, Object>) cert;
-            trustStore = loadKeyStore(store.getStringValue(Constants.PATH).getValue(),
-                    store.getStringValue(Constants.PASSWORD).getValue());
+            trustStore = loadKeyStore(store.getStringValue(STORE_PATH).getValue(),
+                    store.getStringValue(PASSWORD).getValue());
         }
         TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance("PKIX");
         if (validateRevocation) {
@@ -226,23 +269,23 @@ final class TransportSupport {
 
     private static void configureKey(SslContextBuilder sslBuilder, BMap<BString, Object> secureSocket)
             throws GeneralSecurityException, IOException {
-        Object key = secureSocket.get(Constants.KEY);
+        Object key = secureSocket.get(KEY);
         if (key == null) {
             return;
         }
         @SuppressWarnings("unchecked")
         BMap<BString, Object> keyRecord = (BMap<BString, Object>) key;
-        if (keyRecord.containsKey(Constants.CERT_FILE)) {
-            String certFile = keyRecord.getStringValue(Constants.CERT_FILE).getValue();
-            String keyFile = keyRecord.getStringValue(Constants.KEY_FILE).getValue();
+        if (keyRecord.containsKey(CERT_FILE)) {
+            String certFile = keyRecord.getStringValue(CERT_FILE).getValue();
+            String keyFile = keyRecord.getStringValue(KEY_FILE).getValue();
             requireFile(certFile, "key.certFile");
             requireFile(keyFile, "key.keyFile");
             sslBuilder.keyManager(new File(certFile), new File(keyFile),
-                    ValueUtils.optString(keyRecord, Constants.KEY_PASSWORD));
+                    ValueUtils.optString(keyRecord, KEY_PASSWORD));
             return;
         }
-        String password = keyRecord.getStringValue(Constants.PASSWORD).getValue();
-        KeyStore keyStore = loadKeyStore(keyRecord.getStringValue(Constants.PATH).getValue(), password);
+        String password = keyRecord.getStringValue(PASSWORD).getValue();
+        KeyStore keyStore = loadKeyStore(keyRecord.getStringValue(STORE_PATH).getValue(), password);
         KeyManagerFactory keyManagerFactory =
                 KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
         keyManagerFactory.init(keyStore, password.toCharArray());

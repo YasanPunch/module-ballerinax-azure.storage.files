@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -60,9 +60,9 @@ public final class RangeOps {
             if (options != null) {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) options;
-                range = OptionsReader.range(record.get(Constants.RANGE));
+                range = OptionsReader.range(record.get(OptionsReader.RANGE));
             }
-            BArray result = RecordMapper.recordArray(Constants.RECORD_RANGE);
+            BArray result = RecordMapper.recordArray(RecordMapper.RECORD_RANGE);
             for (ShareFileRange r : FileOps.fileClient(self, path).listRanges(range, null, null)) {
                 result.append(RecordMapper.range(r));
             }

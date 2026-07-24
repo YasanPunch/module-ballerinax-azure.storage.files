@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -42,6 +42,27 @@ import io.ballerina.runtime.api.values.BString;
  */
 public final class SasOps {
 
+    // The Ballerina SasProtocol enum value selecting HTTPS-only access.
+    private static final String SAS_PROTOCOL_HTTPS = "https";
+
+    // Field names of the SAS signature-values and permission records (read only here).
+    private static final BString EXPIRY_TIME = StringUtils.fromString("expiryTime");
+    private static final BString START_TIME = StringUtils.fromString("startTime");
+    private static final BString IP_RANGE = StringUtils.fromString("ipRange");
+    private static final BString IDENTIFIER = StringUtils.fromString("identifier");
+    private static final BString RESOURCE_TYPES = StringUtils.fromString("resourceTypes");
+    private static final BString PERMISSION_READ = StringUtils.fromString("read");
+    private static final BString PERMISSION_WRITE = StringUtils.fromString("write");
+    private static final BString PERMISSION_DELETE = StringUtils.fromString("delete");
+    private static final BString PERMISSION_LIST = StringUtils.fromString("list");
+    private static final BString PERMISSION_ADD = StringUtils.fromString("add");
+    private static final BString PERMISSION_CREATE = StringUtils.fromString("create");
+    private static final BString PERMISSION_UPDATE = StringUtils.fromString("update");
+    private static final BString PERMISSION_PROCESS = StringUtils.fromString("process");
+    private static final BString RESOURCE_SERVICE = StringUtils.fromString("service");
+    private static final BString RESOURCE_CONTAINER = StringUtils.fromString("container");
+    private static final BString RESOURCE_OBJECT = StringUtils.fromString("object");
+
     private SasOps() {
     }
 
@@ -70,25 +91,25 @@ public final class SasOps {
     public static Object generateAccountSas(Environment env, BObject self, BMap<BString, Object> values) {
         return Ops.invoke(env, () -> {
             @SuppressWarnings("unchecked")
-            BMap<BString, Object> permissions = (BMap<BString, Object>) values.get(Constants.PERMISSIONS);
+            BMap<BString, Object> permissions = (BMap<BString, Object>) values.get(RecordMapper.PERMISSIONS);
             AccountSasPermission sasPermission = new AccountSasPermission()
-                    .setReadPermission(permissions.getBooleanValue(Constants.PERMISSION_READ))
-                    .setWritePermission(permissions.getBooleanValue(Constants.PERMISSION_WRITE))
-                    .setDeletePermission(permissions.getBooleanValue(Constants.PERMISSION_DELETE))
-                    .setListPermission(permissions.getBooleanValue(Constants.PERMISSION_LIST))
-                    .setAddPermission(permissions.getBooleanValue(Constants.PERMISSION_ADD))
-                    .setCreatePermission(permissions.getBooleanValue(Constants.PERMISSION_CREATE))
-                    .setUpdatePermission(permissions.getBooleanValue(Constants.PERMISSION_UPDATE))
-                    .setProcessMessages(permissions.getBooleanValue(Constants.PERMISSION_PROCESS));
+                    .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
+                    .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
+                    .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE))
+                    .setListPermission(permissions.getBooleanValue(PERMISSION_LIST))
+                    .setAddPermission(permissions.getBooleanValue(PERMISSION_ADD))
+                    .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
+                    .setUpdatePermission(permissions.getBooleanValue(PERMISSION_UPDATE))
+                    .setProcessMessages(permissions.getBooleanValue(PERMISSION_PROCESS));
             @SuppressWarnings("unchecked")
-            BMap<BString, Object> resourceTypes = (BMap<BString, Object>) values.get(Constants.RESOURCE_TYPES);
+            BMap<BString, Object> resourceTypes = (BMap<BString, Object>) values.get(RESOURCE_TYPES);
             AccountSasResourceType sasResourceTypes = new AccountSasResourceType()
-                    .setService(resourceTypes.getBooleanValue(Constants.RESOURCE_SERVICE))
-                    .setContainer(resourceTypes.getBooleanValue(Constants.RESOURCE_CONTAINER))
-                    .setObject(resourceTypes.getBooleanValue(Constants.RESOURCE_OBJECT));
+                    .setService(resourceTypes.getBooleanValue(RESOURCE_SERVICE))
+                    .setContainer(resourceTypes.getBooleanValue(RESOURCE_CONTAINER))
+                    .setObject(resourceTypes.getBooleanValue(RESOURCE_OBJECT));
             // This connector is Files-scoped, so the SAS is minted for the file service alone.
             AccountSasSignatureValues sdkValues = new AccountSasSignatureValues(
-                    ValueUtils.fromUtc((BArray) values.get(Constants.EXPIRY_TIME)),
+                    ValueUtils.fromUtc((BArray) values.get(EXPIRY_TIME)),
                     sasPermission,
                     new AccountSasService().setFileAccess(true),
                     sasResourceTypes);
@@ -99,25 +120,25 @@ public final class SasOps {
 
     private static ShareServiceSasSignatureValues shareSasValues(BMap<BString, Object> values, boolean shareScope) {
         @SuppressWarnings("unchecked")
-        BMap<BString, Object> permissions = (BMap<BString, Object>) values.get(Constants.PERMISSIONS);
-        java.time.OffsetDateTime expiry = ValueUtils.fromUtc((BArray) values.get(Constants.EXPIRY_TIME));
+        BMap<BString, Object> permissions = (BMap<BString, Object>) values.get(RecordMapper.PERMISSIONS);
+        java.time.OffsetDateTime expiry = ValueUtils.fromUtc((BArray) values.get(EXPIRY_TIME));
         ShareServiceSasSignatureValues sdkValues;
         if (shareScope) {
             sdkValues = new ShareServiceSasSignatureValues(expiry, new ShareSasPermission()
-                    .setReadPermission(permissions.getBooleanValue(Constants.PERMISSION_READ))
-                    .setCreatePermission(permissions.getBooleanValue(Constants.PERMISSION_CREATE))
-                    .setWritePermission(permissions.getBooleanValue(Constants.PERMISSION_WRITE))
-                    .setDeletePermission(permissions.getBooleanValue(Constants.PERMISSION_DELETE))
-                    .setListPermission(permissions.getBooleanValue(Constants.PERMISSION_LIST)));
+                    .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
+                    .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
+                    .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
+                    .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE))
+                    .setListPermission(permissions.getBooleanValue(PERMISSION_LIST)));
         } else {
             sdkValues = new ShareServiceSasSignatureValues(expiry, new ShareFileSasPermission()
-                    .setReadPermission(permissions.getBooleanValue(Constants.PERMISSION_READ))
-                    .setCreatePermission(permissions.getBooleanValue(Constants.PERMISSION_CREATE))
-                    .setWritePermission(permissions.getBooleanValue(Constants.PERMISSION_WRITE))
-                    .setDeletePermission(permissions.getBooleanValue(Constants.PERMISSION_DELETE)));
+                    .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
+                    .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
+                    .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
+                    .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE)));
         }
         applyCommon(values, sdkValues::setStartTime, sdkValues::setProtocol, sdkValues::setSasIpRange);
-        String identifier = ValueUtils.optString(values, Constants.IDENTIFIER);
+        String identifier = ValueUtils.optString(values, IDENTIFIER);
         if (identifier != null) {
             sdkValues.setIdentifier(identifier);
         }
@@ -128,15 +149,15 @@ public final class SasOps {
             java.util.function.Function<java.time.OffsetDateTime, ?> setStartTime,
             java.util.function.Function<SasProtocol, ?> setProtocol,
             java.util.function.Function<SasIpRange, ?> setIpRange) {
-        Object startTime = values.get(Constants.START_TIME);
+        Object startTime = values.get(START_TIME);
         if (startTime != null) {
             setStartTime.apply(ValueUtils.fromUtc((BArray) startTime));
         }
-        String protocol = ValueUtils.optString(values, Constants.PROTOCOL);
+        String protocol = ValueUtils.optString(values, RecordMapper.PROTOCOL);
         if (protocol != null) {
-            setProtocol.apply("https".equals(protocol) ? SasProtocol.HTTPS_ONLY : SasProtocol.HTTPS_HTTP);
+            setProtocol.apply(SAS_PROTOCOL_HTTPS.equals(protocol) ? SasProtocol.HTTPS_ONLY : SasProtocol.HTTPS_HTTP);
         }
-        String ipRange = ValueUtils.optString(values, Constants.IP_RANGE);
+        String ipRange = ValueUtils.optString(values, IP_RANGE);
         if (ipRange != null) {
             setIpRange.apply(SasIpRange.parse(ipRange));
         }
@@ -144,12 +165,12 @@ public final class SasOps {
 
     private static UserDelegationKey delegationKey(BMap<BString, Object> key) {
         return new UserDelegationKey()
-                .setSignedObjectId(key.getStringValue(Constants.SIGNED_OBJECT_ID).getValue())
-                .setSignedTenantId(key.getStringValue(Constants.SIGNED_TENANT_ID).getValue())
-                .setSignedStart(ValueUtils.fromUtc((BArray) key.get(Constants.SIGNED_START)))
-                .setSignedExpiry(ValueUtils.fromUtc((BArray) key.get(Constants.SIGNED_EXPIRY)))
-                .setSignedService(key.getStringValue(Constants.SIGNED_SERVICE).getValue())
-                .setSignedVersion(key.getStringValue(Constants.SIGNED_VERSION).getValue())
-                .setValue(key.getStringValue(Constants.VALUE).getValue());
+                .setSignedObjectId(key.getStringValue(RecordMapper.SIGNED_OBJECT_ID).getValue())
+                .setSignedTenantId(key.getStringValue(RecordMapper.SIGNED_TENANT_ID).getValue())
+                .setSignedStart(ValueUtils.fromUtc((BArray) key.get(RecordMapper.SIGNED_START)))
+                .setSignedExpiry(ValueUtils.fromUtc((BArray) key.get(RecordMapper.SIGNED_EXPIRY)))
+                .setSignedService(key.getStringValue(RecordMapper.SIGNED_SERVICE).getValue())
+                .setSignedVersion(key.getStringValue(RecordMapper.SIGNED_VERSION).getValue())
+                .setValue(key.getStringValue(RecordMapper.VALUE).getValue());
     }
 }

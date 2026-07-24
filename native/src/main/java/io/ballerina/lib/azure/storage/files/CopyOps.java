@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -37,6 +37,9 @@ import java.time.Duration;
  */
 public final class CopyOps {
 
+    // The Ballerina PermissionCopyMode enum value selecting an explicit permission.
+    private static final String PERMISSION_COPY_MODE_OVERRIDE = "override";
+
     private CopyOps() {
     }
 
@@ -71,13 +74,13 @@ public final class CopyOps {
         if (options != null) {
             @SuppressWarnings("unchecked")
             BMap<BString, Object> record = (BMap<BString, Object>) options;
-            sdkOptions.setMetadata(ValueUtils.optStringMap(record, Constants.METADATA))
-                    .setFilePermission(ValueUtils.optString(record, Constants.FILE_PERMISSION))
-                    .setSmbProperties(OptionsReader.smbProperties(record.get(Constants.SMB_PROPERTIES)))
-                    .setIgnoreReadOnly(record.getBooleanValue(Constants.IGNORE_READ_ONLY));
-            String copyMode = ValueUtils.optString(record, Constants.PERMISSION_COPY_MODE);
+            sdkOptions.setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA))
+                    .setFilePermission(ValueUtils.optString(record, OptionsReader.FILE_PERMISSION))
+                    .setSmbProperties(OptionsReader.smbProperties(record.get(OptionsReader.SMB_PROPERTIES)))
+                    .setIgnoreReadOnly(record.getBooleanValue(OptionsReader.IGNORE_READ_ONLY));
+            String copyMode = ValueUtils.optString(record, OptionsReader.PERMISSION_COPY_MODE);
             if (copyMode != null) {
-                sdkOptions.setPermissionCopyModeType("override".equals(copyMode)
+                sdkOptions.setPermissionCopyModeType(PERMISSION_COPY_MODE_OVERRIDE.equals(copyMode)
                         ? PermissionCopyModeType.OVERRIDE : PermissionCopyModeType.SOURCE);
             }
         }
@@ -97,7 +100,7 @@ public final class CopyOps {
             lastModified = lastModified == null ? properties.getLastModified() : lastModified;
         }
         return RecordMapper.copyInfo(info.getCopyId(),
-                info.getCopyStatus() == null ? "pending" : info.getCopyStatus().toString(),
+                info.getCopyStatus() == null ? RecordMapper.COPY_STATUS_PENDING : info.getCopyStatus().toString(),
                 eTag, lastModified);
     }
 }

@@ -1,7 +1,7 @@
 [package]
 org = "azure_files_samples"
 name = "share_handout"
-version = "0.1.0"
+version = "1.0.0"
 distribution = "2201.12.0"
 
 [build-options]

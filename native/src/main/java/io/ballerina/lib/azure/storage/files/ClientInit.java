@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -31,6 +31,7 @@ import com.azure.identity.WorkloadIdentityCredentialBuilder;
 import com.azure.storage.file.share.ShareServiceClient;
 import com.azure.storage.file.share.ShareServiceClientBuilder;
 import com.azure.storage.file.share.models.ShareTokenIntent;
+import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BError;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
@@ -50,6 +51,24 @@ import java.util.Base64;
  */
 public final class ClientInit {
 
+    // Field names of the auth and client configuration records (read only here).
+    private static final BString ACCOUNT_NAME = StringUtils.fromString("accountName");
+    private static final BString ACCOUNT_KEY = StringUtils.fromString("accountKey");
+    private static final BString SAS_TOKEN = StringUtils.fromString("sasToken");
+    private static final BString SAS_URL = StringUtils.fromString("sasUrl");
+    private static final BString CONNECTION_STRING = StringUtils.fromString("connectionString");
+    private static final BString SERVICE_URL = StringUtils.fromString("serviceUrl");
+    private static final BString AUTH = StringUtils.fromString("auth");
+    private static final BString RETRY_CONFIG = StringUtils.fromString("retryConfig");
+    private static final BString TRANSPORT_CONFIG = StringUtils.fromString("transportConfig");
+    private static final BString KIND = StringUtils.fromString("kind");
+    private static final BString TENANT_ID = StringUtils.fromString("tenantId");
+    private static final BString CLIENT_ID = StringUtils.fromString("clientId");
+    private static final BString CLIENT_SECRET = StringUtils.fromString("clientSecret");
+    private static final BString CERTIFICATE_PATH = StringUtils.fromString("certificatePath");
+    private static final BString CERTIFICATE_PASSWORD = StringUtils.fromString("certificatePassword");
+    private static final BString TOKEN_FILE_PATH = StringUtils.fromString("tokenFilePath");
+
     private ClientInit() {
     }
 
@@ -62,7 +81,7 @@ public final class ClientInit {
      */
     public static Object initAdminClient(BObject self, BMap<BString, Object> config) {
         try {
-            self.addNativeData(Constants.NATIVE_SERVICE_CLIENT, buildServiceClient(config));
+            self.addNativeData(Ops.NATIVE_SERVICE_CLIENT, buildServiceClient(config));
             return null;
         } catch (BError e) {
             return e;
@@ -86,8 +105,8 @@ public final class ClientInit {
                 return FilesErrorCreator.processingError("shareName must not be empty", null);
             }
             ShareServiceClient serviceClient = buildServiceClient(config);
-            self.addNativeData(Constants.NATIVE_SERVICE_CLIENT, serviceClient);
-            self.addNativeData(Constants.NATIVE_SHARE_CLIENT, serviceClient.getShareClient(share));
+            self.addNativeData(Ops.NATIVE_SERVICE_CLIENT, serviceClient);
+            self.addNativeData(Ops.NATIVE_SHARE_CLIENT, serviceClient.getShareClient(share));
             return null;
         } catch (BError e) {
             return e;
@@ -103,29 +122,29 @@ public final class ClientInit {
      * @return {@code null}
      */
     public static Object closeClient(BObject self) {
-        self.addNativeData(Constants.NATIVE_CLOSED, Boolean.TRUE);
+        self.addNativeData(Ops.NATIVE_CLOSED, Boolean.TRUE);
         return null;
     }
 
     @SuppressWarnings("unchecked")
     private static ShareServiceClient buildServiceClient(BMap<BString, Object> config) {
-        BMap<BString, Object> auth = (BMap<BString, Object>) config.getMapValue(Constants.AUTH);
+        BMap<BString, Object> auth = (BMap<BString, Object>) config.getMapValue(AUTH);
         ShareServiceClientBuilder builder = new ShareServiceClientBuilder();
-        Object retryConfig = config.get(Constants.RETRY_CONFIG);
+        Object retryConfig = config.get(RETRY_CONFIG);
         if (retryConfig != null) {
             builder.retryOptions(TransportSupport.retryOptions((BMap<BString, Object>) retryConfig));
         }
-        Object transportConfig = config.get(Constants.TRANSPORT_CONFIG);
+        Object transportConfig = config.get(TRANSPORT_CONFIG);
         if (transportConfig != null) {
             builder.httpClient(TransportSupport.httpClient((BMap<BString, Object>) transportConfig));
         }
-        if (auth.containsKey(Constants.ACCOUNT_KEY)) {
+        if (auth.containsKey(ACCOUNT_KEY)) {
             configureSharedKey(builder, auth);
-        } else if (auth.containsKey(Constants.SAS_TOKEN)) {
+        } else if (auth.containsKey(SAS_TOKEN)) {
             configureSas(builder, auth);
-        } else if (auth.containsKey(Constants.SAS_URL)) {
+        } else if (auth.containsKey(SAS_URL)) {
             configureSasUrl(builder, auth);
-        } else if (auth.containsKey(Constants.CONNECTION_STRING)) {
+        } else if (auth.containsKey(CONNECTION_STRING)) {
             configureConnectionString(builder, auth);
         } else {
             configureEntra(builder, auth);
@@ -138,14 +157,14 @@ public final class ClientInit {
     }
 
     private static void configureSharedKey(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
-        String accountName = requireNonEmpty(auth, Constants.ACCOUNT_NAME);
-        String accountKey = requireNonEmpty(auth, Constants.ACCOUNT_KEY);
+        String accountName = requireNonEmpty(auth, ACCOUNT_NAME);
+        String accountKey = requireNonEmpty(auth, ACCOUNT_KEY);
         try {
             Base64.getDecoder().decode(accountKey);
         } catch (IllegalArgumentException e) {
             throw FilesErrorCreator.processingError("accountKey is not a valid base64 string", e);
         }
-        String serviceUrl = ValueUtils.optString(auth, Constants.SERVICE_URL);
+        String serviceUrl = ValueUtils.optString(auth, SERVICE_URL);
         builder.endpoint(serviceUrl == null ? defaultEndpoint(accountName) : validateUrl(serviceUrl, "serviceUrl"))
                 .credential(new AzureNamedKeyCredential(accountName, accountKey));
         if (serviceUrl != null) {
@@ -183,35 +202,35 @@ public final class ClientInit {
      */
     private static void configureEntra(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
         TokenCredential credential;
-        if (auth.containsKey(Constants.CLIENT_SECRET)) {
+        if (auth.containsKey(CLIENT_SECRET)) {
             credential = new ClientSecretCredentialBuilder()
-                    .tenantId(requireNonEmpty(auth, Constants.TENANT_ID))
-                    .clientId(requireNonEmpty(auth, Constants.CLIENT_ID))
-                    .clientSecret(requireNonEmpty(auth, Constants.CLIENT_SECRET))
+                    .tenantId(requireNonEmpty(auth, TENANT_ID))
+                    .clientId(requireNonEmpty(auth, CLIENT_ID))
+                    .clientSecret(requireNonEmpty(auth, CLIENT_SECRET))
                     .build();
-        } else if (auth.containsKey(Constants.CERTIFICATE_PATH)) {
-            String certificatePath = requireNonEmpty(auth, Constants.CERTIFICATE_PATH);
+        } else if (auth.containsKey(CERTIFICATE_PATH)) {
+            String certificatePath = requireNonEmpty(auth, CERTIFICATE_PATH);
             if (!Files.isRegularFile(Path.of(certificatePath))) {
                 throw FilesErrorCreator.processingError(
                         "certificatePath does not point to a readable file: " + certificatePath, null);
             }
             ClientCertificateCredentialBuilder certificateBuilder = new ClientCertificateCredentialBuilder()
-                    .tenantId(requireNonEmpty(auth, Constants.TENANT_ID))
-                    .clientId(requireNonEmpty(auth, Constants.CLIENT_ID));
-            String certificatePassword = ValueUtils.optString(auth, Constants.CERTIFICATE_PASSWORD);
+                    .tenantId(requireNonEmpty(auth, TENANT_ID))
+                    .clientId(requireNonEmpty(auth, CLIENT_ID));
+            String certificatePassword = ValueUtils.optString(auth, CERTIFICATE_PASSWORD);
             credential = (certificatePassword == null
                     ? certificateBuilder.pemCertificate(certificatePath)
                     : certificateBuilder.pfxCertificate(certificatePath, certificatePassword))
                     .build();
-        } else if (auth.containsKey(Constants.TOKEN_FILE_PATH)) {
+        } else if (auth.containsKey(TOKEN_FILE_PATH)) {
             credential = new WorkloadIdentityCredentialBuilder()
-                    .tenantId(requireNonEmpty(auth, Constants.TENANT_ID))
-                    .clientId(requireNonEmpty(auth, Constants.CLIENT_ID))
-                    .tokenFilePath(requireNonEmpty(auth, Constants.TOKEN_FILE_PATH))
+                    .tenantId(requireNonEmpty(auth, TENANT_ID))
+                    .clientId(requireNonEmpty(auth, CLIENT_ID))
+                    .tokenFilePath(requireNonEmpty(auth, TOKEN_FILE_PATH))
                     .build();
-        } else if ("managed-identity".equals(ValueUtils.optString(auth, Constants.KIND))) {
+        } else if ("managed-identity".equals(ValueUtils.optString(auth, KIND))) {
             ManagedIdentityCredentialBuilder managedBuilder = new ManagedIdentityCredentialBuilder();
-            String clientId = ValueUtils.optString(auth, Constants.CLIENT_ID);
+            String clientId = ValueUtils.optString(auth, CLIENT_ID);
             if (clientId != null) {
                 managedBuilder.clientId(clientId);
             }
@@ -219,8 +238,8 @@ public final class ClientInit {
         } else {
             credential = new DefaultAzureCredentialBuilder().build();
         }
-        String accountName = requireNonEmpty(auth, Constants.ACCOUNT_NAME);
-        String serviceUrl = ValueUtils.optString(auth, Constants.SERVICE_URL);
+        String accountName = requireNonEmpty(auth, ACCOUNT_NAME);
+        String serviceUrl = ValueUtils.optString(auth, SERVICE_URL);
         builder.endpoint(serviceUrl == null ? defaultEndpoint(accountName) : validateUrl(serviceUrl, "serviceUrl"))
                 .credential(credential)
                 .shareTokenIntent(ShareTokenIntent.BACKUP);
@@ -230,13 +249,13 @@ public final class ClientInit {
     }
 
     private static void configureSas(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
-        String accountName = requireNonEmpty(auth, Constants.ACCOUNT_NAME);
-        String sasToken = requireNonEmpty(auth, Constants.SAS_TOKEN);
+        String accountName = requireNonEmpty(auth, ACCOUNT_NAME);
+        String sasToken = requireNonEmpty(auth, SAS_TOKEN);
         builder.endpoint(defaultEndpoint(accountName)).credential(new AzureSasCredential(sasToken));
     }
 
     private static void configureSasUrl(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
-        String sasUrl = requireNonEmpty(auth, Constants.SAS_URL);
+        String sasUrl = requireNonEmpty(auth, SAS_URL);
         URI uri;
         try {
             uri = new URI(sasUrl);
@@ -256,7 +275,7 @@ public final class ClientInit {
     }
 
     private static void configureConnectionString(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
-        String connectionString = requireNonEmpty(auth, Constants.CONNECTION_STRING);
+        String connectionString = requireNonEmpty(auth, CONNECTION_STRING);
         if (!connectionString.contains("FileEndpoint=") && !connectionString.contains("AccountName=")) {
             throw FilesErrorCreator.processingError(
                     "the connection string must include FileEndpoint= or AccountName= so the file-service "

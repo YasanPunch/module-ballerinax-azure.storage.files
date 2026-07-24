@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -26,6 +26,7 @@ import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.options.ShareFileCreateOptions;
 import com.azure.storage.file.share.options.ShareFileSetPropertiesOptions;
 import io.ballerina.runtime.api.Environment;
+import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
 import io.ballerina.runtime.api.values.BString;
@@ -34,6 +35,9 @@ import io.ballerina.runtime.api.values.BString;
  * Native implementations of the basic {@code Client} file operations.
  */
 public final class FileOps {
+
+    // The FileSetPropertiesOptions resize field, read only here.
+    private static final BString NEW_FILE_SIZE_BYTES = StringUtils.fromString("newFileSizeBytes");
 
     private FileOps() {
     }
@@ -64,8 +68,8 @@ public final class FileOps {
             BMap<BString, Object> options) {
         return Ops.invoke(env, () -> {
             ShareFileClient client = fileClient(self, path);
-            Object newSize = options.get(Constants.NEW_FILE_SIZE_BYTES);
-            Object headers = options.get(Constants.CONTENT_HEADERS);
+            Object newSize = options.get(NEW_FILE_SIZE_BYTES);
+            Object headers = options.get(OptionsReader.CONTENT_HEADERS);
             // The wire operation replaces the whole property set: an omitted size or content
             // header is cleared, not preserved. The current values are re-sent for whatever
             // the caller left out, honouring the only-what-is-set-changes contract.
@@ -82,9 +86,9 @@ public final class FileOps {
                         .setCacheControl(current.getCacheControl())
                         .setContentMd5(current.getContentMd5()));
             }
-            sdkOptions.setSmbProperties(OptionsReader.smbProperties(options.get(Constants.SMB_PROPERTIES)))
-                    .setPosixProperties(OptionsReader.posixProperties(options.get(Constants.POSIX_PROPERTIES)));
-            String permission = ValueUtils.optString(options, Constants.FILE_PERMISSION);
+            sdkOptions.setSmbProperties(OptionsReader.smbProperties(options.get(OptionsReader.SMB_PROPERTIES)))
+                    .setPosixProperties(OptionsReader.posixProperties(options.get(OptionsReader.POSIX_PROPERTIES)));
+            String permission = ValueUtils.optString(options, OptionsReader.FILE_PERMISSION);
             if (permission != null) {
                 sdkOptions.setFilePermissions(new ShareFilePermission().setPermission(permission));
             }
@@ -129,11 +133,11 @@ public final class FileOps {
         if (options != null) {
             @SuppressWarnings("unchecked")
             BMap<BString, Object> record = (BMap<BString, Object>) options;
-            sdkOptions.setShareFileHttpHeaders(OptionsReader.contentHeaders(record.get(Constants.CONTENT_HEADERS)))
-                    .setMetadata(ValueUtils.optStringMap(record, Constants.METADATA))
-                    .setFilePermission(ValueUtils.optString(record, Constants.FILE_PERMISSION))
-                    .setSmbProperties(OptionsReader.smbProperties(record.get(Constants.SMB_PROPERTIES)))
-                    .setPosixProperties(OptionsReader.posixProperties(record.get(Constants.POSIX_PROPERTIES)));
+            sdkOptions.setShareFileHttpHeaders(OptionsReader.contentHeaders(record.get(OptionsReader.CONTENT_HEADERS)))
+                    .setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA))
+                    .setFilePermission(ValueUtils.optString(record, OptionsReader.FILE_PERMISSION))
+                    .setSmbProperties(OptionsReader.smbProperties(record.get(OptionsReader.SMB_PROPERTIES)))
+                    .setPosixProperties(OptionsReader.posixProperties(record.get(OptionsReader.POSIX_PROPERTIES)));
         }
         return sdkOptions;
     }

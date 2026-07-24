@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -42,6 +42,11 @@ import java.util.function.Supplier;
  */
 final class Ops {
 
+    // Keys under which client-lifecycle state is stored on client objects.
+    static final String NATIVE_SERVICE_CLIENT = "azure.storage.files.native.serviceClient";
+    static final String NATIVE_SHARE_CLIENT = "azure.storage.files.native.shareClient";
+    static final String NATIVE_CLOSED = "azure.storage.files.native.closed";
+
     private Ops() {
     }
 
@@ -79,7 +84,7 @@ final class Ops {
      */
     static ShareServiceClient serviceClient(BObject self) {
         ensureOpen(self);
-        return (ShareServiceClient) self.getNativeData(Constants.NATIVE_SERVICE_CLIENT);
+        return (ShareServiceClient) self.getNativeData(NATIVE_SERVICE_CLIENT);
     }
 
     /**
@@ -90,7 +95,7 @@ final class Ops {
      */
     static ShareClient shareClient(BObject self) {
         ensureOpen(self);
-        return (ShareClient) self.getNativeData(Constants.NATIVE_SHARE_CLIENT);
+        return (ShareClient) self.getNativeData(NATIVE_SHARE_CLIENT);
     }
 
     /**
@@ -147,7 +152,7 @@ final class Ops {
     }
 
     private static void ensureOpen(BObject self) {
-        if (Boolean.TRUE.equals(self.getNativeData(Constants.NATIVE_CLOSED))) {
+        if (Boolean.TRUE.equals(self.getNativeData(NATIVE_CLOSED))) {
             throw FilesErrorCreator.processingError("the client is closed", null);
         }
     }

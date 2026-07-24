@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -38,7 +38,7 @@ public final class HandleOps {
 
     public static Object listFileHandles(Environment env, BObject self, BString path) {
         return Ops.invoke(env, () -> {
-            BArray result = RecordMapper.recordArray(Constants.RECORD_HANDLE_INFO);
+            BArray result = RecordMapper.recordArray(RecordMapper.RECORD_HANDLE_INFO);
             for (HandleItem item : FileOps.fileClient(self, path).listHandles()) {
                 result.append(RecordMapper.handleInfo(item));
             }
@@ -58,7 +58,7 @@ public final class HandleOps {
 
     public static Object listDirectoryHandles(Environment env, BObject self, BString directoryPath) {
         return Ops.invoke(env, () -> {
-            BArray result = RecordMapper.recordArray(Constants.RECORD_HANDLE_INFO);
+            BArray result = RecordMapper.recordArray(RecordMapper.RECORD_HANDLE_INFO);
             for (HandleItem item : directoryClient(self, directoryPath)
                     .listHandles(null, false, null, Context.NONE)) {
                 result.append(RecordMapper.handleInfo(item));

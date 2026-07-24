@@ -42,3 +42,10 @@ docker.env
 hs_err_pid*
 replay_pid*
 
+# Local design and development material (not for publication). The published module
+# specification at docs/spec/ is the one exception under docs/.
+CLAUDE.md
+docs/*
+!docs/spec/
+standard-library-definition-proposal.md
+.claude/

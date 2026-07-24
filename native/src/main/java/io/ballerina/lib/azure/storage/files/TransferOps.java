@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -43,6 +43,9 @@ import java.nio.file.Path;
  * stream, download as a Ballerina stream).
  */
 public final class TransferOps {
+
+    // Key under which an open content input stream is stored on a stream generator object.
+    static final String NATIVE_INPUT_STREAM = "azure.storage.files.native.inputStream";
 
     private TransferOps() {
     }
@@ -124,8 +127,8 @@ public final class TransferOps {
             if (options != null) {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) options;
-                range = record.get(Constants.RANGE);
-                snapshotId = ValueUtils.optString(record, Constants.SNAPSHOT_ID);
+                range = record.get(OptionsReader.RANGE);
+                snapshotId = ValueUtils.optString(record, OptionsReader.SNAPSHOT_ID);
             }
             ShareFileClient client = FileOps.fileClient(self, sourcePath, snapshotId);
             try {
@@ -153,14 +156,14 @@ public final class TransferOps {
             if (options != null) {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) options;
-                range = record.get(Constants.RANGE);
-                snapshotId = ValueUtils.optString(record, Constants.SNAPSHOT_ID);
+                range = record.get(OptionsReader.RANGE);
+                snapshotId = ValueUtils.optString(record, OptionsReader.SNAPSHOT_ID);
             }
             ShareFileClient client = FileOps.fileClient(self, path, snapshotId);
             StorageFileInputStream stream = range == null
                     ? client.openInputStream()
                     : client.openInputStream(OptionsReader.range(range));
-            generator.addNativeData(Constants.NATIVE_INPUT_STREAM, stream);
+            generator.addNativeData(NATIVE_INPUT_STREAM, stream);
             return null;
         });
     }
@@ -169,7 +172,7 @@ public final class TransferOps {
     public static Object nextContentChunk(Environment env, BObject generator) {
         return Ops.invoke(env, () -> {
             StorageFileInputStream stream =
-                    (StorageFileInputStream) generator.getNativeData(Constants.NATIVE_INPUT_STREAM);
+                    (StorageFileInputStream) generator.getNativeData(NATIVE_INPUT_STREAM);
             if (stream == null) {
                 return null;
             }
@@ -197,9 +200,9 @@ public final class TransferOps {
 
     private static void closeQuietly(BObject generator) {
         StorageFileInputStream stream =
-                (StorageFileInputStream) generator.getNativeData(Constants.NATIVE_INPUT_STREAM);
+                (StorageFileInputStream) generator.getNativeData(NATIVE_INPUT_STREAM);
         if (stream != null) {
-            generator.addNativeData(Constants.NATIVE_INPUT_STREAM, null);
+            generator.addNativeData(NATIVE_INPUT_STREAM, null);
             stream.close();
         }
     }

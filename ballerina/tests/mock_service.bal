@@ -1,4 +1,4 @@
-// Copyright (c) 2026 WSO2 LLC. (https://www.wso2.com) All Rights Reserved.
+// Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
 //
 // WSO2 LLC. licenses this file to you under the Apache License,
 // Version 2.0 (the "License"); you may not use this file except
@@ -108,7 +108,7 @@ service / on mockListener {
             }
         }
         byte[] payload = [];
-        var binaryPayload = req.getBinaryPayload();
+        byte[]|http:ClientError binaryPayload = req.getBinaryPayload();
         if binaryPayload is byte[] {
             payload = binaryPayload;
         }
@@ -308,7 +308,7 @@ function shareDispatch(string method, string shareName, string comp, string snap
         return okResponse(202);
     }
     if method == "PUT" && comp == "lease" {
-        var [response, newLeaseId, apply] = leaseAction(share.leaseId, headers);
+        [MockResponse, string?, boolean] [response, newLeaseId, apply] = leaseAction(share.leaseId, headers);
         if apply {
             share.leaseId = newLeaseId;
             if (headers["x-ms-lease-action"] ?: "") == "acquire" {
@@ -673,7 +673,7 @@ function fileDispatch(string method, string shareName, string path, string comp,
     }
     MockFile file = share.files.get(path);
     if method == "PUT" && comp == "lease" {
-        var [response, newLeaseId, apply] = leaseAction(file.leaseId, headers);
+        [MockResponse, string?, boolean] [response, newLeaseId, apply] = leaseAction(file.leaseId, headers);
         if apply {
             file.leaseId = newLeaseId;
         }

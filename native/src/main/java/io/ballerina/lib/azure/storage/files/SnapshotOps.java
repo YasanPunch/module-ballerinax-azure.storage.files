@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -55,7 +55,7 @@ public final class SnapshotOps {
     public static Object listShareSnapshots(Environment env, BObject self) {
         return Ops.invoke(env, () -> {
             String shareName = Ops.shareClient(self).getShareName();
-            BArray result = RecordMapper.recordArray(Constants.RECORD_SHARE_SNAPSHOT_INFO);
+            BArray result = RecordMapper.recordArray(RecordMapper.RECORD_SHARE_SNAPSHOT_INFO);
             ListSharesOptions options = new ListSharesOptions()
                     .setPrefix(shareName)
                     .setIncludeSnapshots(true);
@@ -85,7 +85,7 @@ public final class SnapshotOps {
             if (options != null) {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) options;
-                Object range = record.get(Constants.RANGE);
+                Object range = record.get(OptionsReader.RANGE);
                 if (range != null) {
                     sdkOptions.setRange(OptionsReader.range(range));
                 }

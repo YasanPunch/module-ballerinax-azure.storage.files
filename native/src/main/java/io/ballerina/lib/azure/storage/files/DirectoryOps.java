@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -43,10 +43,10 @@ public final class DirectoryOps {
             if (options != null) {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) options;
-                sdkOptions.setMetadata(ValueUtils.optStringMap(record, Constants.METADATA))
-                        .setFilePermission(ValueUtils.optString(record, Constants.FILE_PERMISSION))
-                        .setSmbProperties(OptionsReader.smbProperties(record.get(Constants.SMB_PROPERTIES)))
-                        .setPosixProperties(OptionsReader.posixProperties(record.get(Constants.POSIX_PROPERTIES)));
+                sdkOptions.setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA))
+                        .setFilePermission(ValueUtils.optString(record, OptionsReader.FILE_PERMISSION))
+                        .setSmbProperties(OptionsReader.smbProperties(record.get(OptionsReader.SMB_PROPERTIES)))
+                        .setPosixProperties(OptionsReader.posixProperties(record.get(OptionsReader.POSIX_PROPERTIES)));
             }
             directoryClient(self, directoryPath).createWithResponse(sdkOptions, null, null);
             return null;
@@ -64,9 +64,9 @@ public final class DirectoryOps {
             BMap<BString, Object> options) {
         return Ops.invoke(env, () -> {
             ShareDirectorySetPropertiesOptions sdkOptions = new ShareDirectorySetPropertiesOptions()
-                    .setSmbProperties(OptionsReader.smbProperties(options.get(Constants.SMB_PROPERTIES)))
-                    .setPosixProperties(OptionsReader.posixProperties(options.get(Constants.POSIX_PROPERTIES)));
-            String permission = ValueUtils.optString(options, Constants.FILE_PERMISSION);
+                    .setSmbProperties(OptionsReader.smbProperties(options.get(OptionsReader.SMB_PROPERTIES)))
+                    .setPosixProperties(OptionsReader.posixProperties(options.get(OptionsReader.POSIX_PROPERTIES)));
+            String permission = ValueUtils.optString(options, OptionsReader.FILE_PERMISSION);
             if (permission != null) {
                 sdkOptions.setFilePermissions(new ShareFilePermission().setPermission(permission));
             }
@@ -110,10 +110,10 @@ public final class DirectoryOps {
         if (options != null) {
             @SuppressWarnings("unchecked")
             BMap<BString, Object> record = (BMap<BString, Object>) options;
-            sdkOptions.setReplaceIfExists(record.getBooleanValue(Constants.REPLACE_IF_EXISTS))
-                    .setIgnoreReadOnly(record.getBooleanValue(Constants.IGNORE_READ_ONLY))
-                    .setFilePermission(ValueUtils.optString(record, Constants.FILE_PERMISSION))
-                    .setMetadata(ValueUtils.optStringMap(record, Constants.METADATA));
+            sdkOptions.setReplaceIfExists(record.getBooleanValue(OptionsReader.REPLACE_IF_EXISTS))
+                    .setIgnoreReadOnly(record.getBooleanValue(OptionsReader.IGNORE_READ_ONLY))
+                    .setFilePermission(ValueUtils.optString(record, OptionsReader.FILE_PERMISSION))
+                    .setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA));
         }
         return sdkOptions;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -49,39 +49,123 @@ import java.util.EnumSet;
  */
 final class RecordMapper {
 
+    // The Ballerina record type names and result-record field names the mapper materializes.
+    // Other classes reference these; the option-record vocabulary lives on OptionsReader.
+    static final String RECORD_SHARE_INFO = "ShareInfo";
+    static final String RECORD_SHARE_PROPERTIES = "ShareProperties";
+    static final String RECORD_DIRECTORY_PROPERTIES = "DirectoryProperties";
+    static final String RECORD_FILE_PROPERTIES = "FileProperties";
+    static final String RECORD_COPY_PROGRESS = "CopyProgress";
+    static final String RECORD_COPY_INFO = "CopyInfo";
+    static final String RECORD_COPY_STATUS_INFO = "CopyStatusInfo";
+    static final String RECORD_ENTRY = "Entry";
+    static final String RECORD_RANGE = "Range";
+    static final String RECORD_SMB_PROPERTIES = "SmbProperties";
+    static final String RECORD_POSIX_PROPERTIES = "PosixProperties";
+    static final String RECORD_SHARE_SNAPSHOT_INFO = "ShareSnapshotInfo";
+    static final String RECORD_RANGE_DIFF = "RangeDiff";
+    static final String RECORD_SIGNED_IDENTIFIER = "SignedIdentifier";
+    static final String RECORD_ACCESS_POLICY = "AccessPolicy";
+    static final String RECORD_HANDLE_INFO = "HandleInfo";
+    static final String RECORD_CLOSE_HANDLES_INFO = "CloseHandlesInfo";
+    static final String RECORD_SERVICE_PROPERTIES = "ServiceProperties";
+    static final String RECORD_METRICS = "Metrics";
+    static final String RECORD_CORS_RULE = "CorsRule";
+    static final String RECORD_PROTOCOL_SETTINGS = "ProtocolSettings";
+    static final String RECORD_USER_DELEGATION_KEY = "UserDelegationKey";
+    // The Ballerina CopyStatus enum value reported while a copy is still pending.
+    static final String COPY_STATUS_PENDING = "pending";
+    static final BString NAME = StringUtils.fromString("name");
+    static final BString PROPERTIES = StringUtils.fromString("properties");
+    static final BString IS_DELETED = StringUtils.fromString("isDeleted");
+    static final BString VERSION = StringUtils.fromString("version");
+    static final BString E_TAG = StringUtils.fromString("eTag");
+    static final BString LAST_MODIFIED = StringUtils.fromString("lastModified");
+    static final BString LEASE_STATE = StringUtils.fromString("leaseState");
+    static final BString LEASE_STATUS = StringUtils.fromString("leaseStatus");
+    static final BString LEASE_DURATION = StringUtils.fromString("leaseDuration");
+    static final BString PROVISIONED_IOPS = StringUtils.fromString("provisionedIops");
+    static final BString PROVISIONED_BANDWIDTH = StringUtils.fromString("provisionedBandwidthMibps");
+    static final BString IS_SERVER_ENCRYPTED = StringUtils.fromString("isServerEncrypted");
+    static final BString CONTENT_LENGTH = StringUtils.fromString("contentLength");
+    static final BString COPY_STATUS = StringUtils.fromString("copyStatus");
+    static final BString COPY_ID = StringUtils.fromString("copyId");
+    static final BString COPY_PROGRESS = StringUtils.fromString("copyProgress");
+    static final BString COPIED_BYTES = StringUtils.fromString("copiedBytes");
+    static final BString TOTAL_BYTES = StringUtils.fromString("totalBytes");
+    static final BString PATH = StringUtils.fromString("path");
+    static final BString IS_DIRECTORY = StringUtils.fromString("isDirectory");
+    static final BString SIZE_BYTES = StringUtils.fromString("sizeBytes");
+    static final BString ID = StringUtils.fromString("id");
+    static final BString START_BYTE = StringUtils.fromString("startByte");
+    static final BString END_BYTE = StringUtils.fromString("endByte");
+    static final BString RANGES = StringUtils.fromString("ranges");
+    static final BString CLEAR_RANGES = StringUtils.fromString("clearRanges");
+    static final BString HANDLE_ID = StringUtils.fromString("handleId");
+    static final BString SESSION_ID = StringUtils.fromString("sessionId");
+    static final BString CLIENT_IP = StringUtils.fromString("clientIp");
+    static final BString OPEN_TIME = StringUtils.fromString("openTime");
+    static final BString LAST_RECONNECT_TIME = StringUtils.fromString("lastReconnectTime");
+    static final BString CLOSED_HANDLES = StringUtils.fromString("closedHandles");
+    static final BString FAILED_HANDLES = StringUtils.fromString("failedHandles");
+    static final BString HOUR_METRICS = StringUtils.fromString("hourMetrics");
+    static final BString MINUTE_METRICS = StringUtils.fromString("minuteMetrics");
+    static final BString CORS = StringUtils.fromString("cors");
+    static final BString PROTOCOL = StringUtils.fromString("protocol");
+    static final BString ENABLED = StringUtils.fromString("enabled");
+    static final BString INCLUDE_APIS = StringUtils.fromString("includeApis");
+    static final BString RETENTION_DAYS = StringUtils.fromString("retentionDays");
+    static final BString ALLOWED_ORIGINS = StringUtils.fromString("allowedOrigins");
+    static final BString ALLOWED_METHODS = StringUtils.fromString("allowedMethods");
+    static final BString ALLOWED_HEADERS = StringUtils.fromString("allowedHeaders");
+    static final BString EXPOSED_HEADERS = StringUtils.fromString("exposedHeaders");
+    static final BString MAX_AGE_IN_SECONDS = StringUtils.fromString("maxAgeInSeconds");
+    static final BString SMB_MULTICHANNEL_ENABLED = StringUtils.fromString("smbMultichannelEnabled");
+    static final BString SIGNED_OBJECT_ID = StringUtils.fromString("signedObjectId");
+    static final BString SIGNED_TENANT_ID = StringUtils.fromString("signedTenantId");
+    static final BString SIGNED_START = StringUtils.fromString("signedStart");
+    static final BString SIGNED_EXPIRY = StringUtils.fromString("signedExpiry");
+    static final BString SIGNED_SERVICE = StringUtils.fromString("signedService");
+    static final BString SIGNED_VERSION = StringUtils.fromString("signedVersion");
+    static final BString VALUE = StringUtils.fromString("value");
+    static final BString ACCESS_POLICY = StringUtils.fromString("accessPolicy");
+    static final BString STARTS_ON = StringUtils.fromString("startsOn");
+    static final BString EXPIRES_ON = StringUtils.fromString("expiresOn");
+    static final BString PERMISSIONS = StringUtils.fromString("permissions");
+
     private RecordMapper() {
     }
 
     /** Maps one listed share to a `ShareInfo` record. */
     static BMap<BString, Object> shareInfo(ShareItem item) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_SHARE_INFO);
-        record.put(Constants.NAME, StringUtils.fromString(item.getName()));
-        record.put(Constants.PROPERTIES, shareProperties(item.getProperties()));
+        BMap<BString, Object> record = newRecord(RECORD_SHARE_INFO);
+        record.put(NAME, StringUtils.fromString(item.getName()));
+        record.put(PROPERTIES, shareProperties(item.getProperties()));
         if (item.getMetadata() != null && !item.getMetadata().isEmpty()) {
-            record.put(Constants.METADATA, ValueUtils.toBStringMap(item.getMetadata()));
+            record.put(OptionsReader.METADATA, ValueUtils.toBStringMap(item.getMetadata()));
         }
         if (item.getSnapshot() != null) {
-            record.put(Constants.SNAPSHOT_ID, StringUtils.fromString(item.getSnapshot()));
+            record.put(OptionsReader.SNAPSHOT_ID, StringUtils.fromString(item.getSnapshot()));
         }
         if (item.isDeleted() != null) {
-            record.put(Constants.IS_DELETED, item.isDeleted());
+            record.put(IS_DELETED, item.isDeleted());
         }
         if (item.getVersion() != null) {
-            record.put(Constants.VERSION, StringUtils.fromString(item.getVersion()));
+            record.put(VERSION, StringUtils.fromString(item.getVersion()));
         }
         return record;
     }
 
     /** Maps SDK share properties to a `ShareProperties` record. */
     static BMap<BString, Object> shareProperties(ShareProperties p) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_SHARE_PROPERTIES);
-        record.put(Constants.QUOTA_IN_GB, (long) p.getQuota());
-        record.put(Constants.ACCESS_TIER, StringUtils.fromString(
+        BMap<BString, Object> record = newRecord(RECORD_SHARE_PROPERTIES);
+        record.put(OptionsReader.QUOTA_IN_GB, (long) p.getQuota());
+        record.put(OptionsReader.ACCESS_TIER, StringUtils.fromString(
                 p.getAccessTier() == null ? "TransactionOptimized" : p.getAccessTier()));
-        record.put(Constants.E_TAG, StringUtils.fromString(p.getETag()));
-        record.put(Constants.LAST_MODIFIED, ValueUtils.toUtc(p.getLastModified()));
+        record.put(E_TAG, StringUtils.fromString(p.getETag()));
+        record.put(LAST_MODIFIED, ValueUtils.toUtc(p.getLastModified()));
         if (p.getMetadata() != null && !p.getMetadata().isEmpty()) {
-            record.put(Constants.METADATA, ValueUtils.toBStringMap(p.getMetadata()));
+            record.put(OptionsReader.METADATA, ValueUtils.toBStringMap(p.getMetadata()));
         }
         ShareProtocols protocols = p.getProtocols();
         if (protocols != null) {
@@ -94,31 +178,31 @@ final class RecordMapper {
                 array.append(StringUtils.fromString("NFS"));
             }
             if (array.size() > 0) {
-                record.put(Constants.ENABLED_PROTOCOLS, array);
+                record.put(OptionsReader.ENABLED_PROTOCOLS, array);
             }
         }
         if (p.getRootSquash() != null) {
-            record.put(Constants.ROOT_SQUASH, StringUtils.fromString(p.getRootSquash().toString()));
+            record.put(OptionsReader.ROOT_SQUASH, StringUtils.fromString(p.getRootSquash().toString()));
         }
         putLeaseFields(record, p.getLeaseState(), p.getLeaseStatus(), p.getLeaseDuration());
         if (p.getProvisionedIops() != null) {
-            record.put(Constants.PROVISIONED_IOPS, p.getProvisionedIops().longValue());
+            record.put(PROVISIONED_IOPS, p.getProvisionedIops().longValue());
         }
         if (p.getProvisionedBandwidthMiBps() != null) {
-            record.put(Constants.PROVISIONED_BANDWIDTH, p.getProvisionedBandwidthMiBps().longValue());
+            record.put(PROVISIONED_BANDWIDTH, p.getProvisionedBandwidthMiBps().longValue());
         }
         return record;
     }
 
     /** Maps SDK directory properties to a `DirectoryProperties` record. */
     static BMap<BString, Object> directoryProperties(ShareDirectoryProperties p) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_DIRECTORY_PROPERTIES);
-        record.put(Constants.E_TAG, StringUtils.fromString(p.getETag()));
-        record.put(Constants.LAST_MODIFIED, ValueUtils.toUtc(p.getLastModified()));
+        BMap<BString, Object> record = newRecord(RECORD_DIRECTORY_PROPERTIES);
+        record.put(E_TAG, StringUtils.fromString(p.getETag()));
+        record.put(LAST_MODIFIED, ValueUtils.toUtc(p.getLastModified()));
         if (p.getMetadata() != null && !p.getMetadata().isEmpty()) {
-            record.put(Constants.METADATA, ValueUtils.toBStringMap(p.getMetadata()));
+            record.put(OptionsReader.METADATA, ValueUtils.toBStringMap(p.getMetadata()));
         }
-        record.put(Constants.IS_SERVER_ENCRYPTED, p.isServerEncrypted());
+        record.put(IS_SERVER_ENCRYPTED, p.isServerEncrypted());
         putSmbProperties(record, p.getSmbProperties());
         putPosixProperties(record, p.getPosixProperties());
         return record;
@@ -126,39 +210,39 @@ final class RecordMapper {
 
     /** Maps SDK file properties to a `FileProperties` record. */
     static BMap<BString, Object> fileProperties(ShareFileProperties p) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_FILE_PROPERTIES);
-        record.put(Constants.E_TAG, StringUtils.fromString(p.getETag()));
-        record.put(Constants.LAST_MODIFIED, ValueUtils.toUtc(p.getLastModified()));
-        record.put(Constants.CONTENT_LENGTH, p.getContentLength());
-        record.put(Constants.CONTENT_TYPE, StringUtils.fromString(
+        BMap<BString, Object> record = newRecord(RECORD_FILE_PROPERTIES);
+        record.put(E_TAG, StringUtils.fromString(p.getETag()));
+        record.put(LAST_MODIFIED, ValueUtils.toUtc(p.getLastModified()));
+        record.put(CONTENT_LENGTH, p.getContentLength());
+        record.put(OptionsReader.CONTENT_TYPE, StringUtils.fromString(
                 p.getContentType() == null ? "application/octet-stream" : p.getContentType()));
         if (p.getContentEncoding() != null) {
-            record.put(Constants.CONTENT_ENCODING, StringUtils.fromString(p.getContentEncoding()));
+            record.put(OptionsReader.CONTENT_ENCODING, StringUtils.fromString(p.getContentEncoding()));
         }
         if (p.getContentDisposition() != null) {
-            record.put(Constants.CONTENT_DISPOSITION, StringUtils.fromString(p.getContentDisposition()));
+            record.put(OptionsReader.CONTENT_DISPOSITION, StringUtils.fromString(p.getContentDisposition()));
         }
         if (p.getCacheControl() != null) {
-            record.put(Constants.CACHE_CONTROL, StringUtils.fromString(p.getCacheControl()));
+            record.put(OptionsReader.CACHE_CONTROL, StringUtils.fromString(p.getCacheControl()));
         }
         if (p.getContentMd5() != null) {
-            record.put(Constants.CONTENT_MD5,
+            record.put(OptionsReader.CONTENT_MD5,
                     StringUtils.fromString(Base64.getEncoder().encodeToString(p.getContentMd5())));
         }
         if (p.getMetadata() != null && !p.getMetadata().isEmpty()) {
-            record.put(Constants.METADATA, ValueUtils.toBStringMap(p.getMetadata()));
+            record.put(OptionsReader.METADATA, ValueUtils.toBStringMap(p.getMetadata()));
         }
-        record.put(Constants.IS_SERVER_ENCRYPTED, Boolean.TRUE.equals(p.isServerEncrypted()));
+        record.put(IS_SERVER_ENCRYPTED, Boolean.TRUE.equals(p.isServerEncrypted()));
         putLeaseFields(record, p.getLeaseState(), p.getLeaseStatus(), p.getLeaseDuration());
         if (p.getCopyStatus() != null) {
-            record.put(Constants.COPY_STATUS, StringUtils.fromString(p.getCopyStatus().toString()));
+            record.put(COPY_STATUS, StringUtils.fromString(p.getCopyStatus().toString()));
         }
         if (p.getCopyId() != null) {
-            record.put(Constants.COPY_ID, StringUtils.fromString(p.getCopyId()));
+            record.put(COPY_ID, StringUtils.fromString(p.getCopyId()));
         }
         BMap<BString, Object> progress = copyProgress(p.getCopyProgress());
         if (progress != null) {
-            record.put(Constants.COPY_PROGRESS, progress);
+            record.put(COPY_PROGRESS, progress);
         }
         putSmbProperties(record, p.getSmbProperties());
         putPosixProperties(record, p.getPosixProperties());
@@ -180,9 +264,9 @@ final class RecordMapper {
         try {
             long copied = Long.parseLong(raw.substring(0, slash).trim());
             long total = Long.parseLong(raw.substring(slash + 1).trim());
-            BMap<BString, Object> record = newRecord(Constants.RECORD_COPY_PROGRESS);
-            record.put(Constants.COPIED_BYTES, copied);
-            record.put(Constants.TOTAL_BYTES, total);
+            BMap<BString, Object> record = newRecord(RECORD_COPY_PROGRESS);
+            record.put(COPIED_BYTES, copied);
+            record.put(TOTAL_BYTES, total);
             return record;
         } catch (NumberFormatException e) {
             return null;
@@ -192,11 +276,11 @@ final class RecordMapper {
     /** Builds a `CopyInfo` record from the copy-start snapshot values. */
     static BMap<BString, Object> copyInfo(String copyId, String copyStatus, String eTag,
                                           java.time.OffsetDateTime lastModified) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_COPY_INFO);
-        record.put(Constants.COPY_ID, StringUtils.fromString(copyId));
-        record.put(Constants.COPY_STATUS, StringUtils.fromString(copyStatus));
-        record.put(Constants.E_TAG, StringUtils.fromString(eTag));
-        record.put(Constants.LAST_MODIFIED, ValueUtils.toUtc(lastModified));
+        BMap<BString, Object> record = newRecord(RECORD_COPY_INFO);
+        record.put(COPY_ID, StringUtils.fromString(copyId));
+        record.put(COPY_STATUS, StringUtils.fromString(copyStatus));
+        record.put(E_TAG, StringUtils.fromString(eTag));
+        record.put(LAST_MODIFIED, ValueUtils.toUtc(lastModified));
         return record;
     }
 
@@ -208,13 +292,13 @@ final class RecordMapper {
         if (p.getCopyId() == null) {
             return null;
         }
-        BMap<BString, Object> record = newRecord(Constants.RECORD_COPY_STATUS_INFO);
-        record.put(Constants.COPY_ID, StringUtils.fromString(p.getCopyId()));
-        record.put(Constants.COPY_STATUS, StringUtils.fromString(
-                p.getCopyStatus() == null ? "pending" : p.getCopyStatus().toString()));
+        BMap<BString, Object> record = newRecord(RECORD_COPY_STATUS_INFO);
+        record.put(COPY_ID, StringUtils.fromString(p.getCopyId()));
+        record.put(COPY_STATUS, StringUtils.fromString(
+                p.getCopyStatus() == null ? COPY_STATUS_PENDING : p.getCopyStatus().toString()));
         BMap<BString, Object> progress = copyProgress(p.getCopyProgress());
         if (progress != null) {
-            record.put(Constants.COPY_PROGRESS, progress);
+            record.put(COPY_PROGRESS, progress);
         }
         return record;
     }
@@ -228,21 +312,21 @@ final class RecordMapper {
      * @return the `Entry` record
      */
     static BMap<BString, Object> entry(ShareFileItem item, String parentPath) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_ENTRY);
+        BMap<BString, Object> record = newRecord(RECORD_ENTRY);
         String path = parentPath.isEmpty() ? "/" + item.getName() : "/" + parentPath + "/" + item.getName();
-        record.put(Constants.PATH, StringUtils.fromString(path));
-        record.put(Constants.NAME, StringUtils.fromString(item.getName()));
-        record.put(Constants.IS_DIRECTORY, item.isDirectory());
+        record.put(PATH, StringUtils.fromString(path));
+        record.put(NAME, StringUtils.fromString(item.getName()));
+        record.put(IS_DIRECTORY, item.isDirectory());
         if (item.getFileSize() != null) {
-            record.put(Constants.SIZE_BYTES, item.getFileSize());
+            record.put(SIZE_BYTES, item.getFileSize());
         }
-        record.put(Constants.ID, StringUtils.fromString(item.getId() == null ? "" : item.getId()));
+        record.put(ID, StringUtils.fromString(item.getId() == null ? "" : item.getId()));
         if (item.getProperties() != null) {
             if (item.getProperties().getETag() != null) {
-                record.put(Constants.E_TAG, StringUtils.fromString(item.getProperties().getETag()));
+                record.put(E_TAG, StringUtils.fromString(item.getProperties().getETag()));
             }
             if (item.getProperties().getLastModified() != null) {
-                record.put(Constants.LAST_MODIFIED, ValueUtils.toUtc(item.getProperties().getLastModified()));
+                record.put(LAST_MODIFIED, ValueUtils.toUtc(item.getProperties().getLastModified()));
             }
         }
         return record;
@@ -250,162 +334,162 @@ final class RecordMapper {
 
     /** Maps one SDK range to a `Range` record. */
     static BMap<BString, Object> range(ShareFileRange r) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_RANGE);
-        record.put(Constants.START_BYTE, r.getStart());
+        BMap<BString, Object> record = newRecord(RECORD_RANGE);
+        record.put(START_BYTE, r.getStart());
         Long end = r.getEnd();
         if (end == null) {
             end = r.getStart();
         }
-        record.put(Constants.END_BYTE, end);
+        record.put(END_BYTE, end);
         return record;
     }
 
     /** Builds a `Range` record from explicit bounds. */
     static BMap<BString, Object> range(long start, long end) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_RANGE);
-        record.put(Constants.START_BYTE, start);
-        record.put(Constants.END_BYTE, end);
+        BMap<BString, Object> record = newRecord(RECORD_RANGE);
+        record.put(START_BYTE, start);
+        record.put(END_BYTE, end);
         return record;
     }
 
     /** Builds a `ShareSnapshotInfo` record. */
     static BMap<BString, Object> shareSnapshotInfo(String snapshotId, String eTag,
             java.time.OffsetDateTime lastModified) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_SHARE_SNAPSHOT_INFO);
-        record.put(Constants.SNAPSHOT_ID, StringUtils.fromString(snapshotId));
-        record.put(Constants.E_TAG, StringUtils.fromString(eTag == null ? "" : eTag));
-        record.put(Constants.LAST_MODIFIED, ValueUtils.toUtc(lastModified));
+        BMap<BString, Object> record = newRecord(RECORD_SHARE_SNAPSHOT_INFO);
+        record.put(OptionsReader.SNAPSHOT_ID, StringUtils.fromString(snapshotId));
+        record.put(E_TAG, StringUtils.fromString(eTag == null ? "" : eTag));
+        record.put(LAST_MODIFIED, ValueUtils.toUtc(lastModified));
         return record;
     }
 
     /** Maps the SDK file-service configuration to a `ServiceProperties` record. */
     static BMap<BString, Object> serviceProperties(com.azure.storage.file.share.models.ShareServiceProperties sdk) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_SERVICE_PROPERTIES);
+        BMap<BString, Object> record = newRecord(RECORD_SERVICE_PROPERTIES);
         if (sdk.getHourMetrics() != null) {
-            record.put(Constants.HOUR_METRICS, metrics(sdk.getHourMetrics()));
+            record.put(HOUR_METRICS, metrics(sdk.getHourMetrics()));
         }
         if (sdk.getMinuteMetrics() != null) {
-            record.put(Constants.MINUTE_METRICS, metrics(sdk.getMinuteMetrics()));
+            record.put(MINUTE_METRICS, metrics(sdk.getMinuteMetrics()));
         }
         if (sdk.getCors() != null) {
-            BArray rules = recordArray(Constants.RECORD_CORS_RULE);
+            BArray rules = recordArray(RECORD_CORS_RULE);
             for (com.azure.storage.file.share.models.ShareCorsRule rule : sdk.getCors()) {
-                BMap<BString, Object> ruleRecord = newRecord(Constants.RECORD_CORS_RULE);
-                ruleRecord.put(Constants.ALLOWED_ORIGINS, StringUtils.fromString(rule.getAllowedOrigins()));
-                ruleRecord.put(Constants.ALLOWED_METHODS, StringUtils.fromString(rule.getAllowedMethods()));
-                ruleRecord.put(Constants.ALLOWED_HEADERS, StringUtils.fromString(rule.getAllowedHeaders()));
-                ruleRecord.put(Constants.EXPOSED_HEADERS, StringUtils.fromString(rule.getExposedHeaders()));
-                ruleRecord.put(Constants.MAX_AGE_IN_SECONDS, (long) rule.getMaxAgeInSeconds());
+                BMap<BString, Object> ruleRecord = newRecord(RECORD_CORS_RULE);
+                ruleRecord.put(ALLOWED_ORIGINS, StringUtils.fromString(rule.getAllowedOrigins()));
+                ruleRecord.put(ALLOWED_METHODS, StringUtils.fromString(rule.getAllowedMethods()));
+                ruleRecord.put(ALLOWED_HEADERS, StringUtils.fromString(rule.getAllowedHeaders()));
+                ruleRecord.put(EXPOSED_HEADERS, StringUtils.fromString(rule.getExposedHeaders()));
+                ruleRecord.put(MAX_AGE_IN_SECONDS, (long) rule.getMaxAgeInSeconds());
                 rules.append(ruleRecord);
             }
-            record.put(Constants.CORS, rules);
+            record.put(CORS, rules);
         }
         if (sdk.getProtocol() != null && sdk.getProtocol().getSmb() != null
                 && sdk.getProtocol().getSmb().getMultichannel() != null) {
-            BMap<BString, Object> protocol = newRecord(Constants.RECORD_PROTOCOL_SETTINGS);
+            BMap<BString, Object> protocol = newRecord(RECORD_PROTOCOL_SETTINGS);
             Boolean enabled = sdk.getProtocol().getSmb().getMultichannel().isEnabled();
             if (enabled != null) {
-                protocol.put(Constants.SMB_MULTICHANNEL_ENABLED, enabled);
+                protocol.put(SMB_MULTICHANNEL_ENABLED, enabled);
             }
-            record.put(Constants.PROTOCOL, protocol);
+            record.put(PROTOCOL, protocol);
         }
         return record;
     }
 
     private static BMap<BString, Object> metrics(com.azure.storage.file.share.models.ShareMetrics sdk) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_METRICS);
-        record.put(Constants.ENABLED, sdk.isEnabled());
+        BMap<BString, Object> record = newRecord(RECORD_METRICS);
+        record.put(ENABLED, sdk.isEnabled());
         if (sdk.getVersion() != null) {
-            record.put(Constants.VERSION, StringUtils.fromString(sdk.getVersion()));
+            record.put(VERSION, StringUtils.fromString(sdk.getVersion()));
         }
         if (sdk.isIncludeApis() != null) {
-            record.put(Constants.INCLUDE_APIS, sdk.isIncludeApis());
+            record.put(INCLUDE_APIS, sdk.isIncludeApis());
         }
         com.azure.storage.file.share.models.ShareRetentionPolicy retention = sdk.getRetentionPolicy();
         if (retention != null && retention.isEnabled() && retention.getDays() != null) {
-            record.put(Constants.RETENTION_DAYS, (long) retention.getDays());
+            record.put(RETENTION_DAYS, (long) retention.getDays());
         }
         return record;
     }
 
     /** Maps the SDK user-delegation key to a `UserDelegationKey` record. */
     static BMap<BString, Object> userDelegationKey(com.azure.storage.file.share.models.UserDelegationKey key) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_USER_DELEGATION_KEY);
-        record.put(Constants.SIGNED_OBJECT_ID, StringUtils.fromString(key.getSignedObjectId()));
-        record.put(Constants.SIGNED_TENANT_ID, StringUtils.fromString(key.getSignedTenantId()));
-        record.put(Constants.SIGNED_START, ValueUtils.toUtc(key.getSignedStart()));
-        record.put(Constants.SIGNED_EXPIRY, ValueUtils.toUtc(key.getSignedExpiry()));
-        record.put(Constants.SIGNED_SERVICE, StringUtils.fromString(key.getSignedService()));
-        record.put(Constants.SIGNED_VERSION, StringUtils.fromString(key.getSignedVersion()));
-        record.put(Constants.VALUE, StringUtils.fromString(key.getValue()));
+        BMap<BString, Object> record = newRecord(RECORD_USER_DELEGATION_KEY);
+        record.put(SIGNED_OBJECT_ID, StringUtils.fromString(key.getSignedObjectId()));
+        record.put(SIGNED_TENANT_ID, StringUtils.fromString(key.getSignedTenantId()));
+        record.put(SIGNED_START, ValueUtils.toUtc(key.getSignedStart()));
+        record.put(SIGNED_EXPIRY, ValueUtils.toUtc(key.getSignedExpiry()));
+        record.put(SIGNED_SERVICE, StringUtils.fromString(key.getSignedService()));
+        record.put(SIGNED_VERSION, StringUtils.fromString(key.getSignedVersion()));
+        record.put(VALUE, StringUtils.fromString(key.getValue()));
         return record;
     }
 
     /** Maps one SDK SMB-handle item to a `HandleInfo` record. */
     static BMap<BString, Object> handleInfo(com.azure.storage.file.share.models.HandleItem item) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_HANDLE_INFO);
-        record.put(Constants.HANDLE_ID, StringUtils.fromString(item.getHandleId()));
-        record.put(Constants.PATH, StringUtils.fromString("/" + (item.getPath() == null ? "" : item.getPath())));
+        BMap<BString, Object> record = newRecord(RECORD_HANDLE_INFO);
+        record.put(HANDLE_ID, StringUtils.fromString(item.getHandleId()));
+        record.put(PATH, StringUtils.fromString("/" + (item.getPath() == null ? "" : item.getPath())));
         if (item.getFileId() != null) {
-            record.put(Constants.FILE_ID, StringUtils.fromString(item.getFileId()));
+            record.put(OptionsReader.FILE_ID, StringUtils.fromString(item.getFileId()));
         }
         if (item.getSessionId() != null) {
-            record.put(Constants.SESSION_ID, StringUtils.fromString(item.getSessionId()));
+            record.put(SESSION_ID, StringUtils.fromString(item.getSessionId()));
         }
         if (item.getClientIp() != null) {
-            record.put(Constants.CLIENT_IP, StringUtils.fromString(item.getClientIp()));
+            record.put(CLIENT_IP, StringUtils.fromString(item.getClientIp()));
         }
         if (item.getOpenTime() != null) {
-            record.put(Constants.OPEN_TIME, ValueUtils.toUtc(item.getOpenTime()));
+            record.put(OPEN_TIME, ValueUtils.toUtc(item.getOpenTime()));
         }
         if (item.getLastReconnectTime() != null) {
-            record.put(Constants.LAST_RECONNECT_TIME, ValueUtils.toUtc(item.getLastReconnectTime()));
+            record.put(LAST_RECONNECT_TIME, ValueUtils.toUtc(item.getLastReconnectTime()));
         }
         return record;
     }
 
     /** Maps the SDK close-handles result to a `CloseHandlesInfo` record. */
     static BMap<BString, Object> closeHandlesInfo(com.azure.storage.file.share.models.CloseHandlesInfo info) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_CLOSE_HANDLES_INFO);
-        record.put(Constants.CLOSED_HANDLES, (long) info.getClosedHandles());
-        record.put(Constants.FAILED_HANDLES, (long) info.getFailedHandles());
+        BMap<BString, Object> record = newRecord(RECORD_CLOSE_HANDLES_INFO);
+        record.put(CLOSED_HANDLES, (long) info.getClosedHandles());
+        record.put(FAILED_HANDLES, (long) info.getFailedHandles());
         return record;
     }
 
     /** Maps one SDK stored-access-policy identifier to a `SignedIdentifier` record. */
     static BMap<BString, Object> signedIdentifier(
             com.azure.storage.file.share.models.ShareSignedIdentifier identifier) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_SIGNED_IDENTIFIER);
-        record.put(Constants.ID, StringUtils.fromString(identifier.getId()));
-        BMap<BString, Object> policy = newRecord(Constants.RECORD_ACCESS_POLICY);
+        BMap<BString, Object> record = newRecord(RECORD_SIGNED_IDENTIFIER);
+        record.put(ID, StringUtils.fromString(identifier.getId()));
+        BMap<BString, Object> policy = newRecord(RECORD_ACCESS_POLICY);
         com.azure.storage.file.share.models.ShareAccessPolicy sdkPolicy = identifier.getAccessPolicy();
         if (sdkPolicy != null) {
-            policy.put(Constants.PERMISSIONS,
+            policy.put(PERMISSIONS,
                     StringUtils.fromString(sdkPolicy.getPermissions() == null ? "" : sdkPolicy.getPermissions()));
             if (sdkPolicy.getStartsOn() != null) {
-                policy.put(Constants.STARTS_ON, ValueUtils.toUtc(sdkPolicy.getStartsOn()));
+                policy.put(STARTS_ON, ValueUtils.toUtc(sdkPolicy.getStartsOn()));
             }
             if (sdkPolicy.getExpiresOn() != null) {
-                policy.put(Constants.EXPIRES_ON, ValueUtils.toUtc(sdkPolicy.getExpiresOn()));
+                policy.put(EXPIRES_ON, ValueUtils.toUtc(sdkPolicy.getExpiresOn()));
             }
         }
-        record.put(Constants.ACCESS_POLICY, policy);
+        record.put(ACCESS_POLICY, policy);
         return record;
     }
 
     /** Maps the SDK range-diff listing to a `RangeDiff` record. */
     static BMap<BString, Object> rangeDiff(com.azure.storage.file.share.models.ShareFileRangeList list) {
-        BMap<BString, Object> record = newRecord(Constants.RECORD_RANGE_DIFF);
-        BArray ranges = recordArray(Constants.RECORD_RANGE);
+        BMap<BString, Object> record = newRecord(RECORD_RANGE_DIFF);
+        BArray ranges = recordArray(RECORD_RANGE);
         for (com.azure.storage.file.share.models.FileRange r : list.getRanges()) {
             ranges.append(range(r.getStart(), r.getEnd()));
         }
-        BArray clearRanges = recordArray(Constants.RECORD_RANGE);
+        BArray clearRanges = recordArray(RECORD_RANGE);
         for (com.azure.storage.file.share.models.ClearRange r : list.getClearRanges()) {
             clearRanges.append(range(r.getStart(), r.getEnd()));
         }
-        record.put(Constants.RANGES, ranges);
-        record.put(Constants.CLEAR_RANGES, clearRanges);
+        record.put(RANGES, ranges);
+        record.put(CLEAR_RANGES, clearRanges);
         return record;
     }
 
@@ -424,12 +508,12 @@ final class RecordMapper {
         if (state == null || state == LeaseStateType.AVAILABLE) {
             return;
         }
-        record.put(Constants.LEASE_STATE, StringUtils.fromString(state.toString()));
+        record.put(LEASE_STATE, StringUtils.fromString(state.toString()));
         if (status != null) {
-            record.put(Constants.LEASE_STATUS, StringUtils.fromString(status.toString()));
+            record.put(LEASE_STATUS, StringUtils.fromString(status.toString()));
         }
         if (duration != null) {
-            record.put(Constants.LEASE_DURATION, StringUtils.fromString(duration.toString()));
+            record.put(LEASE_DURATION, StringUtils.fromString(duration.toString()));
         }
     }
 
@@ -443,7 +527,7 @@ final class RecordMapper {
         if (!hasContent) {
             return;
         }
-        BMap<BString, Object> smbRecord = newRecord(Constants.RECORD_SMB_PROPERTIES);
+        BMap<BString, Object> smbRecord = newRecord(RECORD_SMB_PROPERTIES);
         EnumSet<NtfsFileAttributes> attributes = smb.getNtfsFileAttributes();
         if (attributes != null) {
             BArray array = ValueCreator.createArrayValue(
@@ -451,27 +535,27 @@ final class RecordMapper {
             for (NtfsFileAttributes attribute : attributes) {
                 array.append(StringUtils.fromString(ntfsAttributeValue(attribute)));
             }
-            smbRecord.put(Constants.NTFS_FILE_ATTRIBUTES, array);
+            smbRecord.put(OptionsReader.NTFS_FILE_ATTRIBUTES, array);
         }
         if (smb.getFilePermissionKey() != null) {
-            smbRecord.put(Constants.FILE_PERMISSION_KEY, StringUtils.fromString(smb.getFilePermissionKey()));
+            smbRecord.put(OptionsReader.FILE_PERMISSION_KEY, StringUtils.fromString(smb.getFilePermissionKey()));
         }
         if (smb.getFileCreationTime() != null) {
-            smbRecord.put(Constants.FILE_CREATION_TIME, ValueUtils.toUtc(smb.getFileCreationTime()));
+            smbRecord.put(OptionsReader.FILE_CREATION_TIME, ValueUtils.toUtc(smb.getFileCreationTime()));
         }
         if (smb.getFileLastWriteTime() != null) {
-            smbRecord.put(Constants.FILE_LAST_WRITE_TIME, ValueUtils.toUtc(smb.getFileLastWriteTime()));
+            smbRecord.put(OptionsReader.FILE_LAST_WRITE_TIME, ValueUtils.toUtc(smb.getFileLastWriteTime()));
         }
         if (smb.getFileChangeTime() != null) {
-            smbRecord.put(Constants.FILE_CHANGE_TIME, ValueUtils.toUtc(smb.getFileChangeTime()));
+            smbRecord.put(OptionsReader.FILE_CHANGE_TIME, ValueUtils.toUtc(smb.getFileChangeTime()));
         }
         if (smb.getFileId() != null) {
-            smbRecord.put(Constants.FILE_ID, StringUtils.fromString(smb.getFileId()));
+            smbRecord.put(OptionsReader.FILE_ID, StringUtils.fromString(smb.getFileId()));
         }
         if (smb.getParentId() != null) {
-            smbRecord.put(Constants.PARENT_ID, StringUtils.fromString(smb.getParentId()));
+            smbRecord.put(OptionsReader.PARENT_ID, StringUtils.fromString(smb.getParentId()));
         }
-        record.put(Constants.SMB_PROPERTIES, smbRecord);
+        record.put(OptionsReader.SMB_PROPERTIES, smbRecord);
     }
 
     private static void putPosixProperties(BMap<BString, Object> record, FilePosixProperties posix) {
@@ -483,23 +567,23 @@ final class RecordMapper {
         if (!hasContent) {
             return;
         }
-        BMap<BString, Object> posixRecord = newRecord(Constants.RECORD_POSIX_PROPERTIES);
+        BMap<BString, Object> posixRecord = newRecord(RECORD_POSIX_PROPERTIES);
         if (posix.getOwner() != null) {
-            posixRecord.put(Constants.OWNER, StringUtils.fromString(posix.getOwner()));
+            posixRecord.put(OptionsReader.OWNER, StringUtils.fromString(posix.getOwner()));
         }
         if (posix.getGroup() != null) {
-            posixRecord.put(Constants.GROUP, StringUtils.fromString(posix.getGroup()));
+            posixRecord.put(OptionsReader.GROUP, StringUtils.fromString(posix.getGroup()));
         }
         if (posix.getFileMode() != null) {
-            posixRecord.put(Constants.FILE_MODE, StringUtils.fromString(posix.getFileMode()));
+            posixRecord.put(OptionsReader.FILE_MODE, StringUtils.fromString(posix.getFileMode()));
         }
         if (posix.getFileType() != null) {
-            posixRecord.put(Constants.FILE_TYPE, StringUtils.fromString(posix.getFileType().toString()));
+            posixRecord.put(OptionsReader.FILE_TYPE, StringUtils.fromString(posix.getFileType().toString()));
         }
         if (posix.getLinkCount() != null) {
-            posixRecord.put(Constants.LINK_COUNT, posix.getLinkCount());
+            posixRecord.put(OptionsReader.LINK_COUNT, posix.getLinkCount());
         }
-        record.put(Constants.POSIX_PROPERTIES, posixRecord);
+        record.put(OptionsReader.POSIX_PROPERTIES, posixRecord);
     }
 
     private static String ntfsAttributeValue(NtfsFileAttributes attribute) {
@@ -508,7 +592,7 @@ final class RecordMapper {
             case HIDDEN -> "Hidden";
             case SYSTEM -> "System";
             case NORMAL -> "None";
-            case DIRECTORY -> "Directory";
+            case DIRECTORY -> OptionsReader.ATTRIBUTE_DIRECTORY;
             case ARCHIVE -> "Archive";
             case TEMPORARY -> "Temporary";
             case OFFLINE -> "Offline";
