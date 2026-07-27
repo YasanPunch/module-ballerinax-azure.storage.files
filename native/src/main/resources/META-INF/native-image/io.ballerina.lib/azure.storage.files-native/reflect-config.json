@@ -1,0 +1,723 @@
+[
+  {
+    "name": "com.azure.xml.XmlSerializable"
+  },
+  {
+    "name": "com.azure.json.JsonSerializable"
+  },
+  {
+    "name": "com.azure.core.models.ResponseError",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.core.models.ResponseInnerError",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.core.util.serializer.JacksonAdapter",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.DirectoryItem",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FileItem",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FileProperty",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesAndDirectoriesListSegment",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.HandleItem",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.KeyInfo",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ListFilesAndDirectoriesSegmentResponse",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ListHandlesResponse",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ListSharesResponse",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ShareItemInternal",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharePermission",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharePropertiesInternal",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ShareSignedIdentifierWrapper",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ShareStats",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ShareStorageError",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.StorageError",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.StringEncoded",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ClearRange",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.FileRange",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.HandleItem",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.Range",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareAccessPolicy",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareCorsRule",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareFileRangeList",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareItem",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareMetrics",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareNfsSettings",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareNfsSettingsEncryptionInTransit",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareProperties",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareProtocolSettings",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareRetentionPolicy",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareServiceProperties",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareSignedIdentifier",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareSmbSettings",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareSmbSettingsEncryptionInTransit",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.SmbMultichannel",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.UserDelegationKey",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.DirectoriesCreateHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.DirectoriesDeleteHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.DirectoriesForceCloseHandlesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.DirectoriesGetPropertiesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.DirectoriesListFilesAndDirectoriesSegmentHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.DirectoriesListHandlesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.DirectoriesRenameHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.DirectoriesSetMetadataHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.DirectoriesSetPropertiesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesAbortCopyHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesAcquireLeaseHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesBreakLeaseHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesChangeLeaseHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesCreateHardLinkHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesCreateHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesCreateSymbolicLinkHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesDeleteHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesDownloadHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesForceCloseHandlesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesGetPropertiesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesGetRangeListHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesGetSymbolicLinkHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesListHandlesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesReleaseLeaseHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesRenameHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesSetHttpHeadersHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesSetMetadataHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesStartCopyHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesUploadRangeFromURLHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.FilesUploadRangeHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ServicesGetPropertiesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ServicesGetUserDelegationKeyHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ServicesListSharesSegmentHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ServicesListSharesSegmentNextHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ServicesSetPropertiesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesAcquireLeaseHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesBreakLeaseHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesChangeLeaseHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesCreateHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesCreatePermissionHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesCreateSnapshotHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesDeleteHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesGetAccessPolicyHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesGetPermissionHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesGetPropertiesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesGetStatisticsHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesReleaseLeaseHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesRenewLeaseHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesRestoreHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesSetAccessPolicyHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesSetMetadataHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.SharesSetPropertiesHeaders",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.core.http.HttpHeaderName",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.core.implementation.http.rest.SwaggerMethodParser",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.core.implementation.jackson.FlatteningSerializer",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.core.models.AzureCloud",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.core.util.polling.LongRunningOperationStatus",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.util.ModelHelper",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.FilePropertySemantics",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.NfsFileType",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareAccessTier",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareAudience",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareErrorCode",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareTokenIntent",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.azure.storage.file.share.models.ShareStorageException",
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.azure.core.exception.HttpResponseException",
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.azure.core.http.netty.implementation.AzureSdkHandler",
+    "methods": [
+      {
+        "name": "channelRead",
+        "parameterTypes": [
+          "io.netty.channel.ChannelHandlerContext",
+          "java.lang.Object"
+        ]
+      },
+      {
+        "name": "channelReadComplete",
+        "parameterTypes": [
+          "io.netty.channel.ChannelHandlerContext"
+        ]
+      },
+      {
+        "name": "write",
+        "parameterTypes": [
+          "io.netty.channel.ChannelHandlerContext",
+          "java.lang.Object",
+          "io.netty.channel.ChannelPromise"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "com.azure.core.http.rest.ResponseBase",
+    "queryAllDeclaredConstructors": true,
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "com.azure.core.http.HttpRequest",
+          "int",
+          "com.azure.core.http.HttpHeaders",
+          "java.lang.Object",
+          "java.lang.Object"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "com.azure.core.implementation.AsynchronousFileChannelAdapter",
+    "fields": [
+      {
+        "name": "pendingOperation"
+      },
+      {
+        "name": "position"
+      }
+    ]
+  },
+  {
+    "name": "com.azure.core.implementation.util.FluxByteBufferContent",
+    "fields": [
+      {
+        "name": "bytes"
+      }
+    ]
+  },
+  {
+    "name": "com.azure.core.implementation.util.StringContent",
+    "fields": [
+      {
+        "name": "bytes"
+      }
+    ]
+  },
+  {
+    "name": "com.azure.core.util.FluxUtil$FileReadFlux$FileReadSubscription",
+    "fields": [
+      {
+        "name": "requested"
+      },
+      {
+        "name": "wip"
+      }
+    ]
+  },
+  {
+    "name": "com.azure.core.util.Header",
+    "fields": [
+      {
+        "name": "cachedStringValue"
+      }
+    ]
+  },
+  {
+    "name": "com.azure.core.util.QueryParameter",
+    "fields": [
+      {
+        "name": "cachedStringValue"
+      }
+    ]
+  },
+  {
+    "name": "com.azure.identity.AzureIdentityEnvVars",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "com.azure.identity.implementation.RegionalAuthority",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "com.azure.storage.file.share.implementation.models.ShareStorageExceptionInternal",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": [
+          "java.lang.String",
+          "com.azure.core.http.HttpResponse",
+          "com.azure.storage.file.share.implementation.models.ShareStorageError"
+        ]
+      },
+      {
+        "name": "getValue",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "com.fasterxml.jackson.core.JsonFactory",
+    "methods": [
+      {
+        "name": "setStreamReadConstraints",
+        "parameterTypes": [
+          "com.fasterxml.jackson.core.StreamReadConstraints"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "com.fasterxml.jackson.core.StreamReadConstraints",
+    "methods": [
+      {
+        "name": "builder",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "com.fasterxml.jackson.core.StreamReadConstraints$Builder",
+    "methods": [
+      {
+        "name": "build",
+        "parameterTypes": []
+      },
+      {
+        "name": "maxStringLength",
+        "parameterTypes": [
+          "int"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.ext.Java7SupportImpl",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  }
+]

@@ -1,0 +1,9 @@
+liveAccountName = "<storage account name>"
+liveAccountKey = "<storage account key>"
+
+# optional: enables the Entra ID auth test and the live user-delegation tests; the app
+# registration needs a client secret and the Storage File Data Privileged Contributor
+# role on the account
+# liveEntraTenantId = "<tenant id>"
+# liveEntraClientId = "<application id>"
+# liveEntraClientSecret = "<client secret>"

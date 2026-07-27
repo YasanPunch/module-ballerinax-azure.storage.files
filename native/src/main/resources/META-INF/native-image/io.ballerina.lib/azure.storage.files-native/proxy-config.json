@@ -1,0 +1,6 @@
+[
+  { "interfaces": ["com.azure.storage.file.share.implementation.DirectoriesImpl$DirectoriesService"] },
+  { "interfaces": ["com.azure.storage.file.share.implementation.FilesImpl$FilesService"] },
+  { "interfaces": ["com.azure.storage.file.share.implementation.ServicesImpl$ServicesService"] },
+  { "interfaces": ["com.azure.storage.file.share.implementation.SharesImpl$SharesService"] }
+]

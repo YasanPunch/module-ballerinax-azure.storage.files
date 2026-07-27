@@ -1,0 +1,7 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Source files always use LF
+*.java text eol=lf
+*.bal text eol=lf
+*.sh text eol=lf
