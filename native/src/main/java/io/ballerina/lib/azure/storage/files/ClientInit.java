@@ -62,6 +62,8 @@ public final class ClientInit {
     private static final BString RETRY_CONFIG = StringUtils.fromString("retryConfig");
     private static final BString TRANSPORT_CONFIG = StringUtils.fromString("transportConfig");
     private static final BString KIND = StringUtils.fromString("kind");
+    // The Entra credential-kind discriminator value selecting managed-identity auth.
+    private static final String KIND_MANAGED_IDENTITY = "managed-identity";
     private static final BString TENANT_ID = StringUtils.fromString("tenantId");
     private static final BString CLIENT_ID = StringUtils.fromString("clientId");
     private static final BString CLIENT_SECRET = StringUtils.fromString("clientSecret");
@@ -228,7 +230,7 @@ public final class ClientInit {
                     .clientId(requireNonEmpty(auth, CLIENT_ID))
                     .tokenFilePath(requireNonEmpty(auth, TOKEN_FILE_PATH))
                     .build();
-        } else if ("managed-identity".equals(ValueUtils.optString(auth, KIND))) {
+        } else if (KIND_MANAGED_IDENTITY.equals(ValueUtils.optString(auth, KIND))) {
             ManagedIdentityCredentialBuilder managedBuilder = new ManagedIdentityCredentialBuilder();
             String clientId = ValueUtils.optString(auth, CLIENT_ID);
             if (clientId != null) {
