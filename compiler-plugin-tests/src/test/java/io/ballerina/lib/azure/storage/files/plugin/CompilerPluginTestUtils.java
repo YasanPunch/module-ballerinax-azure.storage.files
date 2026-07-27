@@ -27,10 +27,6 @@ import io.ballerina.projects.environment.Environment;
 import io.ballerina.projects.environment.EnvironmentBuilder;
 import io.ballerina.tools.diagnostics.Diagnostic;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -82,32 +78,13 @@ final class CompilerPluginTestUtils {
             home = System.getenv("BALLERINA_HOME");
         }
         if (home == null || home.isBlank()) {
-            home = resolveFromCli();
+            throw new IllegalStateException(
+                    "set -Dballerina.home (or BALLERINA_HOME) to the Ballerina distribution");
         }
         Path path = Paths.get(home);
         if (!Files.exists(path)) {
             throw new IllegalStateException("the Ballerina distribution was not found at: " + path);
         }
         return path;
-    }
-
-    private static String resolveFromCli() {
-        try {
-            Process process = new ProcessBuilder("bal", "home").redirectErrorStream(false).start();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line = reader.readLine();
-                process.waitFor();
-                if (line != null && !line.isBlank()) {
-                    return line.trim();
-                }
-            }
-        } catch (IOException e) {
-            throw new IllegalStateException("unable to resolve the Ballerina distribution from the CLI", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while resolving the Ballerina distribution", e);
-        }
-        throw new IllegalStateException("the Ballerina distribution could not be resolved");
     }
 }

@@ -3,9 +3,3 @@ org = "azure_files_test"
 name = "valid_mixed"
 version = "0.1.0"
 distribution = "2201.12.0"
-
-[[dependency]]
-org = "ballerinax"
-name = "azure.storage.files"
-version = "1.0.0"
-repository = "local"

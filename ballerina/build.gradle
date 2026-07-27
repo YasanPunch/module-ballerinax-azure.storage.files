@@ -51,7 +51,6 @@ ballerina {
     module = packageName
     langVersion = project.ballerinaLangVersion
     testCoverageParam = "--code-coverage --coverage-format=xml --excludes=\"modules/**/**\""
-    isConnector = true
     platform = "java21"
 }
 
@@ -113,3 +112,11 @@ test.dependsOn ":azure.storage.files-native:build"
 // the plugin jar built first (compile-time service validation runs during the package build).
 build.dependsOn ":azure.storage.files-compiler-plugin:build"
 test.dependsOn ":azure.storage.files-compiler-plugin:build"
+
+// Non-Docker build: bal and the standard libraries the connector needs come from the unpacked
+// distribution. Unpack it and copy the declared ballerinaStdLibs into it before build/test run
+// bal (the plugin wires this automatically only on the Docker path we no longer use).
+unpackStdLibs.dependsOn unpackJballerinaTools
+copyStdlibs.dependsOn unpackStdLibs
+build.dependsOn copyStdlibs
+test.dependsOn copyStdlibs

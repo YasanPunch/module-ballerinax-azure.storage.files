@@ -53,33 +53,18 @@ spotbugsTest {
     enabled = false
 }
 
-// Packs the connector and publishes it to the local Ballerina repository so the sample test
-// projects (which declare a repository="local" dependency on ballerinax/azure.storage.files)
-// resolve it with the listener compiler plugin bundled inside the bala.
-task pushPackageToLocalRepo(type: Exec) {
-    dependsOn ':azure.storage.files-native:build'
-    dependsOn ':azure.storage.files-compiler-plugin:build'
-    workingDir "${project.rootDir}/ballerina"
-    commandLine 'sh', '-c', 'bal pack && bal push --repository=local'
-}
-
 test {
-    dependsOn pushPackageToLocalRepo
+    // Building the connector (which also builds the native jar and the compiler plugin) unpacks the
+    // Ballerina distribution and installs the connector, with its bundled compiler plugin, into it.
+    // The sample test projects then resolve `import ballerinax/azure.storage.files` from that
+    // distribution, so no `bal` CLI is shelled out.
+    dependsOn ':azure.storage.files-ballerina:build'
     useTestNG {
         suites 'src/test/resources/testng.xml'
     }
-    // Resolve every import from the distribution and the local repository, never the network.
+    // Resolve every import from the unpacked distribution, never the network.
     systemProperty 'ballerina.offline.flag', 'true'
-    doFirst {
-        // The compiler test harness needs a full Ballerina distribution as its environment.
-        // Resolve the active one from the CLI so the run works both locally and in CI.
-        def balHome = new ByteArrayOutputStream()
-        exec {
-            commandLine 'bal', 'home'
-            standardOutput = balHome
-        }
-        systemProperty 'ballerina.home', balHome.toString().trim()
-    }
+    systemProperty 'ballerina.home', "${rootProject.projectDir}/target/ballerina-runtime"
     testLogging {
         events "passed", "failed", "skipped"
         exceptionFormat "full"
