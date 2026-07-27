@@ -51,6 +51,19 @@ public class ServiceValidationTest {
     }
 
     @Test
+    public void testValidTypedJsonRecordService() {
+        DiagnosticResult result = loadPackage("valid_on_file_json_record");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileJson record service");
+    }
+
+    @Test
+    public void testInvalidOnFileJsonBareJson() {
+        DiagnosticResult result = loadPackage("invalid_on_file_json_bare");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid content parameter type for onFileJson");
+    }
+
+    @Test
     public void testValidServiceConfigService() {
         DiagnosticResult result = loadPackage("valid_service_config");
         assertEquals(result.errorCount(), 0, "expected no diagnostics for a valid annotated service");

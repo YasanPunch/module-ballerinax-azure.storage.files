@@ -217,6 +217,74 @@ function testMalformedJsonTriggersAfterError() returns error? {
     check shareClient.close();
 }
 
+// A closed record that an onFileJson handler can bind directly from an object-root JSON file.
+type OrderDoc record {|
+    string sku;
+    int qty;
+|};
+
+@test:Config {}
+function testOnFileJsonRecordBinding() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-json-record");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    map<json> document = {sku: "A1", qty: 5};
+    check shareClient->uploadContent(document, "/incoming/order.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFileJson(OrderDoc content, FileInfo info, Caller caller) returns error? {
+            recorder.put("record", content.sku + ":" + content.qty.toString());
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("record") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("record"), "A1:5");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testOnFileJsonArrayRootBindingError() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-json-array");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    // A JSON array at the root parses, but binding to map<json> fails: a content-binding error,
+    // which triggers afterError (here a DELETE), and never falls through to onFile.
+    check shareClient->uploadContent("[1, 2, 3]", "/incoming/list.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterError: DELETE}
+        remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("json");
+        }
+
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("fallback");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    // The array-root file is consumed by afterError; wait for it to disappear.
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/list.json");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("json"), 0, "an array-root JSON must not invoke the map<json> handler body");
+    test:assertEquals(recorder.count("fallback"), 0, "a content-binding error must not fall through to onFile");
+    check shareClient.close();
+}
+
 @test:Config {}
 function testFunctionConfigDeleteConsumes() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-delete");

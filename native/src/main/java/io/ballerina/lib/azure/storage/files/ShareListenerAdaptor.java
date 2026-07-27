@@ -34,6 +34,7 @@ import io.ballerina.runtime.api.types.MethodType;
 import io.ballerina.runtime.api.types.ObjectType;
 import io.ballerina.runtime.api.types.Parameter;
 import io.ballerina.runtime.api.types.PredefinedTypes;
+import io.ballerina.runtime.api.types.Type;
 import io.ballerina.runtime.api.utils.JsonUtils;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.utils.TypeUtils;
@@ -337,7 +338,7 @@ public final class ShareListenerAdaptor {
             }
             Object content;
             try {
-                content = bindContent(handler.methodName(), bytes);
+                content = bindContent(handler, bytes);
             } catch (RuntimeException e) {
                 LOG.warn("azure.storage.files listener: content binding failed for {}", path, e);
                 postProcess(listenerObj, ctx, handler.afterError(), path);
@@ -375,16 +376,18 @@ public final class ShareListenerAdaptor {
         return ctx.handlers.get(ON_FILE);
     }
 
-    private static Object bindContent(String methodName, byte[] bytes) {
-        switch (methodName) {
+    private static Object bindContent(HandlerConfig handler, byte[] bytes) {
+        switch (handler.methodName()) {
             case ON_FILE_TEXT:
                 return StringUtils.fromString(new String(bytes, StandardCharsets.UTF_8));
             case ON_FILE_JSON:
                 Object json = JsonUtils.parse(new String(bytes, StandardCharsets.UTF_8));
-                if (!(json instanceof BMap)) {
-                    throw FilesErrorCreator.processingError("expected a JSON object at the document root", null);
+                try {
+                    return JsonUtils.convertJSON(json, handler.contentType());
+                } catch (BError e) {
+                    throw FilesErrorCreator.processingError(
+                            "content does not match the '" + ON_FILE_JSON + "' handler's declared type", e);
                 }
-                return json;
             case ON_FILE_XML:
                 return XmlUtils.parse(new String(bytes, StandardCharsets.UTF_8));
             case ON_FILE_CSV:
@@ -509,8 +512,9 @@ public final class ShareListenerAdaptor {
             Parameter[] params = method.getParameters();
             boolean secondIsCaller = params.length >= 2
                     && CALLER_OBJECT.equals(TypeUtils.getReferredType(params[1].type).getName());
+            Type contentType = params.length >= 1 ? params[0].type : null;
             handlers.put(name, new HandlerConfig(name, routing, afterProcess, afterError,
-                    params.length, secondIsCaller));
+                    params.length, secondIsCaller, contentType));
         }
         ctx.handlers = handlers;
     }
@@ -664,12 +668,13 @@ public final class ShareListenerAdaptor {
         }
     }
 
-    // One content handler: its resolved routing pattern, post-process actions, and the shape of
-    // its parameter list (how many it declares, and whether a two-parameter handler's second
-    // parameter is the Caller rather than the FileInfo).
+    // One content handler: its resolved routing pattern, post-process actions, the shape of its
+    // parameter list (how many it declares, and whether a two-parameter handler's second parameter
+    // is the Caller rather than the FileInfo), and its declared content parameter type (used to
+    // bind typed content, e.g. a map<json> or a record for onFileJson).
     private record HandlerConfig(String methodName, Pattern routingPattern,
                                  PostAction afterProcess, PostAction afterError,
-                                 int arity, boolean secondParamIsCaller) {
+                                 int arity, boolean secondParamIsCaller, Type contentType) {
     }
 
     // A post-process action: a delete, or a move to a target directory.

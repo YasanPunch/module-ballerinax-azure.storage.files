@@ -19,6 +19,7 @@
 package io.ballerina.lib.azure.storage.files.plugin;
 
 import io.ballerina.compiler.api.symbols.ArrayTypeSymbol;
+import io.ballerina.compiler.api.symbols.MapTypeSymbol;
 import io.ballerina.compiler.api.symbols.TypeDescKind;
 import io.ballerina.compiler.api.symbols.TypeReferenceTypeSymbol;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
@@ -128,7 +129,7 @@ public class ContentFunctionValidator {
         return switch (contentMethodName) {
             case ON_FILE_FUNC -> isByteArray(typeSymbol, typeKind);
             case ON_FILE_TEXT_FUNC -> typeKind == STRING;
-            case ON_FILE_JSON_FUNC -> typeKind == MAP || typeKind == JSON || typeKind == RECORD
+            case ON_FILE_JSON_FUNC -> isJsonMap(typeSymbol, typeKind) || typeKind == RECORD
                     || isRecordTypeReference(typeSymbol);
             case ON_FILE_XML_FUNC -> typeKind == XML;
             case ON_FILE_CSV_FUNC -> isStringArrayOfArray(typeSymbol, typeKind);
@@ -138,6 +139,10 @@ public class ContentFunctionValidator {
 
     private boolean isByteArray(TypeSymbol typeSymbol, TypeDescKind typeKind) {
         return typeKind == ARRAY && ((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor().typeKind() == BYTE;
+    }
+
+    private boolean isJsonMap(TypeSymbol typeSymbol, TypeDescKind typeKind) {
+        return typeKind == MAP && ((MapTypeSymbol) typeSymbol).typeParam().typeKind() == JSON;
     }
 
     private boolean isStringArrayOfArray(TypeSymbol typeSymbol, TypeDescKind typeKind) {

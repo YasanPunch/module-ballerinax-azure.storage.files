@@ -37,6 +37,8 @@ function init() returns error? {
     if !incomingExists {
         check share->createDirectory("/incoming");
     }
+    check share->uploadContent({probe: 1, name: "widget"}, "/incoming/probe.json");
+    log:printInfo("REPRO: uploaded probe.json (a clean JSON object) to /incoming");
     check share.close();
 
     log:printInfo(string `Watching /incoming on share '${shareName}'. Drop files there to process them.`);
