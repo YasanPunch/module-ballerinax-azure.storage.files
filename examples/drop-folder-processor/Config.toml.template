@@ -1,0 +1,4 @@
+accountName = "<storage account name>"
+accountKey = "<storage account key>"
+# optional, defaults to "drop-folder-example"
+# shareName = "my-drop-share"

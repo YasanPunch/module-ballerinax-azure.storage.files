@@ -128,8 +128,15 @@ public final class ClientInit {
         return null;
     }
 
+    /**
+     * Builds the SDK service client from a {@code ClientConfiguration} or {@code ListenerConfiguration}
+     * record. Both carry the same auth, retry, and transport shape.
+     *
+     * @param config the configuration record
+     * @return the SDK service client
+     */
     @SuppressWarnings("unchecked")
-    private static ShareServiceClient buildServiceClient(BMap<BString, Object> config) {
+    static ShareServiceClient buildServiceClient(BMap<BString, Object> config) {
         BMap<BString, Object> auth = (BMap<BString, Object>) config.getMapValue(AUTH);
         ShareServiceClientBuilder builder = new ShareServiceClientBuilder();
         Object retryConfig = config.get(RETRY_CONFIG);

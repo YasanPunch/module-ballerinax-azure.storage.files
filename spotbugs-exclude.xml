@@ -16,4 +16,14 @@
   ~ under the License.
   -->
 <FindBugsFilter>
+    <!--
+      The listener compiler-plugin analyzer classes intentionally retain the syntax node and
+      analysis context they were constructed with (they run within a single analysis pass and
+      never leak these references). This mirrors the standard-library listener plugins, so the
+      representation-exposure patterns are excluded for the plugin package only.
+    -->
+    <Match>
+        <Package name="io.ballerina.lib.azure.storage.files.plugin"/>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
 </FindBugsFilter>

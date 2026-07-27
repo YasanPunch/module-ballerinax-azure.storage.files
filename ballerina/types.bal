@@ -157,6 +157,22 @@ public type Entry record {|
     time:Utc lastModified?;
 |};
 
+# The listing-derived payload delivered to a listener service's handlers, identifying the file
+# an event is about. It carries what a directory listing provides; for full properties
+# (content type, metadata, headers), construct a `Client` and call `getFileProperties`.
+public type FileInfo record {|
+    # The share-relative path of the file, e.g. `/dir1/dir2/file.ext`
+    string path;
+    # The file name only, without the directory component
+    string name;
+    # The file size in bytes
+    int sizeBytes;
+    # The entity tag of the file
+    string eTag;
+    # The last-modified time (UTC)
+    time:Utc lastModified;
+|};
+
 # SMB-specific properties of a file or directory. Populated on SMB shares and absent on
 # NFS shares.
 public type SmbProperties record {|

@@ -86,6 +86,15 @@ final class RecordMapper {
     static final String RECORD_CORS_RULE = "CorsRule";
     static final String RECORD_PROTOCOL_SETTINGS = "ProtocolSettings";
     static final String RECORD_USER_DELEGATION_KEY = "UserDelegationKey";
+    // The `FileInfo` listener payload record and its own field vocabulary. FileInfo is a
+    // distinct record schema, so it keeps its own field constants even where a spelling
+    // coincides with another record's field.
+    static final String RECORD_FILE_INFO = "FileInfo";
+    static final BString FILE_INFO_PATH = StringUtils.fromString("path");
+    static final BString FILE_INFO_NAME = StringUtils.fromString("name");
+    static final BString FILE_INFO_SIZE_BYTES = StringUtils.fromString("sizeBytes");
+    static final BString FILE_INFO_E_TAG = StringUtils.fromString("eTag");
+    static final BString FILE_INFO_LAST_MODIFIED = StringUtils.fromString("lastModified");
     // The Ballerina CopyStatus enum value reported while a copy is still pending.
     static final String COPY_STATUS_PENDING = "pending";
     // The Ballerina Protocol enum values.
@@ -349,6 +358,36 @@ final class RecordMapper {
                 record.put(LAST_MODIFIED, ValueUtils.toUtc(item.getProperties().getLastModified()));
             }
         }
+        return record;
+    }
+
+    /**
+     * Maps one listed file to a `FileInfo` record, the payload delivered to a listener handler.
+     * The eTag and last-modified time come from the extended-info listing.
+     *
+     * @param item       the SDK item, which must be a file
+     * @param parentPath the share-relative path of the directory that contains the file, without a
+     *                   trailing slash; empty for the share root
+     * @return the `FileInfo` record
+     */
+    static BMap<BString, Object> fileInfo(ShareFileItem item, String parentPath) {
+        BMap<BString, Object> record = newRecord(RECORD_FILE_INFO);
+        String path = parentPath.isEmpty() ? "/" + item.getName() : "/" + parentPath + "/" + item.getName();
+        record.put(FILE_INFO_PATH, StringUtils.fromString(path));
+        record.put(FILE_INFO_NAME, StringUtils.fromString(item.getName()));
+        Long sizeBytes = item.getFileSize();
+        if (sizeBytes == null) {
+            record.put(FILE_INFO_SIZE_BYTES, 0L);
+        } else {
+            record.put(FILE_INFO_SIZE_BYTES, sizeBytes);
+        }
+        String eTag = item.getProperties() == null || item.getProperties().getETag() == null
+                ? "" : item.getProperties().getETag();
+        record.put(FILE_INFO_E_TAG, StringUtils.fromString(eTag));
+        java.time.OffsetDateTime lastModified = item.getProperties() == null
+                ? null : item.getProperties().getLastModified();
+        record.put(FILE_INFO_LAST_MODIFIED, ValueUtils.toUtc(lastModified == null
+                ? java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC) : lastModified));
         return record;
     }
 

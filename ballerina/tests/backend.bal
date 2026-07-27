@@ -118,6 +118,17 @@ isolated function newShareClient(string share) returns Client|Error => liveRun
     ? new (share, auth = {accountName: liveAccountName, accountKey: liveAccountKey})
     : newMockShareClient(share);
 
+// Listener factory for the current backend. A short polling interval keeps the dual-mode
+// listener tests quick; the watched path and handlers come from the attached service.
+isolated function newListener(string share, decimal pollingInterval = 1) returns Listener|Error => liveRun
+    ? new (share, auth = {accountName: liveAccountName, accountKey: liveAccountKey},
+        pollingInterval = pollingInterval)
+    : new (share, auth = {
+        accountName: "mockaccount",
+        accountKey: MOCK_KEY,
+        serviceUrl: string `http://localhost:${MOCK_PORT}`
+    }, pollingInterval = pollingInterval);
+
 // Explicit mock factories, for the tests that are pinned to the mock because the
 // condition they exercise cannot be produced on a real account.
 isolated function newMockAdmin() returns AdminClient|Error => new (auth = {

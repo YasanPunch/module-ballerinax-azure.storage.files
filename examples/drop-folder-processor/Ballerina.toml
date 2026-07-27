@@ -1,0 +1,8 @@
+[package]
+org = "azure_files_samples"
+name = "drop_folder_processor"
+version = "1.0.0"
+distribution = "2201.12.0"
+
+[build-options]
+observabilityIncluded = true
