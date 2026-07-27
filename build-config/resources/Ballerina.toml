@@ -5,6 +5,7 @@ name = "azure.storage.files"
 version = "@toml.version@"
 authors = ["Ballerina"]
 keywords = ["Type/Connector", "Area/Storage & File Management", "Cost/Paid", "Vendor/Microsoft"]
+icon = "icon.png"
 repository = "https://github.com/ballerina-platform/module-ballerinax-azure.storage.files"
 license = ["Apache-2.0"]
 
