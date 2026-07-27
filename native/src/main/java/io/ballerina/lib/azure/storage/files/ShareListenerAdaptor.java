@@ -24,6 +24,7 @@ import com.azure.storage.file.share.ShareServiceClient;
 import com.azure.storage.file.share.models.ShareFileItem;
 import com.azure.storage.file.share.models.ShareStorageException;
 import com.azure.storage.file.share.options.ShareListFilesAndDirectoriesOptions;
+import com.azure.xml.XmlReader;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.Runtime;
 import io.ballerina.runtime.api.concurrent.StrandMetadata;
@@ -69,6 +70,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+
+import javax.xml.stream.XMLStreamException;
 
 /**
  * Native backing of the polling {@code Listener}. It builds the SDK clients at initialization,
@@ -137,6 +140,15 @@ public final class ShareListenerAdaptor {
             String share = shareName.getValue().strip();
             if (share.isEmpty()) {
                 return FilesErrorCreator.processingError("shareName must not be empty", null);
+            }
+            // Azure's XmlReader resolves its StAX factory in a static initializer using the calling
+            // thread's context classloader; force that to happen here, on the init strand, so a poll
+            // thread can never be the first to trigger it and poison the class.
+            try (XmlReader ignored = XmlReader.fromString("<x/>")) {
+                // initialization only
+            } catch (XMLStreamException | RuntimeException | Error e) {
+                return FilesErrorCreator.processingError(
+                        "XML support could not be initialized: " + Ops.describe(e), e);
             }
             ShareServiceClient serviceClient = ClientInit.buildServiceClient(config);
             ShareClient shareClient = serviceClient.getShareClient(share);
@@ -224,7 +236,7 @@ public final class ShareListenerAdaptor {
                 scan(listenerObj, ctx);
                 ctx.failureCount.set(0);
                 ctx.nextAllowedPollMillis.set(0L);
-            } catch (RuntimeException e) {
+            } catch (Throwable e) {
                 int attempt = ctx.failureCount.incrementAndGet();
                 long backoff = Math.min((long) (Math.pow(2, attempt) * ctx.pollingIntervalSeconds * 1000d),
                         MAX_BACKOFF_MILLIS);
@@ -355,7 +367,7 @@ public final class ShareListenerAdaptor {
             } else {
                 postProcess(listenerObj, ctx, handler.afterProcess(), path);
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             LOG.error("azure.storage.files listener: unexpected dispatch failure for {}", path, e);
         } finally {
             ctx.inProgress.remove(key);
