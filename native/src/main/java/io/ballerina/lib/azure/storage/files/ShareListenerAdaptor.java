@@ -235,18 +235,23 @@ public final class ShareListenerAdaptor {
     }
 
     /**
-     * Stops the listener: marks the context stopped and shuts down the dispatch executor, waiting
-     * a bounded time for in-flight handlers to finish.
+     * Stops the listener: marks the context stopped and shuts down the dispatch executor. A graceful
+     * stop waits a bounded time for in-flight handlers to finish; an immediate stop interrupts them.
      *
      * @param listenerObj the Ballerina listener object
+     * @param graceful    whether to drain in-flight handlers ({@code true}) or interrupt them
      * @return {@code null}
      */
-    public static Object stopListener(BObject listenerObj) {
+    public static Object stopListener(BObject listenerObj, boolean graceful) {
         ListenerContext ctx = context(listenerObj);
         if (ctx == null) {
             return null;
         }
         ctx.stopped = true;
+        if (!graceful) {
+            ctx.dispatchExecutor.shutdownNow();
+            return null;
+        }
         ctx.dispatchExecutor.shutdown();
         try {
             if (!ctx.dispatchExecutor.awaitTermination(AWAIT_SECONDS, TimeUnit.SECONDS)) {

@@ -96,7 +96,7 @@ public isolated class Listener {
     private final decimal pollingInterval;
     private task:JobId? pollJobId = ();
 
-    # Initializes the listener for a share. No call is made to Azure at initialization.
+    # Initializes the listener for a share.
     #
     # + shareName - The name of the share to watch
     # + config - The listener configuration (authentication, polling cadence, retry, transport)
@@ -140,17 +140,17 @@ public isolated class Listener {
     #
     # + return - An `error` if the listener could not stop, otherwise `()`
     public isolated function gracefulStop() returns error? {
-        return self.stopPolling();
+        return self.stopPolling(true);
     }
 
     # Stops polling immediately.
     #
     # + return - An `error` if the listener could not stop, otherwise `()`
     public isolated function immediateStop() returns error? {
-        return self.stopPolling();
+        return self.stopPolling(false);
     }
 
-    private isolated function stopPolling() returns error? {
+    private isolated function stopPolling(boolean graceful) returns error? {
         lock {
             task:JobId? id = self.pollJobId;
             if id is task:JobId {
@@ -158,7 +158,7 @@ public isolated class Listener {
                 self.pollJobId = ();
             }
         }
-        return externStop(self);
+        return externStop(self, graceful);
     }
 }
 
@@ -196,7 +196,7 @@ isolated function externDetach(Listener listenerObj, Service serviceRef) returns
     'class: "io.ballerina.lib.azure.storage.files.ShareListenerAdaptor"
 } external;
 
-isolated function externStop(Listener listenerObj) returns error? = @java:Method {
+isolated function externStop(Listener listenerObj, boolean graceful) returns error? = @java:Method {
     name: "stopListener",
     'class: "io.ballerina.lib.azure.storage.files.ShareListenerAdaptor"
 } external;

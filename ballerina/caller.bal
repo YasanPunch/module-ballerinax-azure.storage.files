@@ -16,12 +16,10 @@
 
 import ballerina/jballerina.java;
 
-# The context object passed to a listener service's handlers. It exposes a curated,
-# share-scoped subset of `Client` so a handler can act on the event's file (download, move,
-# delete, copy, and directory operations) without constructing a separate client. It is not
-# user-instantiable: the listener creates one `Caller` bound to the watched share and passes
-# it to every handler invocation. Handlers pass the event's path explicitly, for example
-# `caller->deleteFile(file.path)`.
+# The context object passed to a listener service's handlers, exposing a curated,
+# share-scoped subset of `Client` to act on the event's file. Not user-instantiable: the
+# listener creates one `Caller` bound to the watched share and passes it to every handler,
+# which name the event's file explicitly, for example `caller->deleteFile(file.path)`.
 public isolated client class Caller {
 
     private final string shareName;
@@ -30,8 +28,8 @@ public isolated client class Caller {
         self.shareName = shareName;
     }
 
-    # Downloads a file to a local path. Both parameters are full paths including the file name.
-    # An existing local file at `destinationPath` fails the download with a `ProcessingError`.
+    # Downloads a file to a local path. An existing local file at `destinationPath` fails the
+    # download with a `ProcessingError`.
     #
     # + sourcePath - The share-relative path of the file to download, including the file name
     # + destinationPath - The local path to write the downloaded file to (must not exist)
@@ -42,7 +40,7 @@ public isolated client class Caller {
         'class: "io.ballerina.lib.azure.storage.files.TransferOps"
     } external;
 
-    # Opens a file's content as a lazy byte stream, so memory stays bounded for any file size.
+    # Opens a file's content as a byte stream.
     #
     # + path - The source share-relative path
     # + options - Optional download options (range)
@@ -57,8 +55,7 @@ public isolated client class Caller {
         return new stream<byte[], Error?>(generator);
     }
 
-    # Uploads a local file on disk to the watched share. Both parameters are full paths
-    # including the file name. Large content is transferred internally in service-compliant chunks.
+    # Uploads a local file to the watched share.
     #
     # + sourcePath - The path of the local file to upload, including the file name
     # + destinationPath - The share-relative path the file is written to, including the file name
@@ -90,9 +87,8 @@ public isolated client class Caller {
         'class: "io.ballerina.lib.azure.storage.files.FileOps"
     } external;
 
-    # Renames or moves a file within the watched share. The destination is a full share-relative
-    # path, so this also moves across directories. An existing destination file is overwritten
-    # only when `RenameOptions.replaceIfExists` is set.
+    # Renames or moves a file within the watched share. An existing destination file is
+    # overwritten only when `RenameOptions.replaceIfExists` is set.
     #
     # + sourcePath - The current share-relative path of the file
     # + destinationPath - The new share-relative path
@@ -143,8 +139,6 @@ public isolated client class Caller {
     } external;
 
     # Lists the entries (files and subdirectories) under a directory of the watched share.
-    # Entries stream lazily. Every `Entry` carries its full share-relative `path`; filter on
-    # `Entry.isDirectory` to separate files from directories.
     #
     # + directoryPath - The share-relative path of the directory to list
     # + options - Optional listing options (prefix, recursion, extended info)
@@ -159,8 +153,7 @@ public isolated client class Caller {
         return new stream<Entry, Error?>(generator);
     }
 
-    # Returns the name of the share this caller is bound to. An ordinary function, not a
-    # remote method: it reads locally-held state and makes no call to Azure.
+    # Returns the name of the share this caller is bound to.
     #
     # + return - The watched share name
     public isolated function getShareName() returns string {
