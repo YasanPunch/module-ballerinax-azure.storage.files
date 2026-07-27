@@ -35,6 +35,9 @@ import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
 import io.ballerina.runtime.api.values.BString;
 
+import java.time.OffsetDateTime;
+import java.util.function.Function;
+
 /**
  * Native implementations of the SAS-generation operations. Every operation signs locally
  * (with the account key or a user-delegation key); no request reaches Azure, but signing
@@ -66,28 +69,33 @@ public final class SasOps {
     private SasOps() {
     }
 
+    /** Generates a service SAS token scoped to the bound share. */
     public static Object generateShareSas(Environment env, BObject self, BMap<BString, Object> values) {
         return Ops.invoke(env, () -> StringUtils.fromString(
                 Ops.shareClient(self).generateSas(shareSasValues(values, true))));
     }
 
+    /** Generates a service SAS token scoped to one file. */
     public static Object generateSas(Environment env, BObject self, BString path, BMap<BString, Object> values) {
         return Ops.invoke(env, () -> StringUtils.fromString(
                 FileOps.fileClient(self, path).generateSas(shareSasValues(values, false))));
     }
 
+    /** Generates a user-delegation SAS token scoped to the bound share. */
     public static Object generateShareUserDelegationSas(Environment env, BObject self,
             BMap<BString, Object> values, BMap<BString, Object> key) {
         return Ops.invoke(env, () -> StringUtils.fromString(
                 Ops.shareClient(self).generateUserDelegationSas(shareSasValues(values, true), delegationKey(key))));
     }
 
+    /** Generates a user-delegation SAS token scoped to one file. */
     public static Object generateUserDelegationSas(Environment env, BObject self, BString path,
             BMap<BString, Object> values, BMap<BString, Object> key) {
         return Ops.invoke(env, () -> StringUtils.fromString(FileOps.fileClient(self, path)
                 .generateUserDelegationSas(shareSasValues(values, false), delegationKey(key))));
     }
 
+    /** Generates an account SAS token for the file service. */
     public static Object generateAccountSas(Environment env, BObject self, BMap<BString, Object> values) {
         return Ops.invoke(env, () -> {
             @SuppressWarnings("unchecked")
@@ -121,7 +129,7 @@ public final class SasOps {
     private static ShareServiceSasSignatureValues shareSasValues(BMap<BString, Object> values, boolean shareScope) {
         @SuppressWarnings("unchecked")
         BMap<BString, Object> permissions = (BMap<BString, Object>) values.get(RecordMapper.PERMISSIONS);
-        java.time.OffsetDateTime expiry = ValueUtils.fromUtc((BArray) values.get(EXPIRY_TIME));
+        OffsetDateTime expiry = ValueUtils.fromUtc((BArray) values.get(EXPIRY_TIME));
         ShareServiceSasSignatureValues sdkValues;
         if (shareScope) {
             sdkValues = new ShareServiceSasSignatureValues(expiry, new ShareSasPermission()
@@ -146,9 +154,9 @@ public final class SasOps {
     }
 
     private static void applyCommon(BMap<BString, Object> values,
-            java.util.function.Function<java.time.OffsetDateTime, ?> setStartTime,
-            java.util.function.Function<SasProtocol, ?> setProtocol,
-            java.util.function.Function<SasIpRange, ?> setIpRange) {
+            Function<OffsetDateTime, ?> setStartTime,
+            Function<SasProtocol, ?> setProtocol,
+            Function<SasIpRange, ?> setIpRange) {
         Object startTime = values.get(START_TIME);
         if (startTime != null) {
             setStartTime.apply(ValueUtils.fromUtc((BArray) startTime));

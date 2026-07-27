@@ -17,9 +17,7 @@
 import ballerina/jballerina.java;
 import ballerina/time;
 
-# Account-level client for Azure Files. Manages the shares within a storage account
-# (create, list, delete, restore, existence checks). For operations scoped to a single share,
-# use `Client`.
+# Account-level client for Azure Files, managing the shares within a storage account.
 public isolated client class AdminClient {
 
     # Initializes the account-level client for the given storage account.
@@ -31,9 +29,7 @@ public isolated client class AdminClient {
     }
 
     # Checks whether a share exists in the storage account. Returns `false` only when Azure
-    # confirms the share is absent (HTTP 404); an `Error` means the check itself failed
-    # (e.g. invalid credentials, network failure) and the share's existence could not be
-    # determined.
+    # confirms the share is absent; an `Error` means the check itself failed.
     #
     # + shareName - The name of the share to check
     # + return - `true` if the share exists, `false` if not, or an `Error`
@@ -41,8 +37,7 @@ public isolated client class AdminClient {
         'class: "io.ballerina.lib.azure.storage.files.AdminOps"
     } external;
 
-    # Lists the shares in the storage account. Soft-deleted shares appear only when requested
-    # via `ShareListOptions.includeDeleted`.
+    # Lists the shares in the storage account.
     #
     # + options - Optional filtering and listing options
     # + return - An array of `ShareInfo`, or an `Error`
@@ -61,9 +56,7 @@ public isolated client class AdminClient {
         'class: "io.ballerina.lib.azure.storage.files.AdminOps"
     } external;
 
-    # Deletes a share from the storage account. When the account's soft-delete retention
-    # policy is enabled (the default for new accounts), the share is retained for the
-    # configured period and can be restored with `undeleteShare`.
+    # Deletes a share from the storage account.
     #
     # + shareName - The name of the share to delete
     # + options - Optional deletion options (snapshot handling, lease id)
@@ -73,8 +66,7 @@ public isolated client class AdminClient {
         'class: "io.ballerina.lib.azure.storage.files.AdminOps"
     } external;
 
-    # Restores a soft-deleted share. Find restorable shares and their versions with
-    # `listShares(includeDeleted = true)`.
+    # Restores a soft-deleted share.
     #
     # + shareName - The name of the soft-deleted share to restore
     # + version - The version of the soft-deleted share (from `ShareInfo.version`)
@@ -87,17 +79,15 @@ public isolated client class AdminClient {
     // Service configuration
     // -----------------------------------------------------------------------
 
-    # Reads the account's file-service configuration: metrics collection and CORS
-    # (Cross-Origin Resource Sharing) rules.
+    # Reads the account's file-service configuration (metrics and CORS rules).
     #
     # + return - The `ServiceProperties`, or an `Error`
     isolated remote function getServiceProperties() returns ServiceProperties|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.AdminOps"
     } external;
 
-    # Updates the account's file-service configuration. The service applies the record as a
-    # whole, so read the current configuration with `getServiceProperties`, modify it, and
-    # pass the result back.
+    # Updates the account's file-service configuration. The record replaces the whole
+    # configuration.
     #
     # + properties - The complete file-service configuration to apply
     # + return - An `Error` if the configuration could not be updated, otherwise `()`
@@ -109,9 +99,8 @@ public isolated client class AdminClient {
     // SAS
     // -----------------------------------------------------------------------
 
-    # Gets a user-delegation key for signing user-delegation SAS tokens. Valid only on a
-    # client authenticated with Microsoft Entra ID (`EntraIdConfig`) whose identity holds the
-    # `Storage File Delegator` role.
+    # Gets a user-delegation key for signing user-delegation SAS tokens. Requires Microsoft
+    # Entra ID credentials with the `Storage File Delegator` role.
     #
     # + startTime - The start of the key's validity period
     # + expiryTime - The end of the key's validity period (at most 7 days out)
@@ -121,20 +110,18 @@ public isolated client class AdminClient {
         'class: "io.ballerina.lib.azure.storage.files.AdminOps"
     } external;
 
-    # Mints an account-level SAS (Shared Access Signature) token. Signing happens locally with
-    # the account key, so no call is made to Azure; the client must be authenticated with
-    # `SharedKeyConfig` (or a connection string carrying an account key). Note that rotating
-    # the account key revokes every SAS minted from it.
+    # Generates an account-level SAS (Shared Access Signature) token. The token is signed
+    # locally with the account key, so shared key credentials are required.
     #
     # + values - What the SAS grants: validity window, permissions, and resource types
     # + return - The SAS token, or an `Error`
-    isolated remote function generateAccountSas(AccountSasSignatureValues values)
+    public isolated function generateAccountSas(AccountSasSignatureValues values)
             returns string|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.SasOps"
     } external;
 
     # Closes the client and releases any connector-owned resources. Subsequent operations on
-    # a closed client fail. No call is made to Azure.
+    # a closed client fail.
     #
     # + return - An `Error` if the client could not be closed, otherwise `()`
     public isolated function close() returns Error? {

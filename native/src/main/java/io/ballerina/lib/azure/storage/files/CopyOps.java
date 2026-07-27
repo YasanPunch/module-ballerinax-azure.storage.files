@@ -22,6 +22,7 @@ import com.azure.core.util.polling.SyncPoller;
 import com.azure.storage.file.share.ShareFileClient;
 import com.azure.storage.file.share.models.PermissionCopyModeType;
 import com.azure.storage.file.share.models.ShareFileCopyInfo;
+import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.options.ShareFileCopyOptions;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
@@ -29,6 +30,7 @@ import io.ballerina.runtime.api.values.BObject;
 import io.ballerina.runtime.api.values.BString;
 
 import java.time.Duration;
+import java.time.OffsetDateTime;
 
 /**
  * Native implementations of the {@code Client} copy operations. Copies are asynchronous
@@ -43,6 +45,7 @@ public final class CopyOps {
     private CopyOps() {
     }
 
+    /** Starts a server-side copy from another file in the same share. */
     public static Object copyFile(Environment env, BObject self, BString sourcePath,
                                   BString destinationPath, Object options) {
         return Ops.invoke(env, () -> {
@@ -51,16 +54,19 @@ public final class CopyOps {
         });
     }
 
+    /** Starts a server-side copy from any accessible source URL. */
     public static Object copyFileFromUrl(Environment env, BObject self, BString sourceUrl,
                                          BString destinationPath, Object options) {
         return Ops.invoke(env, () -> startCopy(self, sourceUrl.getValue(), destinationPath, options));
     }
 
+    /** Reports the progress of a copy targeting the given file; {@code null} when none exists. */
     public static Object checkCopyStatus(Environment env, BObject self, BString path) {
         return Ops.invoke(env, () ->
                 RecordMapper.copyStatusInfo(FileOps.fileClient(self, path).getProperties()));
     }
 
+    /** Aborts an in-progress copy identified by its copy id. */
     public static Object abortCopy(Environment env, BObject self, BString path, BString copyId) {
         return Ops.invoke(env, () -> {
             FileOps.fileClient(self, path).abortCopy(copyId.getValue());
@@ -93,9 +99,9 @@ public final class CopyOps {
         // The poll cycle does not always carry the destination's eTag and last-modified time;
         // fill the gaps from the destination's properties so CopyInfo is always complete.
         String eTag = info.getETag();
-        java.time.OffsetDateTime lastModified = info.getLastModified();
+        OffsetDateTime lastModified = info.getLastModified();
         if (eTag == null || lastModified == null) {
-            var properties = destination.getProperties();
+            ShareFileProperties properties = destination.getProperties();
             eTag = eTag == null ? properties.getETag() : eTag;
             lastModified = lastModified == null ? properties.getLastModified() : lastModified;
         }

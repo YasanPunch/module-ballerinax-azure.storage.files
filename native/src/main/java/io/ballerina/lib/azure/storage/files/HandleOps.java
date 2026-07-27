@@ -36,6 +36,7 @@ public final class HandleOps {
     private HandleOps() {
     }
 
+    /** Lists the open SMB handles on a file as {@code HandleInfo} records. */
     public static Object listFileHandles(Environment env, BObject self, BString path) {
         return Ops.invoke(env, () -> {
             BArray result = RecordMapper.recordArray(RecordMapper.RECORD_HANDLE_INFO);
@@ -46,6 +47,7 @@ public final class HandleOps {
         });
     }
 
+    /** Force-closes one SMB handle on a file, or all of them when no id is given. */
     public static Object forceCloseFileHandles(Environment env, BObject self, BString path, Object handleId) {
         return Ops.invoke(env, () -> {
             ShareFileClient client = FileOps.fileClient(self, path);
@@ -56,10 +58,11 @@ public final class HandleOps {
         });
     }
 
+    /** Lists the open SMB handles on a directory as {@code HandleInfo} records. */
     public static Object listDirectoryHandles(Environment env, BObject self, BString directoryPath) {
         return Ops.invoke(env, () -> {
             BArray result = RecordMapper.recordArray(RecordMapper.RECORD_HANDLE_INFO);
-            for (HandleItem item : directoryClient(self, directoryPath)
+            for (HandleItem item : DirectoryOps.directoryClient(self, directoryPath)
                     .listHandles(null, false, null, Context.NONE)) {
                 result.append(RecordMapper.handleInfo(item));
             }
@@ -67,21 +70,15 @@ public final class HandleOps {
         });
     }
 
+    /** Force-closes one SMB handle on a directory, or all of them when no id is given. */
     public static Object forceCloseDirectoryHandles(Environment env, BObject self, BString directoryPath,
             Object handleId, boolean recursive) {
         return Ops.invoke(env, () -> {
-            ShareDirectoryClient client = directoryClient(self, directoryPath);
+            ShareDirectoryClient client = DirectoryOps.directoryClient(self, directoryPath);
             CloseHandlesInfo info = handleId == null
                     ? client.forceCloseAllHandles(recursive, null, Context.NONE)
                     : client.forceCloseHandle(((BString) handleId).getValue());
             return RecordMapper.closeHandlesInfo(info);
         });
-    }
-
-    private static ShareDirectoryClient directoryClient(BObject self, BString directoryPath) {
-        String path = Ops.directoryPath(directoryPath);
-        return path.isEmpty()
-                ? Ops.shareClient(self).getRootDirectoryClient()
-                : Ops.shareClient(self).getDirectoryClient(path);
     }
 }

@@ -39,7 +39,7 @@ import java.util.Iterator;
 public final class ListOps {
 
     // Key under which the native iterator state is stored on a stream generator object.
-    static final String NATIVE_ITERATOR = "azure.storage.files.native.iterator";
+    private static final String NATIVE_ITERATOR = "azure.storage.files.native.iterator";
 
     private ListOps() {
     }
@@ -64,7 +64,7 @@ public final class ListOps {
         });
     }
 
-    /** Pulls the next entry: an `Entry` record, {@code null} at the end, or an error. */
+    /** Pulls the next entry: an {@code Entry} record, {@code null} at the end, or an error. */
     public static Object nextEntry(Environment env, BObject generator) {
         return Ops.invoke(env, () -> {
             EntryIterator iterator = (EntryIterator) generator.getNativeData(NATIVE_ITERATOR);

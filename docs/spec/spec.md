@@ -1,121 +1,174 @@
-# Specification: Ballerina Azure Files connector
+# Specification: Ballerina Azure Files Library
 
-_Authors_: @YasanPunch \
+_Owners_: @YasanPunch \
+_Reviewers_: @niveathika \
 _Created_: 2026/07/13 \
-_Updated_: 2026/07/23 \
+_Updated_: 2026/07/27 \
 _Edition_: Swan Lake
 
-## Summary
+## Introduction
 
-Ballerina's current support for Azure Files lives inside `ballerinax/azure_storage_service`, a combined package that re-implements the Azure Storage REST protocol (Shared Key signing, chunked transfer, error handling) by hand and is pinned to the 2019-12-12 API version. This specification introduces **ballerinax/azure.storage.files**, a standalone connector for [Azure Files](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-introduction) built on Microsoft's official `com.azure:azure-storage-file-share` Java SDK. It provides a two-tier client (`AdminClient` for account-level operations, `Client` bound to one share), a union-typed authentication model, and a consistent error hierarchy. A polling `Listener` for event-driven services follows in a later release. It is the sibling of `ballerinax/azure.storage.blob` and shares its design conventions.
+This specification describes the Azure Files connector library for the Ballerina programming language, enabling applications to manage Microsoft Azure file shares and the directories and files within them. The library definition has progressed over time and may undergo further refinement. Previous versions are accessible via their corresponding GitHub tags.
 
-## Motivation
+For feedback or suggestions regarding this library, please open a discussion through a "GitHub issue" or participate in the "Discord server". Community input drives potential updates to both specification and implementation. Accepted proposals that impact the specification are documented in `/docs/proposals`, with ongoing discussions tagged as `type/proposal` on GitHub.
 
-The existing `azure_storage_service.files` module has accumulated several problems:
+The official implementation aligns with this specification. Any deviation qualifies as a defect.
 
-1. **Hand-written protocol layer:** Shared Key signing, chunked upload, and response parsing are implemented in Ballerina and pinned to the 2019-12-12 REST API version. Every protocol fix and every new service capability must be re-implemented by hand.
-2. **Fully in-memory transfers:** `getFile` buffers the entire file before writing to disk, and the hand-rolled chunked upload both swallows failures in a logging side effect and carries a chunk-size discrepancy between its two size constants.
-3. **Ambiguous configuration:** the auth record makes every field optional (`accessKeyOrSAS?`, `accountName?`), so misconfiguration surfaces as a runtime failure instead of a compile error.
-4. **Inconsistent error handling:** error subtypes are defined but applied inconsistently, and an empty directory listing is raised as an error even though it is a valid state.
-5. **No event-driven support:** there is no listener, so applications that react to files arriving in a share must hand-roll polling.
-6. **No tests in CI:** the legacy tests are live-only and CI skips them entirely.
-7. **Combined packaging:** file support is a submodule of a package that also covers Blob, so users pull one large artifact for one service, against the prevailing one-package-per-service pattern of the Azure ecosystem.
+## Contents
 
-Microsoft's own SDKs solve the protocol problems once, centrally: `azure-storage-file-share` encapsulates signing, SAS construction, retry policies, parallel chunked transfer, connection-string parsing, and parity with new REST API versions. Wrapping the SDK instead of the REST API means the connector inherits all of this and Microsoft remains responsible for maintaining it.
+1. [Overview](#1-overview)
+2. [Configuration](#2-configuration)
+   * 2.1 [Authentication](#21-authentication)
+      * 2.1.1 [Shared Key](#211-shared-key)
+      * 2.1.2 [SAS Token](#212-sas-token)
+      * 2.1.3 [SAS URL](#213-sas-url)
+      * 2.1.4 [Connection String](#214-connection-string)
+      * 2.1.5 [Microsoft Entra ID](#215-microsoft-entra-id)
+   * 2.2 [Client Configuration](#22-client-configuration)
+   * 2.3 [Retry Configuration](#23-retry-configuration)
+   * 2.4 [Transport Configuration](#24-transport-configuration)
+3. [AdminClient](#3-adminclient)
+   * 3.1 [Initializing the AdminClient](#31-initializing-the-adminclient)
+   * 3.2 [Share Management Operations](#32-share-management-operations)
+   * 3.3 [Service Configuration Operations](#33-service-configuration-operations)
+   * 3.4 [User Delegation Key and Account SAS](#34-user-delegation-key-and-account-sas)
+   * 3.5 [Closing the AdminClient](#35-closing-the-adminclient)
+4. [Client](#4-client)
+   * 4.1 [Initializing the Client](#41-initializing-the-client)
+   * 4.2 [Share Operations](#42-share-operations)
+   * 4.3 [Directory Operations](#43-directory-operations)
+   * 4.4 [File Operations](#44-file-operations)
+   * 4.5 [Transfer Operations](#45-transfer-operations)
+   * 4.6 [Copy Operations](#46-copy-operations)
+   * 4.7 [Range Operations](#47-range-operations)
+   * 4.8 [Share Snapshot Operations](#48-share-snapshot-operations)
+   * 4.9 [Lease Operations](#49-lease-operations)
+   * 4.10 [SMB Handle Operations](#410-smb-handle-operations)
+   * 4.11 [Property Update Operations](#411-property-update-operations)
+   * 4.12 [Access Policy Operations](#412-access-policy-operations)
+   * 4.13 [Permission Operations](#413-permission-operations)
+   * 4.14 [SAS Generation](#414-sas-generation)
+   * 4.15 [NFS Link Operations](#415-nfs-link-operations)
+   * 4.16 [Closing the Client](#416-closing-the-client)
+5. [Error Types](#5-error-types)
+6. [Samples](#6-samples)
 
-## Goals
+## 1. Overview
 
-* Provide an idiomatic Ballerina API for Azure Files with a focused core surface: share lifecycle, directory and file CRUD, upload/download (disk, in-memory, stream), listing, properties and metadata, rename/move, copy, and byte ranges.
-* Match Microsoft's two-tier mental model: `AdminClient` for account-level operations and `Client(shareName)` for everything inside one share.
-* Provide a union-typed authentication model where each member is exactly one real-world credential artifact and misconfiguration is a compile error.
-* Provide a consistent, pattern-matchable error hierarchy keyed on the Azure error code.
-* Be a strict superset of the file surface of the existing `azure_storage_service` connector, so existing users can migrate with no loss of functionality.
-* Provide, in a later release, a polling `Listener` (there is no Event Grid source for Azure Files) with a `Caller` so handlers can act on the event's file without constructing a separate client.
+[Azure Files](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-introduction) is the fully managed file-share service of Azure Storage, offering shares accessible over SMB, NFS, and REST. The `ballerinax/azure.storage.files` module provides an idiomatic Ballerina API for the service. It is built on the official Azure SDK for Java (`com.azure:azure-storage-file-share`), which supplies request signing, retry, and chunked transfer underneath the Ballerina surface.
 
-## Non-Goals
+The public surface is two client classes:
 
-- **No Blob, Queue, or Table support.** Blob is the sibling package `azure.storage.blob`; Queue and Table would be their own future packages.
-- **No re-implementation of the wire protocol.** Authentication, signing, retry, and chunked transfer are delegated to the official SDK.
+* `AdminClient` operates at the storage-account level. It creates, lists, deletes, and restores shares, manages the account's file-service configuration, and mints account-level SAS tokens.
+* `Client` is bound to a single share at initialization and carries every operation inside that share: directories, files, transfers, copies, byte ranges, snapshots, leases, SMB handles, access policies, stored permissions, SAS generation, and NFS links.
 
-## Design
+Directory and file operations take a single slash-delimited, share-relative path (for example `/reports/2026/q4.pdf`). Where two paths co-occur, they are named `sourcePath` and `destinationPath`, in source-first order. Every entry returned by a listing carries its full share-relative path, so listing results feed directly into the path-taking operations.
 
-### 1. Module overview
+Both classes are isolated client classes holding only immutable configuration, so a single client instance can be used safely from concurrent strands. Every operation that calls the service is a remote method, invoked with `->`. Methods that make no service call are ordinary methods, invoked with `.`: each client's `close`, and the SAS generation methods, which sign tokens locally with the credential the client already holds.
 
-The module is `ballerinax/azure.storage.files`. The hierarchical name groups it with its sibling `azure.storage.blob`, following the pattern of `azure.openai.chat` and `azure.openai.responses`. The package has two parts: a `ballerina/` module holding the public API and a `native/` Java subproject that adapts it onto `com.azure:azure-storage-file-share`.
+For brevity, the `isolated` qualifier is omitted from the signatures in this specification.
 
-Microsoft's SDK is structured as a chain of four clients (`ShareServiceClient` account scope, `ShareClient` share scope, `ShareDirectoryClient`, `ShareFileClient`). The connector exposes the two scopes users actually think in:
+## 2. Configuration
 
-- **`AdminClient`**: account level. List, create, delete, and restore shares. Used by admin tooling and applications that work with multiple shares.
-- **`Client`**: bound to one share at `init`. All directory, file, transfer, copy, and range operations, plus share-level properties and metadata. This is the client most applications instantiate.
+### 2.1 Authentication
 
-The lower SDK levels are not surfaced as classes. Directory and file operations are methods on `Client` taking a single slash-delimited, share-relative `path` (for example `"/reports/2026/q4.pdf"`); the Java adaptor splits the path into the segments the SDK requires. Where two paths co-occur they are named `sourcePath` and `destinationPath` in logical source-first order.
-
-Because `azure-storage-blob` and `azure-storage-file-share` depend on the same `azure-storage-common` artifact, splitting Blob and Files into two Ballerina packages duplicates nothing at the JVM level: the auth, signing, and retry layer is shared by Microsoft's own packaging.
-
-### 2. Authentication
-
-#### 2.1 The `AuthConfig` union
-
-Each union member is exactly one real-world credential artifact, the thing the portal, CLI, or IaC tooling actually hands the user:
+The authentication configuration is a union in which each member represents exactly one real-world credential artifact, the thing the Azure portal, CLI, or infrastructure tooling actually hands the user:
 
 ```ballerina
-# The authentication configuration: exactly one credential-artifact record.
 public type AuthConfig SharedKeyConfig|SasConfig|SasUrlConfig|ConnectionStringConfig|EntraIdConfig;
 ```
 
-The first four members are simple credential artifacts (section 2.2). `EntraIdConfig` is itself a union of five Microsoft Entra ID records, one per credential kind (section 2.3).
+Every member has a unique required field or field combination, so both the compiler and `Config.toml` select the right member by structural matching, with no discriminator field. The two Microsoft Entra ID chain records (`DefaultEntraIdConfig` and `ManagedIdentityConfig`), which would otherwise share the same field shape, are the exception: they carry a `kind` discriminator.
 
-#### 2.2 Credential records
+```toml
+# The fields present select the union member:
+[myapp.filesConfig]
+auth = {accountName = "myacct", accountKey = "..."}               # SharedKeyConfig
+# auth = {accountName = "myacct", sasToken = "sv=..."}            # SasConfig
+# auth = {sasUrl = "https://myacct.file.core.windows.net/?sv=..."}# SasUrlConfig
+# auth = {connectionString = "..."}                               # ConnectionStringConfig
+# auth = {kind = "default", accountName = "myacct"}               # DefaultEntraIdConfig
+# auth = {kind = "managed-identity", accountName = "myacct"}      # ManagedIdentityConfig
+# auth = {accountName = "myacct", tenantId = "...", clientId = "...", clientSecret = "..."}                # ClientSecretConfig
+# auth = {accountName = "myacct", tenantId = "...", clientId = "...", certificatePath = "/path/cert.pem"}  # ClientCertificateConfig
+# auth = {accountName = "myacct", tenantId = "...", clientId = "...", tokenFilePath = "/path/token"}       # WorkloadIdentityConfig
+```
+
+Every auth mode is validated at `init` with local computation and no call to Azure: connection strings are parsed strictly and checked for a file endpoint, and the explicit records get non-empty, base64, and URL-scheme checks. A malformed credential surfaces a specific error at `init` rather than an opaque failure at first use.
+
+#### 2.1.1 Shared Key
+
+Authenticates with the storage account name and one of its access keys.
 
 ```ballerina
-# Authenticates with the storage account name and key (Shared Key).
 public type SharedKeyConfig record {|
-    # Storage account name, the signing identity
+    # The storage account name, used to sign requests and to derive the service URL
     string accountName;
-    # Storage account access key (base64)
+    # A base64-encoded access key of the storage account
     string accountKey;
-    # Overrides where requests are sent; defaults to `https://{accountName}.file.core.windows.net`
+    # The file service endpoint URL, including the scheme. Omit to use the default
+    # `https://{accountName}.file.core.windows.net`
     string serviceUrl?;
 |};
+```
 
-# Authenticates with a bare shared access signature (SAS) token.
+#### 2.1.2 SAS Token
+
+Authenticates with a bare shared access signature (SAS) token, as issued by `az storage share generate-sas` or the SAS generation methods of this module.
+
+```ballerina
 public type SasConfig record {|
-    # Storage account name, used to derive the service URL
+    # The name of the storage account the token belongs to (determines the service URL)
     string accountName;
-    # The SAS token, e.g. `sv=...&sig=...`
+    # A SAS token scoped to the required resources and permissions
     string sasToken;
 |};
+```
 
-# Authenticates with the portal's fused SAS URL (endpoint and token in one string).
+#### 2.1.3 SAS URL
+
+Authenticates with a full SAS URL, which carries the service URL and the SAS token in one string, as issued by the Azure portal ("File service SAS URL").
+
+```ballerina
 public type SasUrlConfig record {|
-    # The full File service SAS URL
+    # A full file-service SAS URL, including the scheme and the SAS query string
+    # (e.g. `https://{account}.file.core.windows.net/?sv=...&sig=...`)
     string sasUrl;
 |};
+```
 
-# Authenticates with a storage account connection string, which carries the endpoint.
+#### 2.1.4 Connection String
+
+Authenticates with a storage account connection string, which carries the account name, the credential (an account key or a SAS token), and the service endpoints.
+
+```ballerina
 public type ConnectionStringConfig record {|
-    # The connection string as shown in the portal
+    # An Azure Storage connection string, as issued by the Azure portal, the Azure CLI, or
+    # infrastructure tooling
     string connectionString;
 |};
 ```
 
-#### 2.3 Entra ID records
+#### 2.1.5 Microsoft Entra ID
+
+`EntraIdConfig` is itself a union of five records, one per Entra ID credential kind:
+
+```ballerina
+public type EntraIdConfig DefaultEntraIdConfig|ManagedIdentityConfig|ClientSecretConfig|
+    ClientCertificateConfig|WorkloadIdentityConfig;
+```
 
 Azure Files honors OAuth tokens only on requests carrying the backup intent, which the connector sets automatically. The intent bypasses file and directory ACLs and requires the identity to hold the `Storage File Data Privileged Reader` or `Storage File Data Privileged Contributor` role.
 
 ```ballerina
-# Microsoft Entra ID authentication: one record per credential kind.
-public type EntraIdConfig DefaultEntraIdConfig|ManagedIdentityConfig|ClientSecretConfig|
-    ClientCertificateConfig|WorkloadIdentityConfig;
-
 # The credential-kind discriminator value selecting `DefaultEntraIdConfig`.
 public const DEFAULT_AZURE_CREDENTIAL = "default";
 
 # The credential-kind discriminator value selecting `ManagedIdentityConfig`.
 public const MANAGED_IDENTITY = "managed-identity";
 
-# Authentication through the default credential chain, which tries the environment, a
-# managed identity, and developer sign-ins in turn.
+# Authentication through the default credential chain, which tries the environment,
+# a managed identity, and developer sign-ins in turn.
 public type DefaultEntraIdConfig record {|
     # Selects the default credential chain
     DEFAULT_AZURE_CREDENTIAL kind;
@@ -182,46 +235,78 @@ public type WorkloadIdentityConfig record {|
 |};
 ```
 
-#### 2.4 Client configuration and member selection
+### 2.2 Client Configuration
+
+Both clients take the same configuration record:
 
 ```ballerina
 public type ClientConfiguration record {|
-    # The authentication configuration
+    # The authentication configuration (see `AuthConfig`)
     AuthConfig auth;
-    # Retry behaviour for service requests; omit for the service defaults (section 6)
+    # Retry behaviour for service requests; omit for the service defaults
     RetryConfig retryConfig?;
-    # HTTP transport settings (proxy, connection pool, TLS); omit for the defaults (section 6)
+    # HTTP transport settings (proxy, connection pool, TLS); omit for the defaults
     TransportConfig transportConfig?;
 |};
 ```
 
-Every `AuthConfig` member has a unique required field or field combination, so both the compiler and `Config.toml` select the right member by structural matching, with no discriminator field. The two Entra ID chain records (`DefaultEntraIdConfig` and `ManagedIdentityConfig`), which share the same remaining fields, are the exception: they carry a `kind` discriminator.
+`config` is an included record parameter on both `init` methods, so callers pass its fields as named arguments, for example `new (auth = {accountName, accountKey})`.
 
-```toml
-# The fields present select the union member:
-[myapp.filesConfig]
-auth = {accountName = "myacct", accountKey = "..."}               # SharedKeyConfig
-# auth = {accountName = "myacct", sasToken = "sv=..."}            # SasConfig
-# auth = {sasUrl = "https://myacct.file.core.windows.net/?sv=..."}# SasUrlConfig
-# auth = {connectionString = "..."}                               # ConnectionStringConfig
-# auth = {kind = "default", accountName = "myacct"}               # DefaultEntraIdConfig
-# auth = {kind = "managed-identity", accountName = "myacct"}      # ManagedIdentityConfig
-# auth = {accountName = "myacct", tenantId = "...", clientId = "...", clientSecret = "..."}                # ClientSecretConfig
-# auth = {accountName = "myacct", tenantId = "...", clientId = "...", certificatePath = "/path/cert.pem"}  # ClientCertificateConfig
-# auth = {accountName = "myacct", tenantId = "...", clientId = "...", tokenFilePath = "/path/token"}       # WorkloadIdentityConfig
-```
+### 2.3 Retry Configuration
 
-Every auth mode is validated at `init` with local computation and no call to Azure: connection strings run the SDK's own strict parser plus a file-endpoint check, and the explicit records get non-empty, base64, and URL-scheme checks. A malformed credential surfaces a specific error at `init` rather than an opaque failure at first use.
-
-### 3. The `AdminClient`
-
-The core `AdminClient` surface is the share lifecycle plus an existence check:
+Retry behaviour for service requests. Omitting the record leaves the default retry behaviour in place.
 
 ```ballerina
-public isolated function init(*ClientConfiguration config) returns Error?;
+public type RetryConfig record {|
+    # How the delay between tries grows (`EXPONENTIAL` or `FIXED`)
+    RetryPolicyType retryPolicyType = EXPONENTIAL;
+    # The maximum number of tries (the first attempt plus retries)
+    int maxTries = 4;
+    # The timeout applied to each individual try, in seconds
+    decimal tryTimeoutSeconds = 60;
+    # The base delay between tries, in seconds
+    decimal retryDelaySeconds = 4;
+    # The upper bound on the delay between tries, in seconds
+    decimal maxRetryDelaySeconds = 120;
+    # A secondary endpoint to retry reads against (geo-redundant accounts)
+    string secondaryHostUrl?;
+|};
+```
 
-public function close() returns Error?;
+### 2.4 Transport Configuration
 
+HTTP transport settings: proxying, connection pooling, and TLS.
+
+```ballerina
+public type TransportConfig record {|
+    # Route traffic through this proxy
+    ProxyConfig proxy?;
+    # Connection-pool tuning
+    ConnectionPoolConfig connectionPool = {};
+    # Custom TLS settings (trust and key material, verification)
+    SecureSocket secureSocket?;
+|};
+```
+
+`ProxyConfig` routes the connector's traffic through an HTTP, SOCKS4, or SOCKS5 proxy, with optional credentials and a bypass list. `ConnectionPoolConfig` tunes the maximum number of concurrent connections and the idle, connect, and read timeouts. `SecureSocket` configures custom trust material (a truststore or a PEM certificate path), a client identity for mutual TLS (a keystore or a `CertKey` certificate and key pair), the offered TLS versions and cipher suites, host-name verification, session reuse, revocation checking, an SNI host name, and handshake and session timeouts.
+
+## 3. AdminClient
+
+The `AdminClient` manages the shares within a storage account. Use it for share lifecycle management, the account's file-service configuration, and account-level SAS tokens. For operations scoped to a single share, use `Client`.
+
+### 3.1 Initializing the AdminClient
+
+```ballerina
+public function init(*ClientConfiguration config) returns Error?;
+```
+
+```ballerina
+files:AdminClient admin = check new (auth = {accountName: "myacct", accountKey: "..."});
+```
+
+### 3.2 Share Management Operations
+
+```ballerina
 remote function hasShare(string shareName) returns boolean|Error;
 
 remote function listShares(ShareListOptions? options = ()) returns ShareInfo[]|Error;
@@ -233,32 +318,67 @@ remote function deleteShare(string shareName, ShareDeleteOptions? options = ()) 
 remote function undeleteShare(string shareName, string version) returns Error?;
 ```
 
-`config` is an included record parameter; callers pass its fields as named arguments, e.g. `new (auth = {accountName, accountKey})`. `hasShare` returns `false` only when Azure confirms absence (404); an `Error` means the check itself could not complete, so an auth problem is never misreported as a missing share. `deleteShare` is soft under the account's soft-delete retention policy and restorable via `undeleteShare`.
+`hasShare` returns `false` only when Azure confirms absence (HTTP 404); an `Error` means the check itself could not complete, so an auth problem is never misreported as a missing share. `createShare` accepts a quota, an access tier, the protocols to enable (SMB and/or NFS), the NFS root-squash setting, and metadata through `ShareCreateOptions`. When the account's soft-delete retention policy is enabled, `deleteShare` retains the share for the configured period; find restorable shares and their versions with `listShares(includeDeleted = true)` and restore them with `undeleteShare`.
 
-### 4. The `Client`
+### 3.3 Service Configuration Operations
 
 ```ballerina
-public isolated function init(string shareName, *ClientConfiguration config) returns Error?;
+remote function getServiceProperties() returns ServiceProperties|Error;
 
+remote function setServiceProperties(ServiceProperties properties) returns Error?;
+```
+
+`ServiceProperties` covers the account's request-metrics collection, CORS rules, and protocol settings. The service applies the record as a whole, so read the current configuration, modify it, and pass the result back.
+
+### 3.4 User Delegation Key and Account SAS
+
+```ballerina
+remote function getUserDelegationKey(time:Utc startTime, time:Utc expiryTime) returns UserDelegationKey|Error;
+
+function generateAccountSas(AccountSasSignatureValues values) returns string|Error;
+```
+
+`getUserDelegationKey` requires a client authenticated with Microsoft Entra ID whose identity holds the `Storage File Delegator` role; the key is valid at most 7 days and signs user-delegation SAS tokens (section 4.14). `generateAccountSas` is an ordinary method, invoked with `.`: it signs the token locally with the account key and makes no service call. It requires a client authenticated with `SharedKeyConfig` (or a connection string carrying an account key). Rotating the account key revokes every SAS minted from it.
+
+### 3.5 Closing the AdminClient
+
+```ballerina
 public function close() returns Error?;
 ```
 
-Binding is lazy: `init` makes no call to Azure, so the first operation against a nonexistent share fails with `NotFoundError`; the up-front check is `AdminClient.hasShare`. Every operation on both public classes is an `isolated remote function` on an `isolated` class holding only immutable configuration, so concurrent invocation from parallel strands is safe (the qualifier is omitted below for brevity). `close` is an ordinary method rather than a remote one, because it makes no call to Azure.
+`close` is an ordinary method, invoked with `.`. It releases connector-owned resources and makes no service call. Subsequent operations on a closed client fail.
 
-A method name carries the `File` token either to disambiguate a verb that also exists for directories (`createFile` next to `createDirectory`) or to keep a bare verb from implying it handles directories when it is file-only (`uploadFile`, `downloadFile`, `copyFile`). Verbs whose object is already explicit stay bare (`uploadContent`, `uploadRange`, `setContentHeaders`), and `list` is deliberately tier-neutral because it returns files and directories in one stream.
+## 4. Client
 
-#### 4.1 Share-level operations
+The `Client` is bound to a single share at initialization and operates on that share and the directories and files within it.
+
+### 4.1 Initializing the Client
+
+```ballerina
+public function init(string shareName, *ClientConfiguration config) returns Error?;
+```
+
+```ballerina
+files:Client fileShare = check new ("invoices", auth = {accountName: "myacct", accountKey: "..."});
+```
+
+Binding is lazy: `init` makes no call to Azure, so initializing against a share that does not exist succeeds and the first operation on it fails with a `NotFoundError`. The up-front existence check is `AdminClient.hasShare`.
+
+A method name carries the `File` token either to disambiguate a verb that also exists for directories (`createFile` next to `createDirectory`) or to keep a bare verb from implying it handles directories when it is file-only (`uploadFile`, `downloadFile`, `copyFile`). Verbs whose object is already explicit stay bare (`uploadContent`, `uploadRange`, `setContentHeaders`), and `list` is deliberately neutral because it returns files and directories in one stream.
+
+### 4.2 Share Operations
 
 ```ballerina
 remote function getShareProperties() returns ShareProperties|Error;
 
 remote function setShareMetadata(map<string> metadata) returns Error?;
 
-# Returns the approximate stored bytes.
 remote function getShareUsage() returns int|Error;
 ```
 
-#### 4.2 Directory operations
+Metadata is free-form, user-defined annotation; Azure stores and returns it verbatim. `setShareMetadata` replaces the complete metadata set, and metadata is read back through `getShareProperties`. `getShareUsage` returns the approximate stored bytes.
+
+### 4.3 Directory Operations
 
 ```ballerina
 remote function createDirectory(string directoryPath, DirectoryCreateOptions? options = ()) returns Error?;
@@ -271,16 +391,14 @@ remote function getDirectoryProperties(string directoryPath) returns DirectoryPr
 
 remote function setDirectoryMetadata(string directoryPath, map<string> metadata) returns Error?;
 
-# Lists both files and subdirectories, as one stream.
 remote function list(string directoryPath, ListOptions? options = ()) returns stream<Entry, Error?>|Error;
 
-# Rename doubles as move.
 remote function renameDirectory(string sourcePath, string destinationPath, RenameOptions? options = ()) returns Error?;
 ```
 
-Every `Entry` from `list` carries its full share-relative path, so entries feed directly into the path-taking operations. Rename doubles as move: the destination is a full share-relative path, so `"/X/A"` to `"/Y/A"` re-parents within the same share.
+`deleteDirectory` requires the directory to be empty. `hasDirectory` follows the same semantics as `hasShare`: `false` only on a confirmed 404, an `Error` when the check itself fails. `list` returns files and subdirectories as one lazy stream, so memory stays bounded on large directories; every `Entry` carries its full share-relative `path` and an `isDirectory` flag, and `ListOptions` offers a name prefix, recursion, page sizing, extended info (ETag and timestamps), and a `snapshotId` to list from a share snapshot. Rename doubles as move: the destination is a full share-relative path, so `/X/A` to `/Y/A` re-parents within the same share. A directory can never overwrite an existing directory; with `RenameOptions.replaceIfExists` it may overwrite an existing file at the destination. Moving across shares is not possible.
 
-#### 4.3 File operations
+### 4.4 File Operations
 
 ```ballerina
 remote function createFile(string path, int sizeInBytes, CreateOptions? options = ()) returns Error?;
@@ -293,18 +411,16 @@ remote function getFileProperties(string path) returns FileProperties|Error;
 
 remote function setFileMetadata(string path, map<string> metadata) returns Error?;
 
-# Replaces the complete content-header set; omitted headers are cleared.
 remote function setContentHeaders(string path, ContentHeaders headers) returns Error?;
 
 remote function renameFile(string sourcePath, string destinationPath, RenameOptions? options = ()) returns Error?;
 ```
 
-Metadata is read via `getFileProperties().metadata`; only a setter is exposed.
+`createFile` provisions an empty file of a fixed size; content is written separately via the transfer or range operations. `setContentHeaders` replaces the complete content-header set (`Content-Type`, `Cache-Control`, and the other standard headers): any header omitted from `headers` is cleared on the file. Metadata is read via `getFileProperties().metadata`; only a setter is exposed. `renameFile` overwrites an existing destination file only when `RenameOptions.replaceIfExists` is set, and an existing destination directory always fails the operation.
 
-#### 4.4 Transfer operations
+### 4.5 Transfer Operations
 
 ```ballerina
-# Both paths are full paths including the file name, in source-first order.
 remote function uploadFile(string sourcePath, string destinationPath, UploadOptions? options = ()) returns Error?;
 
 remote function uploadContent(byte[]|string|xml|map<json> content, string destinationPath, UploadOptions? options = ()) returns Error?;
@@ -313,31 +429,28 @@ remote function uploadFromStream(stream<byte[], error?> content, int contentLeng
 
 remote function downloadFile(string sourcePath, string destinationPath, DownloadOptions? options = ()) returns Error?;
 
-# Opens the file's content as one lazy byte stream.
 remote function getFileContent(string path, DownloadOptions? options = ()) returns stream<byte[], Error?>|Error;
 ```
 
-`uploadFile` and `downloadFile` move a local file on disk. `uploadContent` takes in-memory content (`byte[]` and `string` written as-is, `xml` serialized, `map<json>` serialized as JSON). `uploadFromStream` requires `contentLength` because Azure Files pre-allocates a file at a fixed size before content is written into its ranges. The transfer methods chunk internally, and downloads stream rather than buffer.
+`uploadFile` and `downloadFile` move a local file on disk; both parameters are full paths including the file name, in source-first order. `uploadContent` takes in-memory content: `byte[]` and `string` are written as-is, `xml` in its textual form, and `map<json>` as a JSON document. `uploadFromStream` requires `contentLength` because Azure Files pre-allocates the file at a fixed size before content is written into its ranges; a source-stream failure, or a stream whose length does not match `contentLength`, surfaces as a `ProcessingError`. The transfer methods chunk internally, and `getFileContent` reads lazily, so memory stays bounded for any file size. `downloadFile` fails with a `ProcessingError` when a local file already exists at `destinationPath`. `DownloadOptions` offers a byte `range` and a `snapshotId` to read from a share snapshot.
 
-#### 4.5 Copy operations
+### 4.6 Copy Operations
 
 ```ballerina
 remote function copyFile(string sourcePath, string destinationPath, CopyOptions? options = ()) returns CopyInfo|Error;
 
 remote function copyFileFromUrl(string sourceUrl, string destinationPath, CopyOptions? options = ()) returns CopyInfo|Error;
 
-# Returns () when the file has never been a copy destination.
 remote function checkCopyStatus(string path) returns CopyStatusInfo?|Error;
 
 remote function abortCopy(string path, string copyId) returns Error?;
 ```
 
-Copies are asynchronous; observe an in-flight copy with `checkCopyStatus`.
+Copies are asynchronous: inspect the returned `CopyInfo.copyStatus` and, if pending, observe progress with `checkCopyStatus` (which returns `()` when the file has never been a copy destination) or cancel with `abortCopy`. `copyFile` copies within the bound share under this client's credentials. `copyFileFromUrl` copies from an external URL: a source in a different storage account, or any blob source, must carry its own authorization in the URL (typically a SAS token).
 
-#### 4.6 Range operations
+### 4.7 Range Operations
 
 ```ballerina
-# A single Put Range (at most 4 MiB); the transfer methods above chunk internally.
 remote function uploadRange(string path, int offset, byte[] content) returns Error?;
 
 remote function clearRange(string path, int offset, int length) returns Error?;
@@ -345,40 +458,176 @@ remote function clearRange(string path, int offset, int length) returns Error?;
 remote function listRanges(string path, RangeListOptions? options = ()) returns Range[]|Error;
 ```
 
-### 5. Errors
+`uploadRange` writes a single range of at most 4 MiB and performs no chunking; for content of arbitrary size, use the transfer operations. `clearRange` frees the underlying storage; storage deallocates in 512-byte units, so a smaller cleared span is zeroed but may still appear in `listRanges` until the whole unit is cleared. `listRanges` returns the valid (written) byte ranges of a file, each with inclusive start and end offsets.
 
-A distinct error hierarchy allows pattern-matching on specific failures:
+### 4.8 Share Snapshot Operations
+
+```ballerina
+remote function createShareSnapshot(map<string>? metadata = ()) returns ShareSnapshotInfo|Error;
+
+remote function listShareSnapshots() returns ShareSnapshotInfo[]|Error;
+
+remote function deleteShareSnapshot(string snapshotId) returns Error?;
+
+remote function listRangesDiff(string path, string previousSnapshotId, RangeListOptions? options = ()) returns RangeDiff|Error;
+```
+
+A share snapshot is a point-in-time, read-only copy of the whole share. Snapshot contents are read through the regular read operations: pass the returned `snapshotId` in `DownloadOptions` (`downloadFile`, `getFileContent`) or `ListOptions` (`list`) to resolve the same paths inside the snapshot instead of the live share. `listShareSnapshots` and `deleteShareSnapshot` run service-level operations, so they need account-level credentials (an account key, a connection string carrying one, or an account SAS; a share-scoped SAS is not sufficient). `listRangesDiff` reports which of a file's ranges were written and which were cleared since a baseline snapshot, for incremental backup on top of snapshots.
+
+### 4.9 Lease Operations
+
+Share leases:
+
+```ballerina
+remote function acquireShareLease(int leaseDurationSeconds, string? proposedLeaseId = ()) returns string|Error;
+
+remote function renewShareLease(string leaseId) returns Error?;
+
+remote function releaseShareLease(string leaseId) returns Error?;
+
+remote function breakShareLease(int? breakPeriodSeconds = ()) returns int|Error;
+
+remote function changeShareLease(string leaseId, string proposedLeaseId) returns string|Error;
+```
+
+File leases:
+
+```ballerina
+remote function acquireLease(string path, string? proposedLeaseId = ()) returns string|Error;
+
+remote function releaseLease(string path, string leaseId) returns Error?;
+
+remote function breakLease(string path) returns Error?;
+
+remote function changeLease(string path, string leaseId, string proposedLeaseId) returns string|Error;
+```
+
+A share lease locks the share against deletion by anyone not holding the lease id; it is fixed-duration (15 to 60 seconds) or infinite (-1) and is kept alive with `renewShareLease`. A file lease locks the file against writes and deletion; it is always infinite, so it takes no duration and has no renew. The break operations reclaim a lease without needing its id, for when the holder is gone: a share lease keeps running for `breakPeriodSeconds` (or its own remaining time) before breaking, while a file lease breaks immediately.
+
+### 4.10 SMB Handle Operations
+
+```ballerina
+remote function listFileHandles(string path) returns HandleInfo[]|Error;
+
+remote function forceCloseFileHandles(string path, string? handleId = ()) returns CloseHandlesInfo|Error;
+
+remote function listDirectoryHandles(string directoryPath) returns HandleInfo[]|Error;
+
+remote function forceCloseDirectoryHandles(string directoryPath, string? handleId = (), boolean recursive = false) returns CloseHandlesInfo|Error;
+```
+
+Handles are opened by SMB clients (mounted drives); REST operations through this connector do not hold handles. The force-close operations release locks whose holders are gone or unresponsive, closing one handle by id or, when `handleId` is absent, all handles on the target; the affected SMB clients receive an error on their next operation. `forceCloseDirectoryHandles` can also close handles throughout the directory's subtree with `recursive`.
+
+### 4.11 Property Update Operations
+
+```ballerina
+remote function setShareProperties(ShareSetPropertiesOptions options) returns Error?;
+
+remote function setFileProperties(string path, FileSetPropertiesOptions options) returns Error?;
+
+remote function setDirectoryProperties(string directoryPath, DirectorySetPropertiesOptions options) returns Error?;
+```
+
+These update properties after creation; only what is set is changed, and every omitted field keeps the current value. `setShareProperties` changes the share's quota or access tier; it is administrative, needs account-key-level credentials, and fails with an `AuthorizationError` on SAS credentials. `setFileProperties` covers content headers, SMB properties, an SDDL permission, a new file size (growing pre-allocates, shrinking truncates), and POSIX attributes. `setDirectoryProperties` covers SMB properties, an SDDL permission, and POSIX attributes.
+
+### 4.12 Access Policy Operations
+
+```ballerina
+remote function getShareAccessPolicy() returns SignedIdentifier[]|Error;
+
+remote function setShareAccessPolicy(SignedIdentifier[] identifiers) returns Error?;
+```
+
+A stored access policy carries a validity window and a permission string under an identifier. Share SAS tokens minted against a policy (via the `identifier` field of the signature values) inherit its window and permissions, so removing or editing a policy immediately revokes or changes every SAS minted against it. `setShareAccessPolicy` replaces the complete set, at most five per share.
+
+### 4.13 Permission Operations
+
+```ballerina
+remote function getSharePermission(string permissionKey) returns string|Error;
+
+remote function createSharePermission(string sddlPermission) returns string|Error;
+```
+
+The share carries a permission store of security descriptors (SDDL strings). `createSharePermission` stores a descriptor and returns its key, so the same permission can be applied to many files via `SmbProperties.filePermissionKey` without repeating the descriptor; `getSharePermission` reads a stored descriptor back by key.
+
+### 4.14 SAS Generation
+
+The SAS generation methods are ordinary methods, invoked with `.`: signing happens locally with the credential the client holds, and no call is made to Azure.
+
+```ballerina
+function generateShareSas(ShareSasSignatureValues values) returns string|Error;
+
+function generateSas(string path, FileSasSignatureValues values) returns string|Error;
+
+function generateShareUserDelegationSas(ShareSasSignatureValues values, UserDelegationKey key) returns string|Error;
+
+function generateUserDelegationSas(string path, FileSasSignatureValues values, UserDelegationKey key) returns string|Error;
+```
+
+`generateShareSas` and `generateSas` sign with the account key, so the client must be authenticated with `SharedKeyConfig` (or a connection string carrying an account key); rotating the account key revokes every SAS minted from it. The signature values carry the validity window, the permissions, and optionally a protocol restriction, an IP range, or a stored access policy `identifier` in place of an explicit window and permissions. The user-delegation variants sign with a `UserDelegationKey` (from `AdminClient.getUserDelegationKey`) instead of the account key, so no storage key is ever handled; they are valid at most 7 days (the key's lifetime), and stored access policies do not apply to them.
+
+### 4.15 NFS Link Operations
+
+```ballerina
+remote function createHardLink(string path, string targetPath) returns Error?;
+
+remote function createSymbolicLink(string path, string linkTarget) returns Error?;
+
+remote function getSymbolicLink(string path) returns string|Error;
+```
+
+These operate on NFS shares only. A hard link makes both paths refer to the same underlying file, and the file's `PosixProperties.linkCount` grows by one. A symbolic link stores its target as a path, resolved by the NFS client at access time; the target need not exist.
+
+### 4.16 Closing the Client
+
+```ballerina
+public function close() returns Error?;
+```
+
+`close` is an ordinary method, invoked with `.`. It releases connector-owned resources and makes no service call. Subsequent operations on a closed client fail.
+
+## 5. Error Types
+
+Every error raised by an operation of this module is a subtype of the distinct `Error` type and carries an `ErrorDetail`, so callers can pattern-match on specific failures:
 
 ```ballerina
 public type ErrorDetail record {|
-    # HTTP status; absent on client-side failures with no server exchange
+    # The HTTP status code returned by Azure. Absent when the failure happened without a
+    # server exchange (e.g. a `ProcessingError` raised client-side)
     int httpStatus?;
-    # The Azure error code, or a connector-defined identifier for client-side failures
+    # The Azure error code (e.g. `ShareNotFound`), or a connector-defined identifier for
+    # client-side failures
     string errorCode;
 |};
 
-public type Error                    distinct error<ErrorDetail>;
-public type NotFoundError            distinct Error;
-public type ConflictError            distinct Error;
-public type AuthorizationError       distinct Error;
-public type PreconditionFailedError  distinct Error;
+public type Error distinct error<ErrorDetail>;
+
+public type NotFoundError distinct Error;
+
+public type ConflictError distinct Error;
+
+public type AuthorizationError distinct Error;
+
+public type PreconditionFailedError distinct Error;
+
 public type RangeNotSatisfiableError distinct Error;
-public type QuotaExceededError       distinct Error;
-public type ProcessingError          distinct Error;
+
+public type QuotaExceededError distinct Error;
+
+public type ProcessingError distinct Error;
 ```
 
-Mapping keys on the Azure error code string, not the HTTP status alone: `ShareSizeLimitReached` (403) maps to `QuotaExceededError`, distinct from auth failures (also 403) mapping to `AuthorizationError`. The human-readable message becomes the Ballerina error's `message()` rather than being duplicated into the detail record.
+* `NotFoundError`: the requested share, directory, or file was not found (HTTP 404).
+* `ConflictError`: the operation conflicts with the current state of the resource, for example creating a share that already exists (HTTP 409).
+* `AuthorizationError`: authentication or authorization failed, for example an invalid key or insufficient SAS permissions (HTTP 403).
+* `PreconditionFailedError`: a precondition such as an ETag condition or a lease-id requirement was not met (HTTP 412).
+* `RangeNotSatisfiableError`: the requested byte range cannot be satisfied for the target file (HTTP 416).
+* `QuotaExceededError`: a write was rejected because the share's provisioned capacity is exhausted (HTTP 403).
+* `ProcessingError`: a client-side failure while preparing the request or decoding the response, with no server round-trip.
 
-### 6. Advanced surface
+Mapping keys on the Azure error code string, not the HTTP status alone: `ShareSizeLimitReached` (HTTP 403) maps to `QuotaExceededError`, distinct from auth failures (also HTTP 403) mapping to `AuthorizationError`. The human-readable description becomes the Ballerina error's `message()` rather than being duplicated into the detail record.
 
-Beyond the core surface above, the same classes carry the full Azure Files capability set as additive methods and configuration, kept out of the core so the common path stays small:
-
-* **Authentication:** the `EntraIdConfig` union members defined in section 2.3. The connector sets the required `ShareTokenIntent.BACKUP` request intent implicitly.
-* **Resilience and transport configuration:** a retry record mirroring the SDK's `RequestRetryOptions` (with the SDK's own defaults) plus proxy, TLS, and connection-pool settings.
-* **`AdminClient`:** `getServiceProperties`, `setServiceProperties`, `getUserDelegationKey`, `generateAccountSas`.
-* **`Client`:** share snapshots (`createShareSnapshot`, `listShareSnapshots`, `deleteShareSnapshot`, `listRangesDiff`, and snapshot-scoped reads via a `snapshotId` option on the download and list operations); share and file leases (share: acquire, renew, release, break, change; file: acquire, release, break, change, since file leases are always infinite); SMB handle enumeration and force-close; post-create property updates (`setShareProperties` quota/tier, `setFileProperties` including resize, `setDirectoryProperties`); SAS generation (`generateShareSas`, `generateSas`) and user-delegation SAS; stored access policies; SDDL permission get/create; NFS hard and symbolic links plus POSIX owner, group, and mode writes via a `posixProperties` option on the create, upload, and property-setter operations.
-
-### 7. Usage
+## 6. Samples
 
 Working with files in a share:
 
@@ -397,6 +646,8 @@ public function main() returns error? {
         // ...
     });
 
+    check fileShare->downloadFile("/2026/07/invoice.pdf", "./copies/invoice.pdf");
+
     check fileShare.close();
 }
 ```
@@ -405,29 +656,34 @@ Share administration:
 
 ```ballerina
 files:AdminClient admin = check new (auth = {accountName: "myacct", accountKey: "..."});
+
 if !(check admin->hasShare("invoices")) {
     check admin->createShare("invoices", {quotaInGb: 100});
 }
+
+check admin.close();
 ```
 
-## Alternatives
+Minting a read-only, one-hour SAS token for a single file (a local signing operation, invoked with `.`):
 
-* **Revamp `azure_storage_service` in place.** Rejected: the hand-written protocol layer remains the maintenance burden, and the combined Blob-plus-Files packaging contradicts the one-package-per-service pattern of the rest of the Azure ecosystem.
-* **Generate a client from the REST/OpenAPI definition.** Rejected: the generated client would still leave Shared Key signing, SAS construction, retry, and chunked transfer to be implemented and maintained by hand; the official SDK already encapsulates all of it and tracks new API versions.
-* **Surface the SDK's four-client chain directly** (`ShareServiceClient`, `ShareClient`, `ShareDirectoryClient`, `ShareFileClient`). Rejected: navigating a client chain to reach a file is SDK ergonomics, not Ballerina ergonomics. Two clients plus a combined `path` parameter keeps the common case to a single object and small signatures.
-* **One combined package for Blob and Files.** Rejected: users pull one artifact per service everywhere else in the ecosystem, and Microsoft's own packaging already shares the common auth/retry layer between the two SDK artifacts, so separate Ballerina packages duplicate nothing.
+```ballerina
+import ballerina/time;
 
-## Testing
+files:Client fileShare = check new ("invoices", auth = {accountName: "myacct", accountKey: "..."});
 
-Azure Files has no local emulator (Azurite covers Blob, Queue, and Table only), so the connector carries an in-process mock of the File REST service that the real SDK runs against. There is one test suite: without credentials it runs against the mock (every build, including fork pull requests, credential-free), and when storage-account credentials are configured the same tests run against a live storage account instead, which also verifies the mock's fidelity. A few tests are single-backend where the condition they exercise physically requires it (forced service errors and transport failures stay on the mock; Microsoft Entra ID token flows run only live).
+string sasToken = check fileShare.generateSas("/2026/07/invoice.pdf", {
+    expiryTime: time:utcAddSeconds(time:utcNow(), 3600),
+    permissions: {read: true}
+});
+```
 
-## Dependencies
+Handling a specific failure:
 
-* Azure SDK for Java: `com.azure:azure-storage-file-share` (and `com.azure:azure-identity` for Entra ID support)
-
-## References
-
-* [Azure Files documentation](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-introduction)
-* [Azure Files REST API](https://learn.microsoft.com/en-us/rest/api/storageservices/file-service-rest-api)
-* [Azure SDK for Java, File Share client library](https://learn.microsoft.com/en-us/java/api/overview/azure/storage-file-share-readme)
-* [Existing connector: `ballerinax/azure_storage_service`](https://central.ballerina.io/ballerinax/azure_storage_service/latest)
+```ballerina
+files:FileProperties|files:Error properties = fileShare->getFileProperties("/2026/07/invoice.pdf");
+if properties is files:NotFoundError {
+    // the file is absent; create it, or skip
+} else if properties is files:Error {
+    return properties;
+}
+```

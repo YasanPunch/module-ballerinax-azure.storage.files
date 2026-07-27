@@ -32,10 +32,12 @@ import io.ballerina.runtime.api.values.BXml;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.Arrays;
 
 /**
  * Native implementations of the {@code Client} transfer operations: local-file upload and
@@ -45,7 +47,7 @@ import java.nio.file.Path;
 public final class TransferOps {
 
     // Key under which an open content input stream is stored on a stream generator object.
-    static final String NATIVE_INPUT_STREAM = "azure.storage.files.native.inputStream";
+    private static final String NATIVE_INPUT_STREAM = "azure.storage.files.native.inputStream";
 
     private TransferOps() {
     }
@@ -55,6 +57,7 @@ public final class TransferOps {
     /** The chunk size handed to Ballerina byte-stream consumers. */
     private static final int READ_CHUNK_BYTES = 64 * 1024;
 
+    /** Uploads a local file to the share, creating the destination at the source's size. */
     public static Object uploadFile(Environment env, BObject self, BString sourcePath,
                                     BString destinationPath, Object options) {
         return Ops.invoke(env, () -> {
@@ -75,6 +78,7 @@ public final class TransferOps {
         });
     }
 
+    /** Uploads in-memory content (bytes, string, XML, or JSON) as a new file. */
     public static Object uploadContent(Environment env, BObject self, Object content,
                                        BString destinationPath, Object options) {
         return Ops.invoke(env, () -> {
@@ -119,6 +123,7 @@ public final class TransferOps {
         });
     }
 
+    /** Downloads a share file (or a range of it) to a local file. */
     public static Object downloadFile(Environment env, BObject self, BString sourcePath,
                                       BString destinationPath, Object options) {
         return Ops.invoke(env, () -> {
@@ -138,7 +143,7 @@ public final class TransferOps {
                     client.downloadToFileWithResponse(destinationPath.getValue(),
                             OptionsReader.range(range), null, null);
                 }
-            } catch (java.io.UncheckedIOException e) {
+            } catch (UncheckedIOException e) {
                 throw FilesErrorCreator.processingError(
                         "cannot write local file " + destinationPath.getValue() + ": " + Ops.describe(e.getCause()),
                         e);
@@ -183,7 +188,7 @@ public final class TransferOps {
                     closeQuietly(generator);
                     return null;
                 }
-                byte[] chunk = read == buffer.length ? buffer : java.util.Arrays.copyOf(buffer, read);
+                byte[] chunk = read == buffer.length ? buffer : Arrays.copyOf(buffer, read);
                 return ValueCreator.createArrayValue(chunk);
             } catch (IOException e) {
                 closeQuietly(generator);

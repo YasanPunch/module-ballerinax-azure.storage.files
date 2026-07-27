@@ -33,6 +33,8 @@ import io.ballerina.runtime.api.values.BString;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Supplier;
 
 /**
@@ -46,6 +48,8 @@ final class Ops {
     static final String NATIVE_SERVICE_CLIENT = "azure.storage.files.native.serviceClient";
     static final String NATIVE_SHARE_CLIENT = "azure.storage.files.native.shareClient";
     static final String NATIVE_CLOSED = "azure.storage.files.native.closed";
+    // The query parameter that addresses a share snapshot on the wire.
+    private static final String SHARE_SNAPSHOT_PARAM = "sharesnapshot";
 
     private Ops() {
     }
@@ -104,9 +108,8 @@ final class Ops {
      *
      * <p>The snapshot client is rebuilt with an extra pipeline policy that appends the
      * {@code sharesnapshot} query parameter to any request missing it. The SDK's download path
-     * hard-codes that parameter to {@code null} ({@code ShareFileAsyncClient.downloadRange}
-     * bytecode-verified in 12.31.0), so without the policy every content read from a snapshot
-     * client silently serves the live file.
+     * hard-codes that parameter to {@code null}, so without the policy every content read from
+     * a snapshot client silently serves the live file.
      *
      * @param self       the Ballerina client object
      * @param snapshotId the snapshot to read from, or {@code null} for the live share
@@ -120,8 +123,8 @@ final class Ops {
         String encodedId = URLEncoder.encode(snapshotId, StandardCharsets.UTF_8);
         HttpPipelinePolicy ensureSnapshotParam = (context, next) -> {
             UrlBuilder url = UrlBuilder.parse(context.getHttpRequest().getUrl());
-            if (!url.getQuery().containsKey("sharesnapshot")) {
-                url.setQueryParameter("sharesnapshot", encodedId);
+            if (!url.getQuery().containsKey(SHARE_SNAPSHOT_PARAM)) {
+                url.setQueryParameter(SHARE_SNAPSHOT_PARAM, encodedId);
                 context.getHttpRequest().setUrl(url.toString());
             }
             return next.process();
@@ -130,7 +133,7 @@ final class Ops {
         // The parameter must be on the URL before the credential policy signs the request
         // (shared-key signatures cover the canonicalized query), so the policy is inserted
         // ahead of the first credential policy rather than appended.
-        java.util.List<HttpPipelinePolicy> policies = new java.util.ArrayList<>();
+        List<HttpPipelinePolicy> policies = new ArrayList<>();
         int insertAt = -1;
         for (int i = 0; i < pipeline.getPolicyCount(); i++) {
             HttpPipelinePolicy policy = pipeline.getPolicy(i);

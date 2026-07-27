@@ -636,7 +636,7 @@ function testCopyFromUrl() returns error? {
     // The service fetches the source URL itself, so it carries a read SAS; the mock
     // ignores the token while live Azure verifies it.
     time:Utc sourceExpiry = time:utcAddSeconds(time:utcNow(), 3600);
-    string token = check fileClient->generateSas("/origin.txt",
+    string token = check fileClient.generateSas("/origin.txt",
             {expiryTime: sourceExpiry, permissions: {read: true}});
     string sourceUrl = string `${sasBaseUrl()}/${share}/origin.txt?${token}`;
     CopyInfo info = check fileClient->copyFileFromUrl(sourceUrl, "/copied.txt");
@@ -1254,7 +1254,7 @@ function testGenerateShareAndFileSas() returns error? {
     Client fileClient = check newShareClient(share);
     time:Utc expiry = check time:utcFromString("2026-08-01T00:00:00Z");
 
-    string shareSas = check fileClient->generateShareSas(
+    string shareSas = check fileClient.generateShareSas(
             {expiryTime: expiry, permissions: {read: true, list: true}});
     map<string> shareParams = sasParams(shareSas);
     test:assertEquals(shareParams["sp"], "rl");
@@ -1263,7 +1263,7 @@ function testGenerateShareAndFileSas() returns error? {
     test:assertTrue(shareParams.hasKey("sv"), "expected a service version");
     test:assertFalse(shareParams.hasKey("st"), "expected no start time when unset");
 
-    string fileSas = check fileClient->generateSas("/data.txt", {
+    string fileSas = check fileClient.generateSas("/data.txt", {
         expiryTime: expiry,
         permissions: {read: true, write: true},
         protocol: HTTPS,
@@ -1280,7 +1280,7 @@ function testGenerateShareAndFileSas() returns error? {
     Client sasClient = check new (share, auth = {
         sasUrl: string `${sasBaseUrl()}?sv=2025-05-05&sp=rl&se=2026-08-01T00%3A00%3A00Z&sig=ZmFrZQ%3D%3D`
     });
-    string|Error denied = sasClient->generateShareSas(
+    string|Error denied = sasClient.generateShareSas(
             {expiryTime: expiry, permissions: {read: true}});
     test:assertTrue(denied is ProcessingError,
             "expected SAS generation without an account key to fail");
@@ -1301,14 +1301,14 @@ function testGenerateUserDelegationSas() returns error? {
             time:utcAddSeconds(keyStart, 86400));
     time:Utc expiry = time:utcAddSeconds(keyStart, 3600);
 
-    string shareToken = check fileClient->generateShareUserDelegationSas(
+    string shareToken = check fileClient.generateShareUserDelegationSas(
             {expiryTime: expiry, permissions: {read: true}}, key);
     map<string> shareParams = sasParams(shareToken);
     test:assertEquals(shareParams["sp"], "r");
     test:assertEquals(shareParams["skoid"], key.signedObjectId);
     test:assertTrue(shareParams.hasKey("sig"), "expected a signature");
 
-    string fileToken = check fileClient->generateUserDelegationSas("/f.txt",
+    string fileToken = check fileClient.generateUserDelegationSas("/f.txt",
             {expiryTime: expiry, permissions: {read: true, delete: true}}, key);
     map<string> fileParams = sasParams(fileToken);
     test:assertEquals(fileParams["sp"], "rd");
@@ -1322,7 +1322,7 @@ function testGenerateAccountSas() returns error? {
     AdminClient admin = check newAdmin();
     time:Utc expiry = check time:utcFromString("2026-08-01T00:00:00Z");
 
-    string accountSas = check admin->generateAccountSas({
+    string accountSas = check admin.generateAccountSas({
         expiryTime: expiry,
         permissions: {read: true, write: true, list: true},
         resourceTypes: {'service: true, container: true, 'object: true}
@@ -1522,7 +1522,7 @@ function testSasRoundtrip() returns error? {
     check keyClient->uploadContent("sas readable", "/sas-probe.txt");
 
     time:Utc expiry = time:utcAddSeconds(time:utcNow(), 3600);
-    string token = check keyClient->generateShareSas(
+    string token = check keyClient.generateShareSas(
             {expiryTime: expiry, permissions: {read: true, list: true, delete: true}});
 
     // The minted token authenticates a fresh client through its full SAS URL. The mock

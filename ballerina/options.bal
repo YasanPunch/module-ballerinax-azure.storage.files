@@ -199,7 +199,6 @@ public type CopyOptions record {|
 public type RangeListOptions record {|
     # Restrict the listing to this byte range
     Range range?;
-    // kept a record so further options can be added compatibly
 |};
 
 # Options for `Client.setFileProperties`. Only what is set is changed; every omitted field

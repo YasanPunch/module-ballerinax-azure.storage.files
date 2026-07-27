@@ -31,6 +31,9 @@ import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
 import io.ballerina.runtime.api.values.BString;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+
 /**
  * Native implementations of the basic {@code Client} file operations.
  */
@@ -42,6 +45,7 @@ public final class FileOps {
     private FileOps() {
     }
 
+    /** Creates an empty file pre-allocated to the given size. */
     public static Object createFile(Environment env, BObject self, BString path, long sizeInBytes, Object options) {
         return Ops.invoke(env, () -> {
             fileClient(self, path).createWithResponse(createOptions(sizeInBytes, options), null, null);
@@ -49,6 +53,7 @@ public final class FileOps {
         });
     }
 
+    /** Deletes a file. */
     public static Object deleteFile(Environment env, BObject self, BString path) {
         return Ops.invoke(env, () -> {
             fileClient(self, path).delete();
@@ -56,14 +61,17 @@ public final class FileOps {
         });
     }
 
+    /** Checks whether the file exists; {@code false} only on a confirmed 404. */
     public static Object hasFile(Environment env, BObject self, BString path) {
         return Ops.invoke(env, () -> Boolean.TRUE.equals(fileClient(self, path).exists()));
     }
 
+    /** Fetches a file's properties as a {@code FileProperties} record. */
     public static Object getFileProperties(Environment env, BObject self, BString path) {
         return Ops.invoke(env, () -> RecordMapper.fileProperties(fileClient(self, path).getProperties()));
     }
 
+    /** Updates a file's size, content headers, SMB, and POSIX properties. */
     public static Object setFileProperties(Environment env, BObject self, BString path,
             BMap<BString, Object> options) {
         return Ops.invoke(env, () -> {
@@ -97,6 +105,7 @@ public final class FileOps {
         });
     }
 
+    /** Replaces a file's user-defined metadata. */
     public static Object setFileMetadata(Environment env, BObject self, BString path,
                                          BMap<BString, BString> metadata) {
         return Ops.invoke(env, () -> {
@@ -105,6 +114,7 @@ public final class FileOps {
         });
     }
 
+    /** Replaces a file's HTTP content headers, keeping its current size. */
     public static Object setContentHeaders(Environment env, BObject self, BString path,
                                            BMap<BString, Object> headers) {
         return Ops.invoke(env, () -> {
@@ -116,6 +126,7 @@ public final class FileOps {
         });
     }
 
+    /** Renames or moves a file within the share. */
     public static Object renameFile(Environment env, BObject self, BString sourcePath,
                                     BString destinationPath, Object options) {
         return Ops.invoke(env, () -> {
@@ -142,6 +153,7 @@ public final class FileOps {
         return sdkOptions;
     }
 
+    /** Creates an NFS hard link to an existing file. */
     public static Object createHardLink(Environment env, BObject self, BString path, BString targetPath) {
         return Ops.invoke(env, () -> {
             // The SDK sends the target verbatim in the x-ms-file-target-file header, which is
@@ -152,6 +164,7 @@ public final class FileOps {
         });
     }
 
+    /** Creates an NFS symbolic link pointing at the given target. */
     public static Object createSymbolicLink(Environment env, BObject self, BString path, BString linkTarget) {
         return Ops.invoke(env, () -> {
             fileClient(self, path).createSymbolicLink(linkTarget.getValue());
@@ -159,13 +172,14 @@ public final class FileOps {
         });
     }
 
+    /** Reads the target path stored in an NFS symbolic link. */
     public static Object getSymbolicLink(Environment env, BObject self, BString path) {
         // The service returns the link text percent-encoded. URLDecoder alone would also turn a
         // literal + into a space (form semantics), so pluses are escaped first to preserve them.
-        return Ops.invoke(env, () -> io.ballerina.runtime.api.utils.StringUtils.fromString(
-                java.net.URLDecoder.decode(
+        return Ops.invoke(env, () -> StringUtils.fromString(
+                URLDecoder.decode(
                         fileClient(self, path).getSymbolicLink().getLinkText().replace("+", "%2B"),
-                        java.nio.charset.StandardCharsets.UTF_8)));
+                        StandardCharsets.UTF_8)));
     }
 
     /** Returns the SDK file client for a combined share-relative path. */

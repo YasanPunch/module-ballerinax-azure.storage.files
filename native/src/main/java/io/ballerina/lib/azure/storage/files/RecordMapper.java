@@ -19,18 +19,30 @@
 package io.ballerina.lib.azure.storage.files;
 
 import com.azure.storage.file.share.FileSmbProperties;
+import com.azure.storage.file.share.models.ClearRange;
+import com.azure.storage.file.share.models.CloseHandlesInfo;
 import com.azure.storage.file.share.models.FilePosixProperties;
+import com.azure.storage.file.share.models.FileRange;
+import com.azure.storage.file.share.models.HandleItem;
 import com.azure.storage.file.share.models.LeaseDurationType;
 import com.azure.storage.file.share.models.LeaseStateType;
 import com.azure.storage.file.share.models.LeaseStatusType;
 import com.azure.storage.file.share.models.NtfsFileAttributes;
+import com.azure.storage.file.share.models.ShareAccessPolicy;
+import com.azure.storage.file.share.models.ShareCorsRule;
 import com.azure.storage.file.share.models.ShareDirectoryProperties;
 import com.azure.storage.file.share.models.ShareFileItem;
 import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.models.ShareFileRange;
+import com.azure.storage.file.share.models.ShareFileRangeList;
 import com.azure.storage.file.share.models.ShareItem;
+import com.azure.storage.file.share.models.ShareMetrics;
 import com.azure.storage.file.share.models.ShareProperties;
 import com.azure.storage.file.share.models.ShareProtocols;
+import com.azure.storage.file.share.models.ShareRetentionPolicy;
+import com.azure.storage.file.share.models.ShareServiceProperties;
+import com.azure.storage.file.share.models.ShareSignedIdentifier;
+import com.azure.storage.file.share.models.UserDelegationKey;
 import io.ballerina.runtime.api.creators.TypeCreator;
 import io.ballerina.runtime.api.creators.ValueCreator;
 import io.ballerina.runtime.api.types.PredefinedTypes;
@@ -40,6 +52,7 @@ import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BString;
 
+import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.EnumSet;
 
@@ -75,6 +88,13 @@ final class RecordMapper {
     static final String RECORD_USER_DELEGATION_KEY = "UserDelegationKey";
     // The Ballerina CopyStatus enum value reported while a copy is still pending.
     static final String COPY_STATUS_PENDING = "pending";
+    // The Ballerina Protocol enum values.
+    static final String PROTOCOL_SMB = "SMB";
+    static final String PROTOCOL_NFS = "NFS";
+    // The AccessTier value reported when the service omits the tier.
+    private static final String ACCESS_TIER_TRANSACTION_OPTIMIZED = "TransactionOptimized";
+    // The content type reported when the service omits one.
+    private static final String DEFAULT_CONTENT_TYPE = "application/octet-stream";
     static final BString NAME = StringUtils.fromString("name");
     static final BString PROPERTIES = StringUtils.fromString("properties");
     static final BString IS_DELETED = StringUtils.fromString("isDeleted");
@@ -136,7 +156,7 @@ final class RecordMapper {
     private RecordMapper() {
     }
 
-    /** Maps one listed share to a `ShareInfo` record. */
+    /** Maps one listed share to a {@code ShareInfo} record. */
     static BMap<BString, Object> shareInfo(ShareItem item) {
         BMap<BString, Object> record = newRecord(RECORD_SHARE_INFO);
         record.put(NAME, StringUtils.fromString(item.getName()));
@@ -156,12 +176,12 @@ final class RecordMapper {
         return record;
     }
 
-    /** Maps SDK share properties to a `ShareProperties` record. */
+    /** Maps SDK share properties to a {@code ShareProperties} record. */
     static BMap<BString, Object> shareProperties(ShareProperties p) {
         BMap<BString, Object> record = newRecord(RECORD_SHARE_PROPERTIES);
         record.put(OptionsReader.QUOTA_IN_GB, (long) p.getQuota());
         record.put(OptionsReader.ACCESS_TIER, StringUtils.fromString(
-                p.getAccessTier() == null ? "TransactionOptimized" : p.getAccessTier()));
+                p.getAccessTier() == null ? ACCESS_TIER_TRANSACTION_OPTIMIZED : p.getAccessTier()));
         record.put(E_TAG, StringUtils.fromString(p.getETag()));
         record.put(LAST_MODIFIED, ValueUtils.toUtc(p.getLastModified()));
         if (p.getMetadata() != null && !p.getMetadata().isEmpty()) {
@@ -172,10 +192,10 @@ final class RecordMapper {
             BArray array = ValueCreator.createArrayValue(
                     TypeCreator.createArrayType(PredefinedTypes.TYPE_STRING));
             if (protocols.isSmbEnabled()) {
-                array.append(StringUtils.fromString("SMB"));
+                array.append(StringUtils.fromString(PROTOCOL_SMB));
             }
             if (protocols.isNfsEnabled()) {
-                array.append(StringUtils.fromString("NFS"));
+                array.append(StringUtils.fromString(PROTOCOL_NFS));
             }
             if (array.size() > 0) {
                 record.put(OptionsReader.ENABLED_PROTOCOLS, array);
@@ -194,7 +214,7 @@ final class RecordMapper {
         return record;
     }
 
-    /** Maps SDK directory properties to a `DirectoryProperties` record. */
+    /** Maps SDK directory properties to a {@code DirectoryProperties} record. */
     static BMap<BString, Object> directoryProperties(ShareDirectoryProperties p) {
         BMap<BString, Object> record = newRecord(RECORD_DIRECTORY_PROPERTIES);
         record.put(E_TAG, StringUtils.fromString(p.getETag()));
@@ -208,14 +228,14 @@ final class RecordMapper {
         return record;
     }
 
-    /** Maps SDK file properties to a `FileProperties` record. */
+    /** Maps SDK file properties to a {@code FileProperties} record. */
     static BMap<BString, Object> fileProperties(ShareFileProperties p) {
         BMap<BString, Object> record = newRecord(RECORD_FILE_PROPERTIES);
         record.put(E_TAG, StringUtils.fromString(p.getETag()));
         record.put(LAST_MODIFIED, ValueUtils.toUtc(p.getLastModified()));
         record.put(CONTENT_LENGTH, p.getContentLength());
         record.put(OptionsReader.CONTENT_TYPE, StringUtils.fromString(
-                p.getContentType() == null ? "application/octet-stream" : p.getContentType()));
+                p.getContentType() == null ? DEFAULT_CONTENT_TYPE : p.getContentType()));
         if (p.getContentEncoding() != null) {
             record.put(OptionsReader.CONTENT_ENCODING, StringUtils.fromString(p.getContentEncoding()));
         }
@@ -251,7 +271,7 @@ final class RecordMapper {
 
     /**
      * Parses the service's {@code bytesCopied/totalBytes} copy-progress form into a
-     * `CopyProgress` record; {@code null} when absent or unparseable.
+     * {@code CopyProgress} record; {@code null} when absent or unparseable.
      */
     static BMap<BString, Object> copyProgress(String raw) {
         if (raw == null) {
@@ -273,9 +293,9 @@ final class RecordMapper {
         }
     }
 
-    /** Builds a `CopyInfo` record from the copy-start snapshot values. */
+    /** Builds a {@code CopyInfo} record from the copy-start snapshot values. */
     static BMap<BString, Object> copyInfo(String copyId, String copyStatus, String eTag,
-                                          java.time.OffsetDateTime lastModified) {
+                                          OffsetDateTime lastModified) {
         BMap<BString, Object> record = newRecord(RECORD_COPY_INFO);
         record.put(COPY_ID, StringUtils.fromString(copyId));
         record.put(COPY_STATUS, StringUtils.fromString(copyStatus));
@@ -285,7 +305,7 @@ final class RecordMapper {
     }
 
     /**
-     * Builds a `CopyStatusInfo` record from fetched file properties, or {@code null} when the
+     * Builds a {@code CopyStatusInfo} record from fetched file properties, or {@code null} when the
      * file has never been a copy destination.
      */
     static BMap<BString, Object> copyStatusInfo(ShareFileProperties p) {
@@ -304,12 +324,12 @@ final class RecordMapper {
     }
 
     /**
-     * Maps one listed item to an `Entry` record.
+     * Maps one listed item to an {@code Entry} record.
      *
      * @param item      the SDK item
      * @param parentPath the share-relative path of the directory that was listed, without a
      *                   trailing slash; empty for the share root
-     * @return the `Entry` record
+     * @return the {@code Entry} record
      */
     static BMap<BString, Object> entry(ShareFileItem item, String parentPath) {
         BMap<BString, Object> record = newRecord(RECORD_ENTRY);
@@ -332,7 +352,7 @@ final class RecordMapper {
         return record;
     }
 
-    /** Maps one SDK range to a `Range` record. */
+    /** Maps one SDK range to a {@code Range} record. */
     static BMap<BString, Object> range(ShareFileRange r) {
         BMap<BString, Object> record = newRecord(RECORD_RANGE);
         record.put(START_BYTE, r.getStart());
@@ -344,7 +364,7 @@ final class RecordMapper {
         return record;
     }
 
-    /** Builds a `Range` record from explicit bounds. */
+    /** Builds a {@code Range} record from explicit bounds. */
     static BMap<BString, Object> range(long start, long end) {
         BMap<BString, Object> record = newRecord(RECORD_RANGE);
         record.put(START_BYTE, start);
@@ -352,9 +372,9 @@ final class RecordMapper {
         return record;
     }
 
-    /** Builds a `ShareSnapshotInfo` record. */
+    /** Builds a {@code ShareSnapshotInfo} record. */
     static BMap<BString, Object> shareSnapshotInfo(String snapshotId, String eTag,
-            java.time.OffsetDateTime lastModified) {
+            OffsetDateTime lastModified) {
         BMap<BString, Object> record = newRecord(RECORD_SHARE_SNAPSHOT_INFO);
         record.put(OptionsReader.SNAPSHOT_ID, StringUtils.fromString(snapshotId));
         record.put(E_TAG, StringUtils.fromString(eTag == null ? "" : eTag));
@@ -362,8 +382,8 @@ final class RecordMapper {
         return record;
     }
 
-    /** Maps the SDK file-service configuration to a `ServiceProperties` record. */
-    static BMap<BString, Object> serviceProperties(com.azure.storage.file.share.models.ShareServiceProperties sdk) {
+    /** Maps the SDK file-service configuration to a {@code ServiceProperties} record. */
+    static BMap<BString, Object> serviceProperties(ShareServiceProperties sdk) {
         BMap<BString, Object> record = newRecord(RECORD_SERVICE_PROPERTIES);
         if (sdk.getHourMetrics() != null) {
             record.put(HOUR_METRICS, metrics(sdk.getHourMetrics()));
@@ -373,7 +393,7 @@ final class RecordMapper {
         }
         if (sdk.getCors() != null) {
             BArray rules = recordArray(RECORD_CORS_RULE);
-            for (com.azure.storage.file.share.models.ShareCorsRule rule : sdk.getCors()) {
+            for (ShareCorsRule rule : sdk.getCors()) {
                 BMap<BString, Object> ruleRecord = newRecord(RECORD_CORS_RULE);
                 ruleRecord.put(ALLOWED_ORIGINS, StringUtils.fromString(rule.getAllowedOrigins()));
                 ruleRecord.put(ALLOWED_METHODS, StringUtils.fromString(rule.getAllowedMethods()));
@@ -396,7 +416,7 @@ final class RecordMapper {
         return record;
     }
 
-    private static BMap<BString, Object> metrics(com.azure.storage.file.share.models.ShareMetrics sdk) {
+    private static BMap<BString, Object> metrics(ShareMetrics sdk) {
         BMap<BString, Object> record = newRecord(RECORD_METRICS);
         record.put(ENABLED, sdk.isEnabled());
         if (sdk.getVersion() != null) {
@@ -405,15 +425,15 @@ final class RecordMapper {
         if (sdk.isIncludeApis() != null) {
             record.put(INCLUDE_APIS, sdk.isIncludeApis());
         }
-        com.azure.storage.file.share.models.ShareRetentionPolicy retention = sdk.getRetentionPolicy();
+        ShareRetentionPolicy retention = sdk.getRetentionPolicy();
         if (retention != null && retention.isEnabled() && retention.getDays() != null) {
             record.put(RETENTION_DAYS, (long) retention.getDays());
         }
         return record;
     }
 
-    /** Maps the SDK user-delegation key to a `UserDelegationKey` record. */
-    static BMap<BString, Object> userDelegationKey(com.azure.storage.file.share.models.UserDelegationKey key) {
+    /** Maps the SDK user-delegation key to a {@code UserDelegationKey} record. */
+    static BMap<BString, Object> userDelegationKey(UserDelegationKey key) {
         BMap<BString, Object> record = newRecord(RECORD_USER_DELEGATION_KEY);
         record.put(SIGNED_OBJECT_ID, StringUtils.fromString(key.getSignedObjectId()));
         record.put(SIGNED_TENANT_ID, StringUtils.fromString(key.getSignedTenantId()));
@@ -425,8 +445,8 @@ final class RecordMapper {
         return record;
     }
 
-    /** Maps one SDK SMB-handle item to a `HandleInfo` record. */
-    static BMap<BString, Object> handleInfo(com.azure.storage.file.share.models.HandleItem item) {
+    /** Maps one SDK SMB-handle item to a {@code HandleInfo} record. */
+    static BMap<BString, Object> handleInfo(HandleItem item) {
         BMap<BString, Object> record = newRecord(RECORD_HANDLE_INFO);
         record.put(HANDLE_ID, StringUtils.fromString(item.getHandleId()));
         record.put(PATH, StringUtils.fromString("/" + (item.getPath() == null ? "" : item.getPath())));
@@ -448,21 +468,20 @@ final class RecordMapper {
         return record;
     }
 
-    /** Maps the SDK close-handles result to a `CloseHandlesInfo` record. */
-    static BMap<BString, Object> closeHandlesInfo(com.azure.storage.file.share.models.CloseHandlesInfo info) {
+    /** Maps the SDK close-handles result to a {@code CloseHandlesInfo} record. */
+    static BMap<BString, Object> closeHandlesInfo(CloseHandlesInfo info) {
         BMap<BString, Object> record = newRecord(RECORD_CLOSE_HANDLES_INFO);
         record.put(CLOSED_HANDLES, (long) info.getClosedHandles());
         record.put(FAILED_HANDLES, (long) info.getFailedHandles());
         return record;
     }
 
-    /** Maps one SDK stored-access-policy identifier to a `SignedIdentifier` record. */
-    static BMap<BString, Object> signedIdentifier(
-            com.azure.storage.file.share.models.ShareSignedIdentifier identifier) {
+    /** Maps one SDK stored-access-policy identifier to a {@code SignedIdentifier} record. */
+    static BMap<BString, Object> signedIdentifier(ShareSignedIdentifier identifier) {
         BMap<BString, Object> record = newRecord(RECORD_SIGNED_IDENTIFIER);
         record.put(ID, StringUtils.fromString(identifier.getId()));
         BMap<BString, Object> policy = newRecord(RECORD_ACCESS_POLICY);
-        com.azure.storage.file.share.models.ShareAccessPolicy sdkPolicy = identifier.getAccessPolicy();
+        ShareAccessPolicy sdkPolicy = identifier.getAccessPolicy();
         if (sdkPolicy != null) {
             policy.put(PERMISSIONS,
                     StringUtils.fromString(sdkPolicy.getPermissions() == null ? "" : sdkPolicy.getPermissions()));
@@ -477,15 +496,15 @@ final class RecordMapper {
         return record;
     }
 
-    /** Maps the SDK range-diff listing to a `RangeDiff` record. */
-    static BMap<BString, Object> rangeDiff(com.azure.storage.file.share.models.ShareFileRangeList list) {
+    /** Maps the SDK range-diff listing to a {@code RangeDiff} record. */
+    static BMap<BString, Object> rangeDiff(ShareFileRangeList list) {
         BMap<BString, Object> record = newRecord(RECORD_RANGE_DIFF);
         BArray ranges = recordArray(RECORD_RANGE);
-        for (com.azure.storage.file.share.models.FileRange r : list.getRanges()) {
+        for (FileRange r : list.getRanges()) {
             ranges.append(range(r.getStart(), r.getEnd()));
         }
         BArray clearRanges = recordArray(RECORD_RANGE);
-        for (com.azure.storage.file.share.models.ClearRange r : list.getClearRanges()) {
+        for (ClearRange r : list.getClearRanges()) {
             clearRanges.append(range(r.getStart(), r.getEnd()));
         }
         record.put(RANGES, ranges);
@@ -588,16 +607,16 @@ final class RecordMapper {
 
     private static String ntfsAttributeValue(NtfsFileAttributes attribute) {
         return switch (attribute) {
-            case READ_ONLY -> "ReadOnly";
-            case HIDDEN -> "Hidden";
-            case SYSTEM -> "System";
-            case NORMAL -> "None";
+            case READ_ONLY -> OptionsReader.ATTRIBUTE_READ_ONLY;
+            case HIDDEN -> OptionsReader.ATTRIBUTE_HIDDEN;
+            case SYSTEM -> OptionsReader.ATTRIBUTE_SYSTEM;
+            case NORMAL -> OptionsReader.ATTRIBUTE_NONE;
             case DIRECTORY -> OptionsReader.ATTRIBUTE_DIRECTORY;
-            case ARCHIVE -> "Archive";
-            case TEMPORARY -> "Temporary";
-            case OFFLINE -> "Offline";
-            case NOT_CONTENT_INDEXED -> "NotContentIndexed";
-            case NO_SCRUB_DATA -> "NoScrubData";
+            case ARCHIVE -> OptionsReader.ATTRIBUTE_ARCHIVE;
+            case TEMPORARY -> OptionsReader.ATTRIBUTE_TEMPORARY;
+            case OFFLINE -> OptionsReader.ATTRIBUTE_OFFLINE;
+            case NOT_CONTENT_INDEXED -> OptionsReader.ATTRIBUTE_NOT_CONTENT_INDEXED;
+            case NO_SCRUB_DATA -> OptionsReader.ATTRIBUTE_NO_SCRUB_DATA;
         };
     }
 }

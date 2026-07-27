@@ -40,6 +40,7 @@ public final class SnapshotOps {
     private SnapshotOps() {
     }
 
+    /** Creates a snapshot of the bound share and returns its {@code ShareSnapshotInfo}. */
     public static Object createShareSnapshot(Environment env, BObject self, Object metadata) {
         return Ops.invoke(env, () -> {
             @SuppressWarnings("unchecked")
@@ -52,6 +53,7 @@ public final class SnapshotOps {
         });
     }
 
+    /** Lists the bound share's snapshots as {@code ShareSnapshotInfo} records. */
     public static Object listShareSnapshots(Environment env, BObject self) {
         return Ops.invoke(env, () -> {
             String shareName = Ops.shareClient(self).getShareName();
@@ -69,6 +71,7 @@ public final class SnapshotOps {
         });
     }
 
+    /** Deletes one snapshot of the bound share. */
     public static Object deleteShareSnapshot(Environment env, BObject self, BString snapshotId) {
         return Ops.invoke(env, () -> {
             String shareName = Ops.shareClient(self).getShareName();
@@ -77,6 +80,7 @@ public final class SnapshotOps {
         });
     }
 
+    /** Lists the ranges of a file that changed since a previous snapshot. */
     public static Object listRangesDiff(Environment env, BObject self, BString path,
             BString previousSnapshotId, Object options) {
         return Ops.invoke(env, () -> {

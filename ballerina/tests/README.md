@@ -1,6 +1,6 @@
 # Running the tests
 
-There is one suite and two interchangeable backends, and a run uses exactly one. When both `liveAccountName` and `liveAccountKey` are configured, the whole suite runs against that real storage account; otherwise it runs against an in-process mock of the Azure Files REST service — no Azure account, no network, works on every machine. CI without secrets, including fork pull requests, is a mock run.
+There is one suite and two interchangeable backends, and a run uses exactly one. When both `liveAccountName` and `liveAccountKey` are configured, the whole suite runs against that real storage account; otherwise it runs against an in-process mock of the Azure Files REST service (no Azure account, no network, works on every machine). CI without secrets, including fork pull requests, is a mock run.
 
 ```sh
 cd ballerina
@@ -19,7 +19,7 @@ A few tests deviate from the one-backend rule for physical reasons and self-sele
 
 - The mock is a non `isolated` service: requests dispatch serially, so its in-memory state needs no locking (the compiler hint about this is expected).
 - A path segment of the form `__err-<status>-<AzureErrorCode>` (for example `/__err-403-ShareSizeLimitReached`) makes the mock return that error response; the error-mapping test uses this.
-- HEAD responses must carry the file's real content, so the listener computes the correct `Content-Length` (the body is stripped on the wire).
+- HEAD responses must carry the file's real content, so the mock's HTTP layer computes the correct `Content-Length` (the body is stripped on the wire).
 
 ## Live runs
 
@@ -27,9 +27,9 @@ A few tests deviate from the one-backend rule for physical reasons and self-sele
 
 1. In the [Azure portal](https://portal.azure.com), create a **storage account** for Azure Files with a **classic (SMB) file share** configuration: Standard performance, **Pay-as-you-go** file share billing, LRS redundancy. Keep share **soft delete** enabled (the default); the share-lifecycle test exercises undelete.
 2. Keep **Allow storage account key access** enabled (it is by default); the tests authenticate with the account key.
-3. After deployment, open **Security + networking → Access keys** and copy the storage account name and the key1 value.
+3. After deployment, open **Security + networking** > **Access keys** and copy the storage account name and the key1 value.
 
-Pointed at a **premium (FileStorage)** account instead, the suite adapts its tier and quota assertions and `testNfsLinks` runs live against a real NFS share — an optional second pass for the premium-specific behaviors. Two premium account settings matter: create it with the **provisioned v2** billing model (v1's 100 GiB minimum share size is above what the suite provisions), and **disable share soft delete** on it — a soft-deleted premium share keeps holding its provisioned IOPS against the account-wide limit, so retained shares from earlier runs would starve later ones. Because soft delete is off there, the share-lifecycle test exercises its undelete tail only on standard accounts and the mock.
+Pointed at a **premium (FileStorage)** account instead, the suite adapts its tier and quota assertions and `testNfsLinks` runs live against a real NFS share, as an optional second pass for the premium-specific behaviors. Two premium account settings matter: create it with the **provisioned v2** billing model (v1's 100 GiB minimum share size is above what the suite provisions), and **disable share soft delete** on it, because a soft-deleted premium share keeps holding its provisioned IOPS against the account-wide limit, so retained shares from earlier runs would starve later ones. Because soft delete is off there, the share-lifecycle test exercises its undelete tail only on standard accounts and the mock.
 
 ### Configure and run
 

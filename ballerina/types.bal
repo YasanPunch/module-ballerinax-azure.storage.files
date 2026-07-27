@@ -21,7 +21,7 @@ import ballerina/time;
 // Data-model records (results returned by operations)
 // ---------------------------------------------------------------------------
 
-# One share as returned by `AdminClient.listShares` (maps to the SDK `ShareItem`).
+# One share as returned by `AdminClient.listShares`.
 public type ShareInfo record {|
     # The share name
     string name;
@@ -37,8 +37,8 @@ public type ShareInfo record {|
     string version?;
 |};
 
-# Properties of a file share (maps to the SDK `ShareProperties`). A point-in-time snapshot;
-# call `getShareProperties` again for current state.
+# Properties of a file share. A point-in-time snapshot; call `getShareProperties` again for
+# current state.
 public type ShareProperties record {|
     # The provisioned capacity of the share, in GiB
     int quotaInGb;
@@ -67,8 +67,8 @@ public type ShareProperties record {|
     int provisionedBandwidthMibps?;
 |};
 
-# Properties of a directory (maps to the SDK `ShareDirectoryProperties`). A point-in-time
-# snapshot; call `getDirectoryProperties` again for current state.
+# Properties of a directory. A point-in-time snapshot; call `getDirectoryProperties` again
+# for current state.
 public type DirectoryProperties record {|
     # The entity tag for optimistic concurrency
     string eTag;
@@ -84,8 +84,8 @@ public type DirectoryProperties record {|
     PosixProperties posixProperties?;
 |};
 
-# Properties of a file (curated from the SDK `ShareFileProperties`). A point-in-time snapshot;
-# call `getFileProperties` again for current state.
+# Properties of a file. A point-in-time snapshot; call `getFileProperties` again for
+# current state.
 public type FileProperties record {|
     # The entity tag for optimistic concurrency
     string eTag;
@@ -129,8 +129,7 @@ public type FileProperties record {|
     PosixProperties posixProperties?;
 |};
 
-# Progress of an asynchronous copy operation. Parsed by the connector from the service's
-# raw `"bytesCopied/totalBytes"` form (the `x-ms-copy-progress` header).
+# Progress of an asynchronous copy operation.
 public type CopyProgress record {|
     # The number of bytes copied so far
     int copiedBytes;
@@ -138,8 +137,7 @@ public type CopyProgress record {|
     int totalBytes;
 |};
 
-# One entry returned by `Client.list` (maps to the SDK `ShareFileItem`). Every entry carries
-# its full share-relative `path`, so it can be passed directly to the path-taking operations.
+# One entry returned by `Client.list`.
 public type Entry record {|
     # The share-relative path of the entry, e.g. `/dir1/dir2/file.ext`
     string path;
@@ -159,9 +157,8 @@ public type Entry record {|
     time:Utc lastModified?;
 |};
 
-# SMB-specific properties of a file or directory (maps to the SDK `FileSmbProperties`).
-# Populated on SMB shares and absent on NFS shares. The same record supplies SMB properties
-# on the create, upload, and copy options.
+# SMB-specific properties of a file or directory. Populated on SMB shares and absent on
+# NFS shares.
 public type SmbProperties record {|
     # The NTFS attributes of the file or directory. More than one attribute can be set at a
     # time (e.g. read-only and hidden)
@@ -182,14 +179,13 @@ public type SmbProperties record {|
     string parentId?;
 |};
 
-# POSIX/NFS-specific properties of a file or directory (maps to the SDK `FilePosixProperties`).
-# Present only on NFS shares.
+# POSIX/NFS-specific properties of a file or directory. Present only on NFS shares.
 public type PosixProperties record {|
     # The owner user id (UID)
     string owner?;
     # The owning group id (GID)
     string group?;
-    # The file mode (permissions), octal or symbolic.
+    # The file mode (permissions), octal or symbolic
     string fileMode?;
     # The NFS file type (regular file, directory, or symbolic link)
     NfsFileType fileType?;
@@ -197,9 +193,7 @@ public type PosixProperties record {|
     int linkCount?;
 |};
 
-# The result of starting a copy operation (maps to the SDK `ShareFileCopyInfo`). Copies are
-# asynchronous; observe progress with `Client.checkCopyStatus` and cancel with
-# `Client.abortCopy`.
+# The result of starting a copy operation. Copies are asynchronous.
 public type CopyInfo record {|
     # The copy operation identifier; pass to `Client.abortCopy` to cancel a pending copy
     string copyId;
@@ -223,9 +217,8 @@ public type CopyStatusInfo record {|
     CopyProgress copyProgress?;
 |};
 
-# A single byte range within a file (maps to the SDK `ShareFileRange`). Both bounds are
-# inclusive, mirroring the service's List Ranges response (a range starting at offset `o`
-# with length `l` is `startByte = o`, `endByte = o + l - 1`).
+# A single byte range within a file. Both bounds are inclusive (a range starting at offset
+# `o` with length `l` is `startByte = o`, `endByte = o + l - 1`).
 public type Range record {|
     # The zero-based inclusive start offset
     int startByte;
@@ -233,8 +226,8 @@ public type Range record {|
     int endByte;
 |};
 
-# The account's file-service configuration (maps to the SDK `ShareServiceProperties`):
-# request-metrics collection and cross-origin resource sharing rules.
+# The account's file-service configuration: request-metrics collection and cross-origin
+# resource sharing rules.
 public type ServiceProperties record {|
     # Metrics aggregated per hour
     Metrics hourMetrics?;
@@ -280,9 +273,8 @@ public type ProtocolSettings record {|
     boolean smbMultichannelEnabled?;
 |};
 
-# A key for signing user-delegation SAS tokens, obtained with Microsoft Entra ID credentials
-# via `AdminClient.getUserDelegationKey` (maps to the SDK `UserDelegationKey`). Pass it whole
-# to the user-delegation SAS generation operations.
+# A key for signing user-delegation SAS tokens, obtained via
+# `AdminClient.getUserDelegationKey`.
 public type UserDelegationKey record {|
     # The object id of the Entra ID principal the key was issued to
     string signedObjectId;
@@ -301,7 +293,7 @@ public type UserDelegationKey record {|
 |};
 
 # One share snapshot, as returned by `Client.createShareSnapshot` and
-# `Client.listShareSnapshots` (maps to the SDK `ShareSnapshotInfo`).
+# `Client.listShareSnapshots`.
 public type ShareSnapshotInfo record {|
     # The snapshot identifier, an opaque UTC-timestamp-formatted string. Pass it as the
     # `snapshotId` of the download and list options to read from the snapshot
@@ -312,9 +304,8 @@ public type ShareSnapshotInfo record {|
     time:Utc lastModified;
 |};
 
-# A stored access policy with its identifier (maps to the SDK `ShareSignedIdentifier`).
-# Share SAS tokens can reference the policy by `id`, so revoking or editing the policy
-# retroactively controls every SAS minted against it.
+# A stored access policy with its identifier. Share SAS tokens can reference the policy
+# by `id`.
 public type SignedIdentifier record {|
     # The policy identifier referenced by SAS tokens (at most 64 characters)
     string id;
@@ -333,7 +324,7 @@ public type AccessPolicy record {|
     string permissions;
 |};
 
-# One open SMB handle on a file or directory (maps to the SDK `HandleItem`).
+# One open SMB handle on a file or directory.
 public type HandleInfo record {|
     # The handle identifier; pass to the force-close operations to close just this handle
     string handleId;
@@ -351,7 +342,7 @@ public type HandleInfo record {|
     time:Utc lastReconnectTime?;
 |};
 
-# The result of force-closing SMB handles (maps to the SDK `CloseHandlesInfo`).
+# The result of force-closing SMB handles.
 public type CloseHandlesInfo record {|
     # The number of handles that were closed
     int closedHandles;
@@ -359,8 +350,7 @@ public type CloseHandlesInfo record {|
     int failedHandles;
 |};
 
-# The result of `Client.listRangesDiff`: how a file's ranges changed since a share snapshot
-# (maps to the SDK `ShareFileRangeList`).
+# The result of `Client.listRangesDiff`: how a file's ranges changed since a share snapshot.
 public type RangeDiff record {|
     # The ranges written since the baseline snapshot
     Range[] ranges;
@@ -372,8 +362,7 @@ public type RangeDiff record {|
 // SAS signature values
 // ---------------------------------------------------------------------------
 
-# The inputs for minting an account-level SAS via `AdminClient.generateAccountSas`
-# (maps to the SDK `AccountSasSignatureValues`).
+# The inputs for generating an account-level SAS via `AdminClient.generateAccountSas`.
 public type AccountSasSignatureValues record {|
     # The end of the SAS validity period (UTC)
     time:Utc expiryTime;
@@ -419,8 +408,8 @@ public type AccountSasResourceTypes record {|
     boolean 'object = false;
 |};
 
-# The inputs for minting a share-scoped SAS via `Client.generateShareSas` or
-# `Client.generateShareUserDelegationSas` (maps to the SDK `ShareServiceSasSignatureValues`).
+# The inputs for generating a share-scoped SAS via `Client.generateShareSas` or
+# `Client.generateShareUserDelegationSas`.
 public type ShareSasSignatureValues record {|
     # The end of the SAS validity period (UTC). May be omitted only when `identifier`
     # references a stored access policy that carries an expiry
@@ -452,8 +441,8 @@ public type ShareSasPermissions record {|
     boolean list = false;
 |};
 
-# The inputs for minting a file-scoped SAS via `Client.generateSas` or
-# `Client.generateUserDelegationSas` (maps to the SDK `ShareServiceSasSignatureValues`).
+# The inputs for generating a file-scoped SAS via `Client.generateSas` or
+# `Client.generateUserDelegationSas`.
 public type FileSasSignatureValues record {|
     # The end of the SAS validity period (UTC). May be omitted only when `identifier`
     # references a stored access policy that carries an expiry
@@ -774,8 +763,7 @@ public enum RetryPolicyType {
     FIXED = "fixed"
 }
 
-# Retry behaviour for service requests. The defaults match the underlying Azure SDK's own
-# defaults, so omitting the record leaves behaviour unchanged.
+# Retry behaviour for service requests.
 public type RetryConfig record {|
     # How the delay between tries grows
     RetryPolicyType retryPolicyType = EXPONENTIAL;

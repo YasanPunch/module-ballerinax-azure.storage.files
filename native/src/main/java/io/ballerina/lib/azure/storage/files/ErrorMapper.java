@@ -28,7 +28,7 @@ import java.util.Set;
  * code string rather than the HTTP status alone (for example a full share and an authorization
  * failure are both HTTP 403 but map to different types).
  */
-public final class ErrorMapper {
+final class ErrorMapper {
 
     private ErrorMapper() {
     }

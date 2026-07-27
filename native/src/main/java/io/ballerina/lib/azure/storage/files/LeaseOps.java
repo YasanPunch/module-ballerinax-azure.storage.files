@@ -60,6 +60,7 @@ public final class LeaseOps {
         return proposedLeaseId == null ? null : ((BString) proposedLeaseId).getValue();
     }
 
+    /** Acquires a lease on the bound share and returns the lease id. */
     public static Object acquireShareLease(Environment env, BObject self, long leaseDurationSeconds,
             Object proposedLeaseId) {
         return Ops.invoke(env, () -> {
@@ -75,6 +76,7 @@ public final class LeaseOps {
         });
     }
 
+    /** Renews a share lease. */
     public static Object renewShareLease(Environment env, BObject self, BString leaseId) {
         return Ops.invoke(env, () -> {
             shareLease(self, leaseId.getValue()).renewLease();
@@ -82,6 +84,7 @@ public final class LeaseOps {
         });
     }
 
+    /** Releases a share lease. */
     public static Object releaseShareLease(Environment env, BObject self, BString leaseId) {
         return Ops.invoke(env, () -> {
             shareLease(self, leaseId.getValue()).releaseLease();
@@ -89,6 +92,7 @@ public final class LeaseOps {
         });
     }
 
+    /** Breaks the share's lease and returns the remaining break period in seconds. */
     public static Object breakShareLease(Environment env, BObject self, Object breakPeriodSeconds) {
         return Ops.invoke(env, () -> {
             ShareBreakLeaseOptions options = new ShareBreakLeaseOptions();
@@ -102,6 +106,7 @@ public final class LeaseOps {
         });
     }
 
+    /** Changes a share lease to the proposed id and returns the new lease id. */
     public static Object changeShareLease(Environment env, BObject self, BString leaseId, BString proposedLeaseId) {
         return Ops.invoke(env, () -> {
             String changed = shareLease(self, leaseId.getValue()).changeLease(proposedLeaseId.getValue());
@@ -109,6 +114,7 @@ public final class LeaseOps {
         });
     }
 
+    /** Acquires an infinite lease on a file and returns the lease id. */
     public static Object acquireLease(Environment env, BObject self, BString path, Object proposedLeaseId) {
         return Ops.invoke(env, () -> {
             String id = fileLease(self, path, proposedId(proposedLeaseId))
@@ -119,6 +125,7 @@ public final class LeaseOps {
         });
     }
 
+    /** Releases a file lease. */
     public static Object releaseLease(Environment env, BObject self, BString path, BString leaseId) {
         return Ops.invoke(env, () -> {
             fileLease(self, path, leaseId.getValue()).releaseLease();
@@ -126,6 +133,7 @@ public final class LeaseOps {
         });
     }
 
+    /** Breaks a file's lease regardless of who holds it. */
     public static Object breakLease(Environment env, BObject self, BString path) {
         return Ops.invoke(env, () -> {
             fileLease(self, path, null).breakLease();
@@ -133,6 +141,7 @@ public final class LeaseOps {
         });
     }
 
+    /** Changes a file lease to the proposed id and returns the new lease id. */
     public static Object changeLease(Environment env, BObject self, BString path, BString leaseId,
             BString proposedLeaseId) {
         return Ops.invoke(env, () -> {

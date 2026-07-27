@@ -29,12 +29,12 @@ import io.ballerina.runtime.api.values.BString;
  * Creates the typed Ballerina errors declared in {@code errors.bal}. Each error carries an
  * {@code ErrorDetail} record; the type name string must match the Ballerina error type exactly.
  */
-public final class FilesErrorCreator {
+final class FilesErrorCreator {
 
     private FilesErrorCreator() {
     }
 
-    static final String PROCESSING_ERROR = "ProcessingError";
+    private static final String PROCESSING_ERROR = "ProcessingError";
 
     private static final String ERROR_DETAIL = "ErrorDetail";
     private static final BString HTTP_STATUS = StringUtils.fromString("httpStatus");
@@ -56,20 +56,6 @@ public final class FilesErrorCreator {
         detail.put(ERROR_CODE, StringUtils.fromString(errorCode));
         return ErrorCreator.createError(ModuleUtils.getModule(), typeName,
                 StringUtils.fromString(message == null ? "" : message), toCause(cause), detail);
-    }
-
-    /**
-     * Creates the error returned by operations or configuration paths that are not implemented
-     * yet.
-     *
-     * @param what a short description of the unimplemented capability
-     * @return the Ballerina error
-     */
-    static BError notImplemented(String what) {
-        BMap<BString, Object> detail = ValueCreator.createRecordValue(ModuleUtils.getModule(), ERROR_DETAIL);
-        detail.put(ERROR_CODE, StringUtils.fromString("NotImplemented"));
-        return ErrorCreator.createError(ModuleUtils.getModule(), "Error",
-                StringUtils.fromString(what + " is not implemented yet"), null, detail);
     }
 
     /**

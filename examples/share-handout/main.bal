@@ -38,7 +38,7 @@ public function main() returns error? {
 
     // Mint a read-only shared access signature for that one file, expiring in 24 hours.
     time:Utc expiry = time:utcAddSeconds(time:utcNow(), 86400);
-    string sasToken = check share->generateSas("/q2-summary.txt", {
+    string sasToken = check share.generateSas("/q2-summary.txt", {
         expiryTime: expiry,
         permissions: {read: true}
     });

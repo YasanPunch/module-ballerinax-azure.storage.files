@@ -35,10 +35,12 @@ public final class ShareOps {
     private ShareOps() {
     }
 
+    /** Fetches the bound share's properties as a {@code ShareProperties} record. */
     public static Object getShareProperties(Environment env, BObject self) {
         return Ops.invoke(env, () -> RecordMapper.shareProperties(Ops.shareClient(self).getProperties()));
     }
 
+    /** Replaces the bound share's user-defined metadata. */
     public static Object setShareMetadata(Environment env, BObject self, BMap<BString, BString> metadata) {
         return Ops.invoke(env, () -> {
             Ops.shareClient(self).setMetadata(ValueUtils.toStringMap(metadata));
@@ -46,10 +48,12 @@ public final class ShareOps {
         });
     }
 
+    /** Reports the bound share's current usage in bytes. */
     public static Object getShareUsage(Environment env, BObject self) {
         return Ops.invoke(env, () -> Ops.shareClient(self).getStatistics().getShareUsageInBytes());
     }
 
+    /** Updates the bound share's quota and access tier. */
     public static Object setShareProperties(Environment env, BObject self, BMap<BString, Object> options) {
         return Ops.invoke(env, () -> {
             ShareSetPropertiesOptions sdkOptions = new ShareSetPropertiesOptions();

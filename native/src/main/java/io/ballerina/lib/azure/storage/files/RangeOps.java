@@ -36,6 +36,7 @@ public final class RangeOps {
     private RangeOps() {
     }
 
+    /** Writes bytes into an existing file at the given offset. */
     public static Object uploadRange(Environment env, BObject self, BString path, long offset, BArray content) {
         return Ops.invoke(env, () -> {
             byte[] bytes = content.getBytes();
@@ -47,6 +48,7 @@ public final class RangeOps {
         });
     }
 
+    /** Clears (zeroes) a byte range of an existing file. */
     public static Object clearRange(Environment env, BObject self, BString path, long offset, long length) {
         return Ops.invoke(env, () -> {
             FileOps.fileClient(self, path).clearRangeWithResponse(length, offset, null, null);
@@ -54,6 +56,7 @@ public final class RangeOps {
         });
     }
 
+    /** Lists the valid (written) byte ranges of a file as {@code Range} records. */
     public static Object listRanges(Environment env, BObject self, BString path, Object options) {
         return Ops.invoke(env, () -> {
             ShareFileRange range = null;

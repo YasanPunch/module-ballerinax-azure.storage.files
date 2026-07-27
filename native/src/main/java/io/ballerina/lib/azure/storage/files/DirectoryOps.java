@@ -37,6 +37,7 @@ public final class DirectoryOps {
     private DirectoryOps() {
     }
 
+    /** Creates a directory with the given options. */
     public static Object createDirectory(Environment env, BObject self, BString directoryPath, Object options) {
         return Ops.invoke(env, () -> {
             ShareDirectoryCreateOptions sdkOptions = new ShareDirectoryCreateOptions();
@@ -53,6 +54,7 @@ public final class DirectoryOps {
         });
     }
 
+    /** Deletes an empty directory. */
     public static Object deleteDirectory(Environment env, BObject self, BString directoryPath) {
         return Ops.invoke(env, () -> {
             directoryClient(self, directoryPath).delete();
@@ -60,6 +62,7 @@ public final class DirectoryOps {
         });
     }
 
+    /** Updates a directory's SMB and POSIX properties. */
     public static Object setDirectoryProperties(Environment env, BObject self, BString directoryPath,
             BMap<BString, Object> options) {
         return Ops.invoke(env, () -> {
@@ -75,16 +78,19 @@ public final class DirectoryOps {
         });
     }
 
+    /** Checks whether the directory exists; {@code false} only on a confirmed 404. */
     public static Object hasDirectory(Environment env, BObject self, BString directoryPath) {
         return Ops.invoke(env, () ->
                 Boolean.TRUE.equals(directoryClient(self, directoryPath).exists()));
     }
 
+    /** Fetches a directory's properties as a {@code DirectoryProperties} record. */
     public static Object getDirectoryProperties(Environment env, BObject self, BString directoryPath) {
         return Ops.invoke(env, () ->
                 RecordMapper.directoryProperties(directoryClient(self, directoryPath).getProperties()));
     }
 
+    /** Replaces a directory's user-defined metadata. */
     public static Object setDirectoryMetadata(Environment env, BObject self, BString directoryPath,
                                               BMap<BString, BString> metadata) {
         return Ops.invoke(env, () -> {
@@ -93,6 +99,7 @@ public final class DirectoryOps {
         });
     }
 
+    /** Renames or moves a directory within the share. */
     public static Object renameDirectory(Environment env, BObject self, BString sourcePath,
                                          BString destinationPath, Object options) {
         return Ops.invoke(env, () -> {
@@ -118,7 +125,8 @@ public final class DirectoryOps {
         return sdkOptions;
     }
 
-    private static ShareDirectoryClient directoryClient(BObject self, BString directoryPath) {
+    /** Returns the SDK directory client for a path; the empty path addresses the share root. */
+    static ShareDirectoryClient directoryClient(BObject self, BString directoryPath) {
         String path = Ops.directoryPath(directoryPath);
         return path.isEmpty()
                 ? Ops.shareClient(self).getRootDirectoryClient()

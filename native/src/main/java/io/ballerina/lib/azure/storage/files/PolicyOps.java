@@ -39,6 +39,7 @@ public final class PolicyOps {
     private PolicyOps() {
     }
 
+    /** Fetches the share's stored access policies as {@code SignedIdentifier} records. */
     public static Object getShareAccessPolicy(Environment env, BObject self) {
         return Ops.invoke(env, () -> {
             BArray result = RecordMapper.recordArray(RecordMapper.RECORD_SIGNED_IDENTIFIER);
@@ -49,6 +50,7 @@ public final class PolicyOps {
         });
     }
 
+    /** Replaces the share's stored access policies. */
     public static Object setShareAccessPolicy(Environment env, BObject self, BArray identifiers) {
         return Ops.invoke(env, () -> {
             List<ShareSignedIdentifier> sdkIdentifiers = new ArrayList<>();
@@ -58,7 +60,7 @@ public final class PolicyOps {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> policy = (BMap<BString, Object>) record.get(RecordMapper.ACCESS_POLICY);
                 ShareAccessPolicy sdkPolicy = new ShareAccessPolicy()
-                        .setPermissions(record(policy, RecordMapper.PERMISSIONS));
+                        .setPermissions(ValueUtils.optString(policy, RecordMapper.PERMISSIONS));
                 Object startsOn = policy.get(RecordMapper.STARTS_ON);
                 if (startsOn != null) {
                     sdkPolicy.setStartsOn(ValueUtils.fromUtc((BArray) startsOn));
@@ -76,18 +78,15 @@ public final class PolicyOps {
         });
     }
 
+    /** Fetches the SDDL permission stored under the given permission key. */
     public static Object getSharePermission(Environment env, BObject self, BString permissionKey) {
         return Ops.invoke(env, () ->
                 StringUtils.fromString(Ops.shareClient(self).getPermission(permissionKey.getValue())));
     }
 
+    /** Stores an SDDL permission on the share and returns its permission key. */
     public static Object createSharePermission(Environment env, BObject self, BString sddlPermission) {
         return Ops.invoke(env, () ->
                 StringUtils.fromString(Ops.shareClient(self).createPermission(sddlPermission.getValue())));
-    }
-
-    private static String record(BMap<BString, Object> map, BString key) {
-        BString value = map.getStringValue(key);
-        return value == null ? null : value.getValue();
     }
 }

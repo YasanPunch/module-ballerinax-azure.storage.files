@@ -1,5 +1,5 @@
 [package]
-org = "azure_files_samples"
+org = "wso2"
 name = "file_backup"
 version = "1.0.0"
 distribution = "2201.12.0"

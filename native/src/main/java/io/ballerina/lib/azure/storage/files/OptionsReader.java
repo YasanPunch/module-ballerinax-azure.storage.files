@@ -48,7 +48,17 @@ final class OptionsReader {
 
     // Field names of the option, content-header, SMB, and POSIX records. Owned here as
     // the options schema; other classes reference them from this class.
+    // The Ballerina NtfsFileAttribute enum values.
+    static final String ATTRIBUTE_READ_ONLY = "ReadOnly";
+    static final String ATTRIBUTE_HIDDEN = "Hidden";
+    static final String ATTRIBUTE_SYSTEM = "System";
+    static final String ATTRIBUTE_NONE = "None";
     static final String ATTRIBUTE_DIRECTORY = "Directory";
+    static final String ATTRIBUTE_ARCHIVE = "Archive";
+    static final String ATTRIBUTE_TEMPORARY = "Temporary";
+    static final String ATTRIBUTE_OFFLINE = "Offline";
+    static final String ATTRIBUTE_NOT_CONTENT_INDEXED = "NotContentIndexed";
+    static final String ATTRIBUTE_NO_SCRUB_DATA = "NoScrubData";
     static final BString PREFIX = StringUtils.fromString("prefix");
     static final BString INCLUDE_METADATA = StringUtils.fromString("includeMetadata");
     static final BString INCLUDE_SNAPSHOTS = StringUtils.fromString("includeSnapshots");
@@ -94,7 +104,7 @@ final class OptionsReader {
     private OptionsReader() {
     }
 
-    /** Converts a `ContentHeaders` record to the SDK header class; {@code null} when absent. */
+    /** Converts a {@code ContentHeaders} record to the SDK header class; {@code null} when absent. */
     static ShareFileHttpHeaders contentHeaders(Object value) {
         if (value == null) {
             return null;
@@ -118,7 +128,7 @@ final class OptionsReader {
         return headers;
     }
 
-    /** Converts an `SmbProperties` record to the SDK class; {@code null} when absent. */
+    /** Converts an {@code SmbProperties} record to the SDK class; {@code null} when absent. */
     static FileSmbProperties smbProperties(Object value) {
         if (value == null) {
             return null;
@@ -151,7 +161,7 @@ final class OptionsReader {
         return smb;
     }
 
-    /** Converts a writable `PosixProperties` record to the SDK class; {@code null} when absent. */
+    /** Converts a writable {@code PosixProperties} record to the SDK class; {@code null} when absent. */
     static FilePosixProperties posixProperties(Object value) {
         if (value == null) {
             return null;
@@ -164,7 +174,7 @@ final class OptionsReader {
                 .setFileMode(ValueUtils.optString(record, FILE_MODE));
     }
 
-    /** Converts a `Range` record to the SDK range; {@code null} when absent. */
+    /** Converts a {@code Range} record to the SDK range; {@code null} when absent. */
     static ShareFileRange range(Object value) {
         if (value == null) {
             return null;
@@ -176,7 +186,7 @@ final class OptionsReader {
         return new ShareFileRange(start, end);
     }
 
-    /** Converts a `ServiceProperties` record to the SDK model. */
+    /** Converts a {@code ServiceProperties} record to the SDK model. */
     static ShareServiceProperties serviceProperties(BMap<BString, Object> record) {
         ShareServiceProperties sdk = new ShareServiceProperties();
         Object hourMetrics = record.get(RecordMapper.HOUR_METRICS);
@@ -238,16 +248,16 @@ final class OptionsReader {
 
     private static NtfsFileAttributes ntfsAttribute(String value) {
         return switch (value) {
-            case "ReadOnly" -> NtfsFileAttributes.READ_ONLY;
-            case "Hidden" -> NtfsFileAttributes.HIDDEN;
-            case "System" -> NtfsFileAttributes.SYSTEM;
-            case "None" -> NtfsFileAttributes.NORMAL;
+            case ATTRIBUTE_READ_ONLY -> NtfsFileAttributes.READ_ONLY;
+            case ATTRIBUTE_HIDDEN -> NtfsFileAttributes.HIDDEN;
+            case ATTRIBUTE_SYSTEM -> NtfsFileAttributes.SYSTEM;
+            case ATTRIBUTE_NONE -> NtfsFileAttributes.NORMAL;
             case ATTRIBUTE_DIRECTORY -> NtfsFileAttributes.DIRECTORY;
-            case "Archive" -> NtfsFileAttributes.ARCHIVE;
-            case "Temporary" -> NtfsFileAttributes.TEMPORARY;
-            case "Offline" -> NtfsFileAttributes.OFFLINE;
-            case "NotContentIndexed" -> NtfsFileAttributes.NOT_CONTENT_INDEXED;
-            case "NoScrubData" -> NtfsFileAttributes.NO_SCRUB_DATA;
+            case ATTRIBUTE_ARCHIVE -> NtfsFileAttributes.ARCHIVE;
+            case ATTRIBUTE_TEMPORARY -> NtfsFileAttributes.TEMPORARY;
+            case ATTRIBUTE_OFFLINE -> NtfsFileAttributes.OFFLINE;
+            case ATTRIBUTE_NOT_CONTENT_INDEXED -> NtfsFileAttributes.NOT_CONTENT_INDEXED;
+            case ATTRIBUTE_NO_SCRUB_DATA -> NtfsFileAttributes.NO_SCRUB_DATA;
             default -> throw FilesErrorCreator.processingError("unknown NTFS attribute: " + value, null);
         };
     }
