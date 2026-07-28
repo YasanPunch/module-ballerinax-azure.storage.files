@@ -121,6 +121,49 @@ function testAttachRejectsSecondService() returns error? {
 }
 
 @test:Config {}
+function testStartTwiceRejected() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-start2");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    error? second = lsn.'start();
+    test:assertTrue(second is error, "a second start must be rejected");
+    if second is error {
+        test:assertTrue(second.message().includes("already running"), second.message());
+    }
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+    check shareClient.close();
+}
+
+@test:Config {}
+function testDetachWrongServiceRejected() returns error? {
+    string share = testShare("lsn-detach2");
+    Listener lsn = check newListener(share);
+    Service attached = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+    };
+    Service other = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+    };
+    check lsn.attach(attached);
+    error? mismatch = lsn.detach(other);
+    test:assertTrue(mismatch is error, "detaching a service that is not attached must fail");
+    if mismatch is error {
+        test:assertTrue(mismatch.message().includes("not attached"), mismatch.message());
+    }
+    check lsn.detach(attached);
+}
+
+@test:Config {}
 function testTypedJsonRouting() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-json");
     Client shareClient = setup[0];
@@ -286,6 +329,97 @@ function testOnFileJsonArrayRootBindingError() returns error? {
 }
 
 @test:Config {}
+function testOnFileJsonMapArrayBinding() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-json-maparr");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("[{\"sku\": \"A1\"}, {\"sku\": \"B2\"}]", "/incoming/batch.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFileJson(map<json>[] content, FileInfo info, Caller caller) returns error? {
+            string[] skus = [];
+            foreach map<json> item in content {
+                skus.push(check item["sku"].ensureType(string));
+            }
+            recorder.put("maparr", string:'join(",", ...skus));
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("maparr") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("maparr"), "A1,B2");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testOnFileJsonRecordArrayBinding() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-json-recarr");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("[{\"sku\": \"A1\", \"qty\": 2}, {\"sku\": \"B2\", \"qty\": 7}]",
+            "/incoming/orders.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFileJson(OrderDoc[] content, FileInfo info, Caller caller) returns error? {
+            string[] parts = [];
+            foreach OrderDoc item in content {
+                parts.push(item.sku + ":" + item.qty.toString());
+            }
+            recorder.put("recarr", string:'join(",", ...parts));
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("recarr") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("recarr"), "A1:2,B2:7");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testOnFileJsonArrayTargetObjectRootBindingError() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-json-arrmismatch");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    // An object root cannot bind to an array-typed handler: a content-binding error, which
+    // triggers afterError (here a DELETE), and never invokes the handler body.
+    map<json> document = {sku: "A1"};
+    check shareClient->uploadContent(document, "/incoming/single.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterError: DELETE}
+        remote function onFileJson(map<json>[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("maparr");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    // The mismatched file is consumed by afterError; wait for it to disappear.
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/single.json");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("maparr"), 0, "an object-root JSON must not invoke an array-typed handler body");
+    check shareClient.close();
+}
+
+@test:Config {}
 function testFunctionConfigDeleteConsumes() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-delete");
     Client shareClient = setup[0];
@@ -373,6 +507,10 @@ function testCallerOperations() returns error? {
             recorder.put("downloaded", check string:fromBytes(gathered));
 
             CopyInfo copy = check caller->copyFile("/work/a.txt", "/work/b.txt");
+            CopyStatusInfo? copyState = check caller->checkCopyStatus("/work/b.txt");
+            if copyState is CopyStatusInfo && copyState.copyId == copy.copyId {
+                recorder.hit("copy-status-seen");
+            }
             // A completed copy cannot be aborted; tolerated, the call still exercises the binding.
             error? aborted = caller->abortCopy("/work/b.txt", copy.copyId);
             if aborted is error {
@@ -396,6 +534,7 @@ function testCallerOperations() returns error? {
 
     test:assertEquals(recorder.payload("shareName"), share);
     test:assertEquals(recorder.payload("downloaded"), "alpha");
+    test:assertTrue(recorder.count("copy-status-seen") >= 1);
     test:assertTrue(recorder.count("done") >= 1);
     check shareClient.close();
 }

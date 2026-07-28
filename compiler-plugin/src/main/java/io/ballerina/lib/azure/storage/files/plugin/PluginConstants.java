@@ -49,10 +49,6 @@ public final class PluginConstants {
     public static final String CALLER = "Caller";
     public static final String FILE_INFO = "FileInfo";
 
-    // Return type names.
-    public static final String ERROR = "error";
-    public static final String ERROR_PARAM = "Error";
-
     /**
      * The diagnostics the plugin can report, each paired with its stable code.
      */

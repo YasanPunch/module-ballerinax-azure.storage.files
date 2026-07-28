@@ -110,6 +110,15 @@ public isolated client class Caller {
         'class: "io.ballerina.lib.azure.storage.files.CopyOps"
     } external;
 
+    # Checks the state of the most recent copy operation that targeted a file.
+    #
+    # + path - The destination share-relative path of the copy
+    # + return - The `CopyStatusInfo`, `()` if the file has never been the destination of a
+    #            copy operation, or an `Error`
+    isolated remote function checkCopyStatus(string path) returns CopyStatusInfo?|Error = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.CopyOps"
+    } external;
+
     # Aborts a pending asynchronous copy operation.
     #
     # + path - The destination share-relative path of the copy

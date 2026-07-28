@@ -52,8 +52,10 @@ listener files:Listener dropListener = new (shareName,
 @files:ServiceConfig {path: "/incoming"}
 service on dropListener {
 
-    // Handle JSON drops, then delete each file once it is processed.
-    @files:FunctionConfig {afterProcess: files:DELETE}
+    // Handle JSON object drops, then delete each file once it is processed. A .json file that is
+    // malformed or whose root is not an object cannot bind to map<json>; afterError moves it to
+    // "/failed" so it does not stay in the watched folder and re-fire on every poll.
+    @files:FunctionConfig {afterProcess: files:DELETE, afterError: {moveTo: "/failed"}}
     remote function onFileJson(map<json> content, files:FileInfo file, files:Caller caller) returns error? {
         log:printInfo(string `Processed JSON ${file.name} (${file.sizeBytes} bytes): ${content.toJsonString()}`);
     }

@@ -57,6 +57,25 @@ public class ServiceValidationTest {
     }
 
     @Test
+    public void testValidTypedJsonMapArrayService() {
+        DiagnosticResult result = loadPackage("valid_on_file_json_map_array");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileJson map<json>[] service");
+    }
+
+    @Test
+    public void testValidTypedJsonRecordArrayService() {
+        DiagnosticResult result = loadPackage("valid_on_file_json_record_array");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileJson record-array service");
+    }
+
+    @Test
+    public void testInvalidOnFileJsonJsonArray() {
+        DiagnosticResult result = loadPackage("invalid_on_file_json_json_array");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid content parameter type for onFileJson");
+    }
+
+    @Test
     public void testInvalidOnFileJsonBareJson() {
         DiagnosticResult result = loadPackage("invalid_on_file_json_bare");
         assertEquals(result.errorCount(), 1);
@@ -100,6 +119,19 @@ public class ServiceValidationTest {
     @Test
     public void testInvalidReturnType() {
         DiagnosticResult result = loadPackage("invalid_return_type");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_110", "Expected error?");
+    }
+
+    @Test
+    public void testValidReturnErrorAlias() {
+        DiagnosticResult result = loadPackage("valid_return_error_alias");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for a user-defined error return type");
+    }
+
+    @Test
+    public void testInvalidReturnRecordReference() {
+        DiagnosticResult result = loadPackage("invalid_return_record_ref");
         assertEquals(result.errorCount(), 1);
         assertError(result, 0, "AZURE_FILES_110", "Expected error?");
     }

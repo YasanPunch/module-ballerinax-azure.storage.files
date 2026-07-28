@@ -54,9 +54,10 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.reportErro
 
 /**
  * Validates one content handler's signature: it must be {@code remote}, its first parameter must
- * carry the handler's content type ({@code byte[]}, {@code string}, {@code map<json>}, {@code xml},
- * or {@code string[][]}), an optional second parameter must be {@code FileInfo}, an optional third
- * must be {@code Caller}, and the return type must be {@code error?}.
+ * carry the handler's content type ({@code byte[]}, {@code string}, {@code xml}, {@code string[][]},
+ * or for onFileJson a {@code map<json>}, a record, or an array of them), an optional second
+ * parameter must be {@code FileInfo}, an optional third must be {@code Caller}, and the return
+ * type must be {@code error?}.
  */
 public class ContentFunctionValidator {
 
@@ -129,12 +130,23 @@ public class ContentFunctionValidator {
         return switch (contentMethodName) {
             case ON_FILE_FUNC -> isByteArray(typeSymbol, typeKind);
             case ON_FILE_TEXT_FUNC -> typeKind == STRING;
-            case ON_FILE_JSON_FUNC -> isJsonMap(typeSymbol, typeKind) || typeKind == RECORD
-                    || isRecordTypeReference(typeSymbol);
+            case ON_FILE_JSON_FUNC -> isJsonObject(typeSymbol, typeKind) || isJsonObjectArray(typeSymbol, typeKind);
             case ON_FILE_XML_FUNC -> typeKind == XML;
             case ON_FILE_CSV_FUNC -> isStringArrayOfArray(typeSymbol, typeKind);
             default -> false;
         };
+    }
+
+    private boolean isJsonObject(TypeSymbol typeSymbol, TypeDescKind typeKind) {
+        return isJsonMap(typeSymbol, typeKind) || typeKind == RECORD || isRecordTypeReference(typeSymbol);
+    }
+
+    private boolean isJsonObjectArray(TypeSymbol typeSymbol, TypeDescKind typeKind) {
+        if (typeKind != ARRAY) {
+            return false;
+        }
+        TypeSymbol member = ((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor();
+        return isJsonObject(member, member.typeKind());
     }
 
     private boolean isByteArray(TypeSymbol typeSymbol, TypeDescKind typeKind) {
@@ -166,7 +178,7 @@ public class ContentFunctionValidator {
         return switch (contentMethodName) {
             case ON_FILE_FUNC -> "byte[]";
             case ON_FILE_TEXT_FUNC -> "string";
-            case ON_FILE_JSON_FUNC -> "map<json>";
+            case ON_FILE_JSON_FUNC -> "map<json>, a record, or an array of them";
             case ON_FILE_XML_FUNC -> "xml";
             case ON_FILE_CSV_FUNC -> "string[][]";
             default -> "unknown";

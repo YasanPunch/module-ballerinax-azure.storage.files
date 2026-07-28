@@ -204,13 +204,14 @@ public final class ShareListenerAdaptor {
      * @param env         the Ballerina runtime environment
      * @param listenerObj the Ballerina listener object
      * @param service     the service being detached
-     * @return {@code null}
+     * @return an error if the given service is not the attached one, otherwise {@code null}
      */
     public static Object detachService(Environment env, BObject listenerObj, BObject service) {
         ListenerContext ctx = context(listenerObj);
-        if (ctx != null) {
-            ctx.service = null;
+        if (ctx == null || ctx.service != service) {
+            return FilesErrorCreator.processingError("the given service is not attached to this listener", null);
         }
+        ctx.service = null;
         return null;
     }
 
@@ -333,7 +334,10 @@ public final class ShareListenerAdaptor {
     private static void dispatch(BObject listenerObj, ListenerContext ctx, ShareFileItem item,
                                  String path, String key) {
         try {
-            if (ctx.stopped) {
+            // Snapshot the service so a concurrent detach cannot null it mid-dispatch; if it is
+            // already gone, leave the file unconsumed for a later poll.
+            BObject service = ctx.service;
+            if (ctx.stopped || service == null) {
                 return;
             }
             HandlerConfig handler = resolveHandler(ctx, item.getName());
@@ -359,7 +363,7 @@ public final class ShareListenerAdaptor {
             int slash = path.lastIndexOf('/');
             String parentPath = slash < 0 ? "" : path.substring(0, slash);
             BMap<BString, Object> fileInfo = RecordMapper.fileInfo(item, parentPath);
-            Object result = invokeHandler(ctx, handler, content, fileInfo);
+            Object result = invokeHandler(ctx, service, handler, content, fileInfo);
             if (result instanceof BError error) {
                 LOG.warn("azure.storage.files listener: handler {} returned an error for {}",
                         handler.methodName(), path, error);
@@ -409,9 +413,9 @@ public final class ShareListenerAdaptor {
         }
     }
 
-    private static Object invokeHandler(ListenerContext ctx, HandlerConfig handler, Object content,
+    private static Object invokeHandler(ListenerContext ctx, BObject service, HandlerConfig handler, Object content,
                                         BMap<BString, Object> fileInfo) {
-        ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(ctx.service));
+        ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
         String methodName = handler.methodName();
         boolean isConcurrentSafe = serviceType.isIsolated() && serviceType.isIsolated(methodName);
         StrandMetadata metadata = new StrandMetadata(isConcurrentSafe, null);
@@ -425,7 +429,7 @@ public final class ShareListenerAdaptor {
                     : new Object[]{content, fileInfo};
             default -> new Object[]{content, fileInfo, ctx.caller};
         };
-        return ctx.runtime.callMethod(ctx.service, methodName, metadata, args);
+        return ctx.runtime.callMethod(service, methodName, metadata, args);
     }
 
     private static void postProcess(BObject listenerObj, ListenerContext ctx, PostAction action, String path) {
@@ -683,7 +687,7 @@ public final class ShareListenerAdaptor {
     // One content handler: its resolved routing pattern, post-process actions, the shape of its
     // parameter list (how many it declares, and whether a two-parameter handler's second parameter
     // is the Caller rather than the FileInfo), and its declared content parameter type (used to
-    // bind typed content, e.g. a map<json> or a record for onFileJson).
+    // bind typed content, e.g. a map<json>, a record, or an array of them for onFileJson).
     private record HandlerConfig(String methodName, Pattern routingPattern,
                                  PostAction afterProcess, PostAction afterError,
                                  int arity, boolean secondParamIsCaller, Type contentType) {

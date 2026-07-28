@@ -24,6 +24,7 @@ import io.ballerina.compiler.api.symbols.ParameterSymbol;
 import io.ballerina.compiler.api.symbols.Qualifier;
 import io.ballerina.compiler.api.symbols.Symbol;
 import io.ballerina.compiler.api.symbols.TypeDescKind;
+import io.ballerina.compiler.api.symbols.TypeReferenceTypeSymbol;
 import io.ballerina.compiler.api.symbols.TypeSymbol;
 import io.ballerina.compiler.api.symbols.UnionTypeSymbol;
 import io.ballerina.compiler.syntax.tree.FunctionDefinitionNode;
@@ -196,13 +197,10 @@ public final class PluginUtils {
     }
 
     private static boolean isValidErrorTypeReference(TypeSymbol typeSymbol) {
-        if (typeSymbol.typeKind() != TYPE_REFERENCE) {
-            return false;
+        TypeSymbol resolved = typeSymbol;
+        while (resolved != null && resolved.typeKind() == TYPE_REFERENCE) {
+            resolved = ((TypeReferenceTypeSymbol) resolved).typeDescriptor();
         }
-        if (typeSymbol.signature().equals(PluginConstants.ERROR)) {
-            return true;
-        }
-        Optional<ModuleSymbol> module = typeSymbol.getModule();
-        return module.map(PluginUtils::validateModuleId).orElse(true);
+        return resolved != null && resolved.typeKind() == TypeDescKind.ERROR;
     }
 }

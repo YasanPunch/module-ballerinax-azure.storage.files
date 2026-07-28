@@ -123,9 +123,11 @@ public isolated class Listener {
     #
     # + return - An `error` if the listener could not start, otherwise `()`
     public isolated function 'start() returns error? {
-        task:JobId id = check task:scheduleJobRecurByFrequency(new PollJob(self), self.pollingInterval);
         lock {
-            self.pollJobId = id;
+            if self.pollJobId !is () {
+                return error("the listener is already running");
+            }
+            self.pollJobId = check task:scheduleJobRecurByFrequency(new PollJob(self), self.pollingInterval);
         }
     }
 
