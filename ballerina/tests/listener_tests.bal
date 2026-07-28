@@ -507,10 +507,13 @@ function testCallerOperations() returns error? {
             recorder.put("downloaded", check string:fromBytes(gathered));
 
             CopyInfo copy = check caller->copyFile("/work/a.txt", "/work/b.txt");
-            CopyStatusInfo? copyState = check caller->checkCopyStatus("/work/b.txt");
-            if copyState is CopyStatusInfo && copyState.copyId == copy.copyId {
-                recorder.hit("copy-status-seen");
-            }
+            // The copy is asynchronous; wait for it to complete before aborting and renaming.
+            check await(function() returns boolean|error {
+                CopyStatusInfo? copyState = check caller->checkCopyStatus("/work/b.txt");
+                return copyState is CopyStatusInfo && copyState.copyId == copy.copyId
+                        && copyState.copyStatus == SUCCESS;
+            });
+            recorder.hit("copy-status-seen");
             // A completed copy cannot be aborted; tolerated, the call still exercises the binding.
             error? aborted = caller->abortCopy("/work/b.txt", copy.copyId);
             if aborted is error {
