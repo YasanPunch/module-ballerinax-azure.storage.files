@@ -110,8 +110,7 @@ public isolated client class AdminClient {
         'class: "io.ballerina.lib.azure.storage.files.AdminOps"
     } external;
 
-    # Generates an account-level SAS (Shared Access Signature) token. The token is signed
-    # locally with the account key, so shared key credentials are required.
+    # Generates an account-level SAS (Shared Access Signature) token. Requires shared key credentials.
     #
     # + values - What the SAS grants: validity window, permissions, and resource types
     # + return - The SAS token, or an `Error`

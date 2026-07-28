@@ -113,9 +113,8 @@ test.dependsOn ":azure.storage.files-native:build"
 build.dependsOn ":azure.storage.files-compiler-plugin:build"
 test.dependsOn ":azure.storage.files-compiler-plugin:build"
 
-// Non-Docker build: bal and the standard libraries the connector needs come from the unpacked
-// distribution. Unpack it and copy the declared ballerinaStdLibs into it before build/test run
-// bal (the plugin wires this automatically only on the Docker path we no longer use).
+// bal and the standard libraries the connector needs come from the unpacked distribution, so
+// unpack it and copy the declared ballerinaStdLibs into it before build and test run bal.
 unpackStdLibs.dependsOn unpackJballerinaTools
 copyStdlibs.dependsOn unpackStdLibs
 build.dependsOn copyStdlibs

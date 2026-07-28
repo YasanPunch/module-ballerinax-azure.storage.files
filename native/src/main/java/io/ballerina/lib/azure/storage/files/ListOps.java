@@ -33,8 +33,7 @@ import java.util.Iterator;
 
 /**
  * Native backing of the lazy {@code Client.list} stream. Listing pages lazily through the SDK,
- * and recursive listing walks subdirectories depth-first as the consumer pulls entries, so
- * memory stays bounded on large directory trees.
+ * and recursive listing walks subdirectories depth-first as the consumer pulls entries.
  */
 public final class ListOps {
 

@@ -380,7 +380,7 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.RangeOps"
     } external;
 
-    # Clears a range of bytes in a file, freeing the underlying storage.
+    # Clears a range of bytes in a file.
     #
     # + path - The share-relative path of the file
     # + offset - The zero-based byte offset at which to begin clearing
@@ -404,8 +404,7 @@ public isolated client class Client {
     // Share snapshots
     // -----------------------------------------------------------------------
 
-    # Creates a point-in-time, read-only snapshot of the bound share. Read snapshot contents
-    # by passing the returned `snapshotId` in `DownloadOptions` or `ListOptions`.
+    # Creates a point-in-time, read-only snapshot of the bound share.
     #
     # + metadata - Optional metadata to set on the snapshot; when absent, the share's
     #              metadata is copied to the snapshot
@@ -654,8 +653,7 @@ public isolated client class Client {
     // SAS generation
     // -----------------------------------------------------------------------
 
-    # Generates a SAS (Shared Access Signature) token scoped to the bound share. The token
-    # is signed locally with the account key, so shared key credentials are required.
+    # Generates a SAS (Shared Access Signature) token scoped to the bound share. Requires shared key credentials.
     #
     # + values - What the SAS grants: validity window and permissions, or a stored policy reference
     # + return - The SAS token, or an `Error`
@@ -664,8 +662,7 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.SasOps"
     } external;
 
-    # Generates a SAS (Shared Access Signature) token scoped to a single file. The token
-    # is signed locally with the account key, so shared key credentials are required.
+    # Generates a SAS (Shared Access Signature) token scoped to a single file. Requires shared key credentials.
     #
     # + path - The share-relative path of the file the SAS grants access to
     # + values - What the SAS grants: validity window and permissions, or a stored policy reference
@@ -675,8 +672,7 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.SasOps"
     } external;
 
-    # Generates a user-delegation SAS token scoped to the bound share, signed locally with a
-    # `UserDelegationKey` instead of the account key.
+    # Generates a user-delegation SAS token scoped to the bound share.
     #
     # + values - What the SAS grants: validity window and permissions
     # + key - The user-delegation key to sign with
@@ -686,8 +682,7 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.SasOps"
     } external;
 
-    # Generates a user-delegation SAS token scoped to a single file, signed locally with a
-    # `UserDelegationKey` instead of the account key.
+    # Generates a user-delegation SAS token scoped to a single file.
     #
     # + path - The share-relative path of the file the SAS grants access to
     # + values - What the SAS grants: validity window and permissions

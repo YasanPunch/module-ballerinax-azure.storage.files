@@ -44,10 +44,9 @@ import java.nio.file.Path;
 import java.util.Base64;
 
 /**
- * Builds the SDK clients from the Ballerina {@code ClientConfiguration}. The union member is
- * selected structurally by the fields present on the auth record, mirroring the compiler's own
- * structural matching. Every mode is validated locally, with no call to Azure, so a
- * misconfiguration fails at {@code init} while initialization stays lazy.
+ * Builds the SDK clients from the Ballerina {@code ClientConfiguration}. The auth union member is
+ * selected by the fields present on the auth record; every mode is validated locally at
+ * {@code init}, with no call to Azure.
  */
 public final class ClientInit {
 
@@ -181,7 +180,7 @@ public final class ClientInit {
         }
     }
 
-    /**
+    /*
      * The SDK's endpoint parsing keeps only the URL's scheme and host, so an endpoint carrying
      * an explicit port (a private endpoint, a tunnel, or a local test service) would silently
      * lose it. This policy restores the configured authority on every outgoing request.
@@ -203,11 +202,10 @@ public final class ClientInit {
         builder.addPolicy(override);
     }
 
-    /**
+    /*
      * Configures a Microsoft Entra ID credential. The record kind is chosen structurally: a
      * secret, a certificate path, or a token file path names its credential outright; otherwise
-     * the {@code kind} discriminator separates the default chain from a managed identity.
-     * Azure Files honors OAuth tokens only with the backup intent, so it is always set.
+     * the `kind` discriminator separates the default chain from a managed identity.
      */
     private static void configureEntra(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
         TokenCredential credential;

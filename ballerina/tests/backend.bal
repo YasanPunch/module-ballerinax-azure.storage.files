@@ -34,7 +34,7 @@ configurable string liveAccountKey = os:getEnv("LIVE_ACCOUNT_KEY");
 // key). The identity must hold the Storage File Data Privileged Contributor role on the
 // account. The default-chain test enables itself when the standard Azure environment
 // variables are present, which the default credential chain consumes identically
-// wherever the tests run (host shell, container, CI).
+// wherever the tests run.
 configurable string liveEntraTenantId = os:getEnv("LIVE_ENTRA_TENANT_ID");
 configurable string liveEntraClientId = os:getEnv("LIVE_ENTRA_CLIENT_ID");
 configurable string liveEntraClientSecret = os:getEnv("LIVE_ENTRA_CLIENT_SECRET");

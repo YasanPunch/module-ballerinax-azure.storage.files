@@ -10,7 +10,7 @@
 
 [Azure Files](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-introduction) offers fully managed file shares in the cloud, accessible via the industry-standard SMB and NFS protocols and a REST API.
 
-The `ballerinax/azure.storage.files` package offers APIs to connect to Azure Files and manage shares and the directories and files within them, covering uploads, downloads, copies, renames, byte ranges, snapshots, leases, and SAS token generation.
+The `ballerinax/azure.storage.files` package offers APIs to connect to Azure Files and manage shares and the directories and files within them, covering uploads, downloads, copies, renames, byte ranges, snapshots, leases, and SAS token generation. It also provides a polling `Listener` that turns files arriving on a share into service events.
 
 ## Setup guide
 
@@ -92,10 +92,11 @@ bal run
 
 ## Examples
 
-The `azure.storage.files` connector provides practical examples illustrating usage in various scenarios. Explore these [examples](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples), covering use cases like backing up a folder to a share and handing out a time-limited file link.
+The `azure.storage.files` connector provides practical examples illustrating usage in various scenarios. Explore these [examples](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples), covering use cases like backing up a folder to a share, handing out a time-limited file link, and processing files dropped into a share folder.
 
 1. [File backup](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples/file-backup) - Back up a local folder to a file share and restore a file from it.
 2. [Share handout](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples/share-handout) - Upload a report and generate a time-limited, read-only SAS URL to share with a third party.
+3. [Drop folder processor](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples/drop-folder-processor) - Watch a folder on a share with the listener and process each dropped file, deleting JSON files and moving the rest into a processed folder.
 
 ## Issues and projects
 
@@ -116,11 +117,7 @@ This repository only contains the source code for the package.
 
 2. Download and install [Ballerina Swan Lake](https://ballerina.io/).
 
-3. Download and install [Docker](https://www.docker.com/get-started).
-
-   > **Note**: Ensure that the Docker daemon is running before executing any tests.
-
-4. Export Github Personal access token with read package permissions as follows,
+3. Export Github Personal access token with read package permissions as follows,
 
     ```bash
     export packageUser=<Username>

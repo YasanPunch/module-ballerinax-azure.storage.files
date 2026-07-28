@@ -222,7 +222,7 @@ final class TransportSupport {
         }
     }
 
-    /**
+    /*
      * Applies the trust side: a PKCS12/JKS truststore or a PEM certificate file, optionally
      * with revocation checking. Revocation runs through the JDK PKIX checker, which consumes
      * stapled OCSP responses when the server sends them and falls back to OCSP/CRL fetching.

@@ -16,10 +16,9 @@
 
 import ballerina/jballerina.java;
 
-# The context object passed to a listener service's handlers, exposing a curated,
-# share-scoped subset of `Client` to act on the event's file. Not user-instantiable: the
-# listener creates one `Caller` bound to the watched share and passes it to every handler,
-# which name the event's file explicitly, for example `caller->deleteFile(file.path)`.
+# The context object passed to a listener service's handlers, exposing a curated, share-scoped
+# subset of `Client` to act on the event's file. It cannot be instantiated by user code.
+# Handlers name the event's file explicitly, for example `caller->deleteFile(file.path)`.
 public isolated client class Caller {
 
     private final string shareName;
@@ -100,7 +99,7 @@ public isolated client class Caller {
     } external;
 
     # Copies a file within the watched share. The copy is asynchronous; inspect the returned
-    # `CopyInfo.copyStatus` and, if pending, cancel with `abortCopy`.
+    # `CopyInfo.copyStatus` for its state.
     #
     # + sourcePath - The source share-relative path
     # + destinationPath - The destination share-relative path
@@ -161,11 +160,8 @@ public isolated client class Caller {
     }
 }
 
-// The two stream-opening natives are aliased to the same Java statics the `Client` streams
-// use (`ListOps.newEntryIterator`, `TransferOps.openContentStream`); they resolve the SDK
-// client from the `Caller`'s native data, so no new Java code is needed. The per-pull and
-// close natives (`nextEntry`/`closeEntryIterator`/`nextContentChunk`/`closeContentStream`)
-// take only the generator and are reused from `natives.bal`.
+// These stream-opening natives bind to the same Java statics the `Client` streams use; the
+// per-pull and close natives are shared from `natives.bal`.
 
 isolated function newCallerEntryIterator(Caller caller, EntryStreamGenerator generator,
         string directoryPath, ListOptions options) returns Error? = @java:Method {

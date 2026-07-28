@@ -18,9 +18,8 @@ import ballerina/jballerina.java;
 import ballerina/log;
 import ballerina/task;
 
-# Configuration for an `azure.storage.files` `Listener`: the credentials and polling cadence
-# for the watched share. What to watch (the path, recursion, filters) is declared per service
-# through the `@ServiceConfig` annotation.
+# Configuration for an `azure.storage.files` `Listener`: the credentials and polling cadence.
+# What to watch is declared per service through the `@ServiceConfig` annotation.
 public type ListenerConfiguration record {|
     # The authentication configuration (see `AuthConfig`)
     AuthConfig auth;
@@ -42,7 +41,7 @@ public type ServiceConfiguration record {|
     # A regular expression matched against the file name (not the path); non-matching files
     # are never dispatched
     string fileNamePattern?;
-    # Skip files younger than this many seconds, guarding against picking up partial writes
+    # Skip files younger than this many seconds
     decimal minFileAgeSeconds?;
 |};
 
@@ -78,18 +77,14 @@ public type FunctionConfiguration record {|
 # Declares the routing and auto-consume configuration of a listener handler.
 public annotation FunctionConfiguration FunctionConfig on object function;
 
-# The service type attached to a `Listener`. It is a bare service object: the handler set
-# (`onFile` and the typed `onFileText`/`onFileJson`/`onFileXml`/`onFileCsv` variants) is
-# validated at compile time rather than by this type, so a service declares whichever content
-# handlers it needs (at least one).
+# The service type attached to a `Listener`. Declare at least one content handler (`onFile` or a
+# typed `onFileText`/`onFileJson`/`onFileXml`/`onFileCsv` variant).
 public type Service distinct service object {
 };
 
-# A polling watcher for a single Azure Files share path. It lists the watched path on a fixed
-# interval and dispatches every present file to the attached service's matching content
-# handler, redelivering an unconsumed file on later polls until the handler consumes it
-# (deletes or moves it out of the watched path, directly or via `@FunctionConfig`). One
-# service attaches per listener; run several listeners to watch several paths.
+# A polling watcher for a single Azure Files share path. It dispatches each present file to the
+# attached service's matching content handler, redelivering an unconsumed file on later polls
+# until a handler consumes it (deletes or moves it out of the watched path).
 public isolated class Listener {
 
     private final string shareName;
@@ -107,12 +102,10 @@ public isolated class Listener {
         return externInit(self, shareName, config);
     }
 
-    # Attaches a service to the listener. One service attaches per listener: a second attach
-    # fails. The service's `@files:ServiceConfig` supplies the required watched `path`.
+    # Attaches a service to the listener. One service attaches per listener; a second attach fails.
     #
     # + serviceRef - The service to attach
-    # + name - The standard listener-contract argument; unused (the watched path is the
-    #          `@files:ServiceConfig` `path`)
+    # + name - The standard listener-contract argument; unused
     # + return - An `error` if the service could not be attached, otherwise `()`
     public isolated function attach(Service serviceRef, string[]|string? name = ()) returns error? {
         return externAttach(self, serviceRef);
