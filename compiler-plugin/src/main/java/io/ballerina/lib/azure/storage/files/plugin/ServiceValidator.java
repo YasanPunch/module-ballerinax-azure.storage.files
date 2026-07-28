@@ -18,8 +18,12 @@
 
 package io.ballerina.lib.azure.storage.files.plugin;
 
+import io.ballerina.compiler.api.symbols.AnnotationSymbol;
 import io.ballerina.compiler.api.symbols.MethodSymbol;
+import io.ballerina.compiler.api.symbols.Symbol;
+import io.ballerina.compiler.syntax.tree.AnnotationNode;
 import io.ballerina.compiler.syntax.tree.FunctionDefinitionNode;
+import io.ballerina.compiler.syntax.tree.MetadataNode;
 import io.ballerina.compiler.syntax.tree.Node;
 import io.ballerina.compiler.syntax.tree.NodeList;
 import io.ballerina.compiler.syntax.tree.ServiceDeclarationNode;
@@ -34,8 +38,10 @@ import java.util.Optional;
 import static io.ballerina.compiler.syntax.tree.SyntaxKind.RESOURCE_ACCESSOR_DEFINITION;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CONTENT_HANDLERS;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.INVALID_REMOTE_FUNCTION;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.MISSING_SERVICE_CONFIG_ANNOTATION;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.NO_VALID_REMOTE_METHOD;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.RESOURCE_FUNCTION_NOT_ALLOWED;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.SERVICE_CONFIG_ANNOTATION;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.getDiagnostic;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.getMethodSymbol;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.isRemoteFunction;
@@ -49,6 +55,10 @@ public class ServiceValidator {
 
     public void validate(SyntaxNodeAnalysisContext context) {
         ServiceDeclarationNode serviceDeclarationNode = (ServiceDeclarationNode) context.node();
+        if (!hasServiceConfigAnnotation(context, serviceDeclarationNode)) {
+            context.reportDiagnostic(getDiagnostic(MISSING_SERVICE_CONFIG_ANNOTATION,
+                    DiagnosticSeverity.ERROR, serviceDeclarationNode.location()));
+        }
         NodeList<Node> members = serviceDeclarationNode.members();
 
         List<FunctionDefinitionNode> contentMethods = new ArrayList<>();
@@ -91,5 +101,30 @@ public class ServiceValidator {
         for (int i = 0; i < contentMethods.size(); i++) {
             new ContentFunctionValidator(context, contentMethods.get(i), contentMethodNames.get(i)).validate();
         }
+    }
+
+    // The watched path has no home other than @files:ServiceConfig (no listener-level fallback),
+    // so the annotation itself is mandatory; its required 'path' field is then enforced by the
+    // type checker.
+    private boolean hasServiceConfigAnnotation(SyntaxNodeAnalysisContext context,
+                                               ServiceDeclarationNode serviceDeclarationNode) {
+        Optional<MetadataNode> metadata = serviceDeclarationNode.metadata();
+        if (metadata.isEmpty()) {
+            return false;
+        }
+        for (AnnotationNode annotation : metadata.get().annotations()) {
+            Optional<Symbol> symbol = context.semanticModel().symbol(annotation);
+            if (symbol.isEmpty() || !(symbol.get() instanceof AnnotationSymbol annotationSymbol)) {
+                continue;
+            }
+            boolean isServiceConfig = annotationSymbol.getName()
+                    .map(SERVICE_CONFIG_ANNOTATION::equals).orElse(false);
+            boolean isOurModule = annotationSymbol.getModule()
+                    .map(PluginUtils::validateModuleId).orElse(false);
+            if (isServiceConfig && isOurModule) {
+                return true;
+            }
+        }
+        return false;
     }
 }

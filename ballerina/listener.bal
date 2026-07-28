@@ -88,8 +88,8 @@ public type Service distinct service object {
 public isolated class Listener {
 
     private final string shareName;
-    private final decimal pollingInterval;
-    private task:JobId? pollJobId = ();
+    private final task:Listener taskListener;
+    private boolean running = false;
 
     # Initializes the listener for a share.
     #
@@ -98,7 +98,12 @@ public isolated class Listener {
     # + return - An `Error` if the listener could not be initialized, otherwise `()`
     public isolated function init(string shareName, *ListenerConfiguration config) returns Error? {
         self.shareName = shareName;
-        self.pollingInterval = config.pollingInterval;
+        task:Listener|task:Error taskListener = new (trigger = {interval: config.pollingInterval});
+        if taskListener is task:Error {
+            return error ProcessingError("failed to initialize the polling scheduler", taskListener,
+                    errorCode = "ProcessingError");
+        }
+        self.taskListener = taskListener;
         return externInit(self, shareName, config);
     }
 
@@ -124,10 +129,12 @@ public isolated class Listener {
     # + return - An `error` if the listener could not start, otherwise `()`
     public isolated function 'start() returns error? {
         lock {
-            if self.pollJobId !is () {
+            if self.running {
                 return error("the listener is already running");
             }
-            self.pollJobId = check task:scheduleJobRecurByFrequency(new PollJob(self), self.pollingInterval);
+            check self.taskListener.attach(createPollService(self));
+            check self.taskListener.'start();
+            self.running = true;
         }
     }
 
@@ -147,32 +154,26 @@ public isolated class Listener {
 
     private isolated function stopPolling(boolean graceful) returns error? {
         lock {
-            task:JobId? id = self.pollJobId;
-            if id is task:JobId {
-                check task:unscheduleJob(id);
-                self.pollJobId = ();
+            if self.running {
+                check self.taskListener.gracefulStop();
+                self.running = false;
             }
         }
         return externStop(self, graceful);
     }
 }
 
-# The recurring job that drives one poll of the listener. Scheduled by `Listener.start`.
-isolated class PollJob {
-    *task:Job;
-
-    private final Listener l;
-
-    isolated function init(Listener l) {
-        self.l = l;
-    }
-
-    public isolated function execute() {
-        error? e = poll(self.l);
-        if e is error {
-            log:printError("azure.storage.files listener poll failed", 'error = e);
+# Creates the task service whose `execute` drives one poll of the listener. It is attached to the
+# listener's task scheduler by `Listener.start`; stopping the scheduler deregisters it.
+isolated function createPollService(Listener l) returns task:Service {
+    return isolated service object {
+        isolated function execute() returns error? {
+            error? e = trap poll(l);
+            if e is error {
+                log:printError("azure.storage.files listener poll failed", 'error = e);
+            }
         }
-    }
+    };
 }
 
 isolated function externInit(Listener listenerObj, string shareName, ListenerConfiguration config)

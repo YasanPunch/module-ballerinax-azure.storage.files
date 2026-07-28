@@ -49,28 +49,33 @@ public final class PluginConstants {
     public static final String CALLER = "Caller";
     public static final String FILE_INFO = "FileInfo";
 
+    // The required service annotation.
+    public static final String SERVICE_CONFIG_ANNOTATION = "ServiceConfig";
+
     /**
      * The diagnostics the plugin can report, each paired with its stable code.
      */
     public enum CompilationErrors {
-        INVALID_REMOTE_FUNCTION("Invalid remote method '%s'. A listener service allows only the content handlers: "
+        INVALID_REMOTE_FUNCTION("Invalid remote method '%s'. A listener service allows only handlers: "
                 + "onFile, onFileText, onFileJson, onFileXml, onFileCsv.", "AZURE_FILES_101"),
-        RESOURCE_FUNCTION_NOT_ALLOWED("Resource functions are not allowed in an azure.storage.files listener service.",
-                "AZURE_FILES_102"),
-        NO_VALID_REMOTE_METHOD("A listener service must declare at least one content handler: onFile, onFileText, "
+        RESOURCE_FUNCTION_NOT_ALLOWED("Unsupported resource function.", "AZURE_FILES_102"),
+        NO_VALID_REMOTE_METHOD("At least one handler must be added: onFile, onFileText, "
                 + "onFileJson, onFileXml, or onFileCsv.", "AZURE_FILES_103"),
-        CONTENT_METHOD_MUST_BE_REMOTE("The '%s' handler must be declared 'remote'.", "AZURE_FILES_104"),
-        MANDATORY_PARAMETER_NOT_FOUND("Missing content parameter for '%s'. Expected '%s' as the first parameter.",
+        CONTENT_METHOD_MUST_BE_REMOTE("'%s' handler must be declared as remote.", "AZURE_FILES_104"),
+        MANDATORY_PARAMETER_NOT_FOUND("Missing parameter for '%s'. Expected '%s' as the first parameter.",
                 "AZURE_FILES_105"),
-        INVALID_CONTENT_PARAMETER_TYPE("Invalid content parameter type for '%s'. Expected '%s', found '%s'.",
+        INVALID_CONTENT_PARAMETER_TYPE("Invalid parameter type for '%s'. Expected '%s', found '%s'.",
                 "AZURE_FILES_106"),
-        INVALID_FILEINFO_PARAMETER("Invalid parameter for '%s'. The optional second parameter must be 'FileInfo'.",
+        INVALID_FILEINFO_PARAMETER("Invalid parameter for '%s'. Optional second parameter must be 'FileInfo'.",
                 "AZURE_FILES_107"),
-        INVALID_CALLER_PARAMETER("Invalid parameter. The optional third parameter must be 'Caller'.",
+        INVALID_CALLER_PARAMETER("Invalid parameter for '%s'. Optional third parameter must be 'Caller'.",
                 "AZURE_FILES_108"),
-        TOO_MANY_PARAMETERS("Too many parameters for '%s'. A handler takes at most 3: (content, FileInfo?, Caller?).",
-                "AZURE_FILES_109"),
-        INVALID_RETURN_TYPE_ERROR_OR_NIL("Invalid return type. Expected 'error?'.", "AZURE_FILES_110");
+        TOO_MANY_PARAMETERS("Too many parameters for '%s'. Handlers accept at most 3 parameters: "
+                + "(content, fileInfo?, caller?).", "AZURE_FILES_109"),
+        INVALID_RETURN_TYPE_ERROR_OR_NIL("Invalid return type. Expected 'error?' or 'files:Error?'.",
+                "AZURE_FILES_110"),
+        MISSING_SERVICE_CONFIG_ANNOTATION("Missing '@files:ServiceConfig' annotation. A listener service must "
+                + "configure 'path'.", "AZURE_FILES_111");
 
         private final String error;
         private final String errorCode;

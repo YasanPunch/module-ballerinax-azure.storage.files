@@ -23,6 +23,7 @@ type Order record {|
 
 listener files:Listener lsn = new ("share", auth = {accountName: "acc", accountKey: "a2V5"});
 
+@files:ServiceConfig {path: "/incoming"}
 service on lsn {
     remote function onFileJson(Order content) returns error? {
     }

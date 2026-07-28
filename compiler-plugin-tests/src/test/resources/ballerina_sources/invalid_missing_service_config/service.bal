@@ -18,13 +18,7 @@ import ballerinax/azure.storage.files as files;
 
 listener files:Listener lsn = new ("share", auth = {accountName: "acc", accountKey: "a2V5"});
 
-@files:ServiceConfig {path: "/incoming"}
 service on lsn {
-
-    @files:FunctionConfig {afterProcess: files:DELETE}
-    remote function onFile(byte[] content, files:FileInfo info, files:Caller caller) returns error? {
-    }
-
-    remote function onFileJson(map<json> content) returns error? {
+    remote function onFileText(string content) returns error? {
     }
 }

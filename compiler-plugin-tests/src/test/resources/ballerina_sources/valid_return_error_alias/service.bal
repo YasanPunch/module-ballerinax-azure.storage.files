@@ -20,6 +20,7 @@ type MyError error;
 
 listener files:Listener lsn = new ("share", auth = {accountName: "acc", accountKey: "a2V5"});
 
+@files:ServiceConfig {path: "/incoming"}
 service on lsn {
     remote function onFile(byte[] content) returns MyError? {
     }

@@ -72,14 +72,14 @@ public class ServiceValidationTest {
     public void testInvalidOnFileJsonJsonArray() {
         DiagnosticResult result = loadPackage("invalid_on_file_json_json_array");
         assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_106", "Invalid content parameter type for onFileJson");
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileJson");
     }
 
     @Test
     public void testInvalidOnFileJsonBareJson() {
         DiagnosticResult result = loadPackage("invalid_on_file_json_bare");
         assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_106", "Invalid content parameter type for onFileJson");
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileJson");
     }
 
     @Test
@@ -89,17 +89,24 @@ public class ServiceValidationTest {
     }
 
     @Test
+    public void testMissingServiceConfigAnnotation() {
+        DiagnosticResult result = loadPackage("invalid_missing_service_config");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_111", "Missing @files:ServiceConfig annotation");
+    }
+
+    @Test
     public void testInvalidContentParameterType() {
         DiagnosticResult result = loadPackage("invalid_content_type");
         assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_106", "Invalid content parameter type for onFile");
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFile");
     }
 
     @Test
     public void testNoContentHandler() {
         DiagnosticResult result = loadPackage("invalid_no_handler");
         assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_103", "at least one content handler");
+        assertError(result, 0, "AZURE_FILES_103", "At least one handler must be added");
     }
 
     @Test
@@ -113,7 +120,7 @@ public class ServiceValidationTest {
     public void testResourceFunctionNotAllowed() {
         DiagnosticResult result = loadPackage("invalid_resource_function");
         assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_102", "Resource functions are not allowed");
+        assertError(result, 0, "AZURE_FILES_102", "Unsupported resource function");
     }
 
     @Test

@@ -116,7 +116,8 @@ public class ContentFunctionValidator {
             return;
         }
         if (!PluginUtils.validateCallerParameter(parameters.get(2), context)) {
-            reportErrorDiagnostic(context, INVALID_CALLER_PARAMETER, parameters.get(2).location());
+            reportErrorDiagnostic(context, INVALID_CALLER_PARAMETER, parameters.get(2).location(),
+                    contentMethodName);
         }
     }
 
