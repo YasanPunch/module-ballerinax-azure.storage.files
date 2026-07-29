@@ -23,6 +23,7 @@
 
 import ballerina/file;
 import ballerina/io;
+import ballerina/lang.runtime;
 import ballerina/test;
 
 // Records handler dispatches so a test can await and assert them across the listener's dispatch
@@ -514,7 +515,7 @@ function testCallerOperations() returns error? {
                         && copyState.copyStatus == SUCCESS;
             });
             recorder.hit("copy-status-seen");
-            // A completed copy cannot be aborted; tolerated, the call still exercises the binding.
+            // A completed copy cannot be aborted, so the rejection is the expected outcome.
             error? aborted = caller->abortCopy("/work/b.txt", copy.copyId);
             if aborted is error {
                 recorder.hit("abort-rejected");
@@ -538,6 +539,7 @@ function testCallerOperations() returns error? {
     test:assertEquals(recorder.payload("shareName"), share);
     test:assertEquals(recorder.payload("downloaded"), "alpha");
     test:assertTrue(recorder.count("copy-status-seen") >= 1);
+    test:assertTrue(recorder.count("abort-rejected") >= 1, "abortCopy on a completed copy must fail");
     test:assertTrue(recorder.count("done") >= 1);
     check shareClient.close();
 }
@@ -576,5 +578,356 @@ function testCallerFileTransfer() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.payload("roundtrip"), "beta");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testTypedTextRouting() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-text");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("hello text", "/incoming/note.txt");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFileText(string content, FileInfo info, Caller caller) returns error? {
+            recorder.put("text", content);
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("text") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("text"), "hello text");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testTypedXmlRouting() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-xml");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("<doc><v>7</v></doc>", "/incoming/item.xml");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFileXml(xml content, FileInfo info, Caller caller) returns error? {
+            recorder.put("xml", content.toString());
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("xml") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertTrue(recorder.payload("xml").includes("<v>7</v>"), recorder.payload("xml"));
+    check shareClient.close();
+}
+
+@test:Config {}
+function testTypedCsvRouting() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-csv");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("a,b\nc,d", "/incoming/rows.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFileCsv(string[][] content, FileInfo info, Caller caller) returns error? {
+            string[] rows = [];
+            foreach string[] row in content {
+                rows.push(string:'join(",", ...row));
+            }
+            recorder.put("csv", string:'join(";", ...rows));
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("csv"), "a,b;c,d");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testMinFileAgeSkipsYoungFiles() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-minage");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("too young", "/incoming/young.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming", minFileAgeSeconds: 3600} service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("dispatched");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    // The age gate is categorical here (an hour), so a few polls suffice as the negative window.
+    runtime:sleep(4);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("dispatched"), 0, "a file younger than minFileAgeSeconds must not dispatch");
+    boolean youngPresent = check shareClient->hasFile("/incoming/young.dat");
+    test:assertTrue(youngPresent);
+    check shareClient.close();
+}
+
+@test:Config {}
+function testNonRecursiveIgnoresSubdirectories() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-flatwatch");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->createDirectory("/incoming/sub");
+    check shareClient->uploadContent("nested", "/incoming/sub/nested.dat");
+    check shareClient->uploadContent("top", "/incoming/top.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming", recursive: false} service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit(info.name);
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("top.dat") >= 1);
+    runtime:sleep(3);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("nested.dat"), 0, "recursive=false must not watch subdirectories");
+    boolean nestedPresent = check shareClient->hasFile("/incoming/sub/nested.dat");
+    test:assertTrue(nestedPresent);
+    check shareClient.close();
+}
+
+@test:Config {}
+function testServiceFileNamePatternFilters() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-svcpattern");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("wanted", "/incoming/match.dat");
+    check shareClient->uploadContent("unwanted", "/incoming/skip.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming", fileNamePattern: "^match\\..*"} service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit(info.name);
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("match.dat") >= 1);
+    runtime:sleep(3);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("skip.dat"), 0, "a non-matching file name must never dispatch");
+    boolean skipPresent = check shareClient->hasFile("/incoming/skip.dat");
+    test:assertTrue(skipPresent);
+    check shareClient.close();
+}
+
+@test:Config {}
+function testFunctionConfigPatternOverridesExtension() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-fnpattern");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    // .dat maps to no typed handler, so without the per-handler pattern this file would land in
+    // onFile; the pattern must route it to onFileText instead.
+    check shareClient->uploadContent("routed-by-pattern", "/incoming/note.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {fileNamePattern: ".*\\.dat$"}
+        remote function onFileText(string content, FileInfo info, Caller caller) returns error? {
+            recorder.put("text", content);
+            check caller->deleteFile(info.path);
+        }
+
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("fallback");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("text") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("text"), "routed-by-pattern");
+    test:assertEquals(recorder.count("fallback"), 0, "a pattern-routed file must not reach onFile");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testInvalidFileNamePatternRejectedAtAttach() returns error? {
+    string share = testShare("lsn-badpattern");
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming", fileNamePattern: "["} service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+    };
+    error? attached = lsn.attach(svc);
+    test:assertTrue(attached is error, "an invalid fileNamePattern regex must fail at attach");
+}
+
+@test:Config {}
+function testEmptyPathRejectedAtAttach() returns error? {
+    string share = testShare("lsn-emptypath");
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: ""} service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+    };
+    error? attached = lsn.attach(svc);
+    test:assertTrue(attached is error, "an empty watched path must fail at attach");
+}
+
+@test:Config {}
+function testMoveOntoExistingFileFails() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-moveclash");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->createDirectory("/processed");
+    check shareClient->uploadContent("occupied", "/processed/report.dat");
+    check shareClient->uploadContent("mover", "/incoming/report.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: {moveTo: "/processed"}}
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("ran");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("ran") >= 1);
+    runtime:sleep(3);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    boolean sourcePresent = check shareClient->hasFile("/incoming/report.dat");
+    test:assertTrue(sourcePresent,
+            "a move onto an existing same-named file must fail, leaving the source in place");
+    stream<byte[], Error?> chunks = check shareClient->getFileContent("/processed/report.dat");
+    byte[] gathered = [];
+    check chunks.forEach(function(byte[] chunk) {
+        gathered.push(...chunk);
+    });
+    test:assertEquals(check string:fromBytes(gathered), "occupied",
+            "the pre-existing destination file must be untouched");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testMovePreserveSubDirsFalseFlattens() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-moveflat");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->createDirectory("/incoming/sub");
+    check shareClient->uploadContent("deep", "/incoming/sub/deep.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: {moveTo: "/flat", preserveSubDirs: false}}
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("moved");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(function() returns boolean|error {
+        boolean atFlat = check shareClient->hasFile("/flat/deep.dat");
+        boolean atSource = check shareClient->hasFile("/incoming/sub/deep.dat");
+        return atFlat && !atSource;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    boolean preserved = check shareClient->hasDirectory("/flat/sub");
+    test:assertFalse(preserved, "preserveSubDirs=false must not recreate the sub-path under moveTo");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testUnmappedFileSkippedWithoutOnFile() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-skip");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    // .txt maps to onFileText, which is undeclared; with no onFile catch-all either, the file is
+    // skipped (and logged) rather than dispatched, and stays in place.
+    check shareClient->uploadContent("{}", "/incoming/note.txt");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("json");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    runtime:sleep(4);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("json"), 0, "a .txt file must not reach onFileJson");
+    boolean notePresent = check shareClient->hasFile("/incoming/note.txt");
+    test:assertTrue(notePresent);
+    check shareClient.close();
+}
+
+@test:Config {}
+function testUnconsumedFileRedelivers() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-redeliver");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("try again", "/incoming/retry.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("attempt");
+            if recorder.count("attempt") == 1 {
+                return error("transient handler failure");
+            }
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("attempt") >= 2);
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/retry.dat");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertTrue(recorder.count("attempt") >= 2,
+            "an unconsumed file must be redelivered on a later poll");
     check shareClient.close();
 }

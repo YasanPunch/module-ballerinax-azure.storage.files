@@ -131,6 +131,41 @@ public class ServiceValidationTest {
     }
 
     @Test
+    public void testNonRemoteHandlerRejected() {
+        DiagnosticResult result = loadPackage("invalid_non_remote_handler");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_104", "handler must be declared as remote");
+    }
+
+    @Test
+    public void testMissingContentParameter() {
+        DiagnosticResult result = loadPackage("invalid_missing_parameter");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_105", "Missing parameter for onFile");
+    }
+
+    @Test
+    public void testInvalidSecondParameter() {
+        DiagnosticResult result = loadPackage("invalid_second_parameter");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_107", "Optional second parameter must be FileInfo");
+    }
+
+    @Test
+    public void testInvalidThirdParameter() {
+        DiagnosticResult result = loadPackage("invalid_third_parameter");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_108", "Optional third parameter must be Caller");
+    }
+
+    @Test
+    public void testTooManyParameters() {
+        DiagnosticResult result = loadPackage("invalid_too_many_parameters");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_109", "Too many parameters for onFile");
+    }
+
+    @Test
     public void testValidReturnErrorAlias() {
         DiagnosticResult result = loadPackage("valid_return_error_alias");
         assertEquals(result.errorCount(), 0, "expected no diagnostics for a user-defined error return type");

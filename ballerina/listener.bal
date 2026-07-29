@@ -98,7 +98,12 @@ public isolated class Listener {
     # + return - An `Error` if the listener could not be initialized, otherwise `()`
     public isolated function init(string shareName, *ListenerConfiguration config) returns Error? {
         self.shareName = shareName;
-        task:Listener|task:Error taskListener = new (trigger = {interval: config.pollingInterval});
+        // The waiting policy is pinned so scan pacing cannot shift with a future change to the
+        // task module's default.
+        task:Listener|task:Error taskListener = new (trigger = {
+            interval: config.pollingInterval,
+            taskPolicy: {waitingPolicy: task:WAIT}
+        });
         if taskListener is task:Error {
             return error ProcessingError("failed to initialize the polling scheduler", taskListener,
                     errorCode = "ProcessingError");
