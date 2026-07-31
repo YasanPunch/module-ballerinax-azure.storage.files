@@ -5,7 +5,7 @@
 
 [ballerina]
 dependencies-toml-version = "2"
-distribution-version = "2201.12.0"
+distribution-version = "2201.13.1"
 
 [[package]]
 org = "ballerina"
@@ -55,19 +55,44 @@ modules = [
 
 [[package]]
 org = "ballerina"
+name = "data.csv"
+version = "0.8.2"
+dependencies = [
+	{org = "ballerina", name = "jballerina.java"},
+	{org = "ballerina", name = "log"}
+]
+modules = [
+	{org = "ballerina", packageName = "data.csv", moduleName = "data.csv"}
+]
+
+[[package]]
+org = "ballerina"
 name = "data.jsondata"
 version = "1.1.4"
-scope = "testOnly"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.object"}
+]
+modules = [
+	{org = "ballerina", packageName = "data.jsondata", moduleName = "data.jsondata"}
+]
+
+[[package]]
+org = "ballerina"
+name = "data.xmldata"
+version = "1.6.3"
+dependencies = [
+	{org = "ballerina", name = "jballerina.java"},
+	{org = "ballerina", name = "lang.object"}
+]
+modules = [
+	{org = "ballerina", packageName = "data.xmldata", moduleName = "data.xmldata"}
 ]
 
 [[package]]
 org = "ballerina"
 name = "file"
 version = "1.13.0"
-scope = "testOnly"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -81,7 +106,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "http"
-version = "2.14.13"
+version = "2.16.6"
 scope = "testOnly"
 dependencies = [
 	{org = "ballerina", name = "auth"},
@@ -242,7 +267,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "log"
-version = "2.14.0"
+version = "2.17.0"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"},
@@ -268,7 +293,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "oauth2"
-version = "2.14.1"
+version = "2.15.0"
 scope = "testOnly"
 dependencies = [
 	{org = "ballerina", name = "cache"},
@@ -282,7 +307,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "observe"
-version = "1.6.0"
+version = "1.7.1"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
@@ -291,7 +316,6 @@ dependencies = [
 org = "ballerina"
 name = "os"
 version = "1.10.1"
-scope = "testOnly"
 dependencies = [
 	{org = "ballerina", name = "io"},
 	{org = "ballerina", name = "jballerina.java"}
@@ -379,6 +403,9 @@ name = "azure.storage.files"
 version = "1.0.0"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
+	{org = "ballerina", name = "data.csv"},
+	{org = "ballerina", name = "data.jsondata"},
+	{org = "ballerina", name = "data.xmldata"},
 	{org = "ballerina", name = "file"},
 	{org = "ballerina", name = "http"},
 	{org = "ballerina", name = "io"},
