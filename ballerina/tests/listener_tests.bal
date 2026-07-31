@@ -1000,8 +1000,8 @@ function testPollFailureMapsProcessingError() returns error? {
 }
 
 @test:Config {}
-function testPollFailureBacksOffAndRecovers() returns error? {
-    [Client, string] setup = check setupMockWatchedShare("lsn-backoff");
+function testPollFailureRecoversOnNextPoll() returns error? {
+    [Client, string] setup = check setupMockWatchedShare("lsn-recover");
     Client shareClient = setup[0];
     string share = setup[1];
 
@@ -1016,51 +1016,51 @@ function testPollFailureBacksOffAndRecovers() returns error? {
     check lsn.attach(svc);
 
     mockListFaultCode = "AuthenticationFailed";
-    error? first = poll(lsn);
-    // Still inside the backoff window, with the fault still armed: a gated poll must not
-    // scan at all, so it cannot observe the armed fault and returns nil.
-    error? gated = poll(lsn);
+    error? failed = poll(lsn);
     mockListFaultCode = ();
+    test:assertTrue(failed is Error, "a failing poll must surface its error");
 
-    test:assertTrue(first is Error, "the first failing poll must surface its error");
-    test:assertTrue(gated is (), "a poll inside the backoff window must be a silent no-op");
-
+    // Polling keeps its fixed cadence: the very next poll scans again, and a cleared fault
+    // means it succeeds and dispatches immediately, with no cool-down to wait out.
     check shareClient->uploadContent("recovered", "/incoming/recover.dat");
-    // The first failure's backoff window is twice the polling interval; wait it out.
-    runtime:sleep(2.5);
     error? recovered = poll(lsn);
-    test:assertTrue(recovered is (), "a poll after the fault clears must succeed");
+    test:assertTrue(recovered is (), "the poll after the fault clears must succeed");
     check await(() => recorder.count("dispatch") >= 1);
     check lsn.detach(svc);
     check shareClient.close();
 }
 
 @test:Config {}
-function testPollFailureLogsEveryAttempt() returns error? {
-    // Every non-gated failing poll returns its error, so the poll service's log line runs
-    // on each attempt, not only the first.
+function testPollFailureSurfacesEveryPoll() returns error? {
+    // Every failing poll returns its error, so the poll service's log line and a declared
+    // onError run on each scheduled attempt; there is no suppression between polls.
     [Client, string] setup = check setupMockWatchedShare("lsn-pollrepeat");
     Client shareClient = setup[0];
     string share = setup[1];
 
+    final Recorder recorder = new;
     Listener lsn = check newMockListener(share);
     Service svc = @ServiceConfig {path: "/incoming"} service object {
         remote function onFile(byte[] content) returns error? {
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
         }
     };
     check lsn.attach(svc);
 
     mockListFaultCode = "AuthenticationFailed";
     error? first = poll(lsn);
-    // Wait out the first backoff window (twice the polling interval) with the fault still
-    // armed, so the next poll attempts a scan and fails again.
-    runtime:sleep(2.5);
     error? second = poll(lsn);
     mockListFaultCode = ();
 
     test:assertTrue(first is AuthorizationError, "the first failing poll must surface its error");
     test:assertTrue(second is AuthorizationError,
-            "every attempted poll failure must surface, not only the first");
+            "every failing poll must surface its error, not only the first");
+    check await(() => recorder.count("onerror") >= 2);
+    test:assertTrue(recorder.count("onerror") >= 2,
+            "each failing poll must notify a declared onError");
     check lsn.detach(svc);
     check shareClient.close();
 }

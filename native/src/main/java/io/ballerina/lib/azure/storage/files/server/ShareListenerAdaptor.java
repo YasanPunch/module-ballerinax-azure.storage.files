@@ -67,8 +67,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
@@ -90,7 +88,6 @@ public final class ShareListenerAdaptor {
 
     // The Caller object type and the ListenerConfiguration fields this class reads.
     private static final String CALLER_OBJECT = "Caller";
-    private static final BString POLLING_INTERVAL = StringUtils.fromString("pollingInterval");
     private static final BString LAX_DATA_BINDING = StringUtils.fromString("laxDataBinding");
     private static final BString CSV_FAIL_SAFE = StringUtils.fromString("csvFailSafe");
     // The module-level Ballerina helper that binds CSV content on a real strand.
@@ -125,9 +122,8 @@ public final class ShareListenerAdaptor {
     private static final Map<String, String> EXTENSION_HANDLERS = Map.of(
             "json", ON_FILE_JSON, "xml", ON_FILE_XML, "csv", ON_FILE_CSV, "txt", ON_FILE_TEXT);
 
-    // Poll backoff cap and the bounded wait for in-flight handlers on stop.
-    private static final long MAX_BACKOFF_MILLIS = 300_000L; 
-    private static final long AWAIT_SECONDS = 30L; 
+    // The bounded wait for in-flight handlers on a graceful stop.
+    private static final long AWAIT_SECONDS = 30L;
 
     private ShareListenerAdaptor() {
     }
@@ -177,12 +173,11 @@ public final class ShareListenerAdaptor {
             caller.addNativeData(Ops.NATIVE_SHARE_CLIENT, shareClient);
 
             // Add the listener context to the listener object.
-            double pollingSeconds = ((BDecimal) config.get(POLLING_INTERVAL)).floatValue();
             boolean laxDataBinding = Boolean.TRUE.equals(config.get(LAX_DATA_BINDING));
             @SuppressWarnings("unchecked")
             BMap<BString, Object> csvFailSafe = (BMap<BString, Object>) config.get(CSV_FAIL_SAFE);
             listenerObj.addNativeData(NATIVE_LISTENER_CONTEXT,
-                    new ListenerContext(env.getRuntime(), caller, pollingSeconds, laxDataBinding, csvFailSafe));
+                    new ListenerContext(env.getRuntime(), caller, laxDataBinding, csvFailSafe));
             return null;
         } catch (BError e) {
             return e;
@@ -243,15 +238,15 @@ public final class ShareListenerAdaptor {
 
     /**
      * Step 1. (poll → scan → consider → dispatch)
-     * Runs one poll of the watched path. Called on a Ballerina strand by the task job. Lists the
-     * present files and dispatches each match on a virtual thread. A listing failure is mapped to
-     * the module's typed error and returned, so the Ballerina poll service logs every attempted
-     * failure; retry cadence still backs off exponentially, capped at five minutes, and a poll
-     * inside the backoff window is a silent no-op.
+     * Runs one poll of the watched path. Called on a Ballerina strand by the task job, which
+     * drives the fixed polling cadence. Lists the present files and dispatches each match on a
+     * virtual thread. A listing failure is mapped to the module's typed error and returned, so
+     * the Ballerina poll service logs it and a declared {@code onError} receives it; the next
+     * scheduled poll simply scans again.
      *
      * @param env         the Ballerina runtime environment
      * @param listenerObj the Ballerina listener object
-     * @return {@code null} on success or a gated poll, or the mapped scan error
+     * @return {@code null} on success, or the mapped scan error
      */
     public static Object poll(Environment env, BObject listenerObj) {
         return Ops.invoke(env, () -> {
@@ -260,19 +255,9 @@ public final class ShareListenerAdaptor {
             if (ctx == null || ctx.stopped || ctx.service == null || serviceContext == null) {
                 return null;
             }
-            // A poll inside the backoff window is a silent no-op.
-            if (System.currentTimeMillis() < ctx.nextAllowedPollMillis.get()) {
-                return null;
-            }
             try {
                 scan(listenerObj, ctx, serviceContext);
-                ctx.failureCount.set(0);
-                ctx.nextAllowedPollMillis.set(0L);
             } catch (Throwable e) {
-                int attempt = ctx.failureCount.incrementAndGet();
-                long backoff = Math.min((long) (Math.pow(2, attempt) * ctx.pollingIntervalSeconds * 1000d),
-                        MAX_BACKOFF_MILLIS);
-                ctx.nextAllowedPollMillis.set(System.currentTimeMillis() + backoff);
                 BError mapped = mapScanFailure(e);
                 invokeOnError(ctx, mapped);
                 return mapped;
@@ -296,7 +281,7 @@ public final class ShareListenerAdaptor {
     /**
      * Invokes the service's optional {@code onError} handler with the given error, on a dispatch
      * virtual thread. onError is a notification hook: its own failure is printed and swallowed,
-     * and it never alters the listener's consume or backoff behavior.
+     * and it never alters the listener's consume behavior or polling cadence.
      *
      * @param ctx   the listener context
      * @param error the error to hand to the handler
@@ -856,28 +841,24 @@ public final class ShareListenerAdaptor {
 
     /**
      * Per-listener mutable state: the SDK dispatch machinery, the parsed watch configuration, the
-     * attached service, and the poll backoff counters.
+     * and the attached service.
      */
     private static final class ListenerContext {
 
         private final Runtime runtime;
         private final BObject caller;
-        private final double pollingIntervalSeconds;
         private final boolean laxDataBinding;
         private final BMap<BString, Object> csvFailSafe;
         private final ExecutorService dispatchExecutor = Executors.newVirtualThreadPerTaskExecutor();
         private final Set<String> inProgress = ConcurrentHashMap.newKeySet();
-        private final AtomicInteger failureCount = new AtomicInteger();
-        private final AtomicLong nextAllowedPollMillis = new AtomicLong();
         private volatile BObject service;
         private volatile ServiceContext serviceContext;
         private volatile boolean stopped;
 
-        private ListenerContext(Runtime runtime, BObject caller, double pollingIntervalSeconds,
+        private ListenerContext(Runtime runtime, BObject caller,
                                 boolean laxDataBinding, BMap<BString, Object> csvFailSafe) {
             this.runtime = runtime;
             this.caller = caller;
-            this.pollingIntervalSeconds = pollingIntervalSeconds;
             this.laxDataBinding = laxDataBinding;
             this.csvFailSafe = csvFailSafe;
         }

@@ -708,7 +708,7 @@ public annotation FunctionConfiguration FunctionConfig on object function;
 
 A `Caller` is passed to each handler so it can act on the event's file without constructing a separate client. It forwards a curated share-scoped subset of `Client` (`downloadFile`, `getFileContent`, `uploadFile`, `uploadContent`, `deleteFile`, `copyFile`, `checkCopyStatus`, `abortCopy`, `renameFile`, `createDirectory`, `deleteDirectory`, `list`) plus a non-remote `getShareName()`. Handlers pass the event's path explicitly, e.g. `caller->deleteFile(file.path)`.
 
-A failed poll surfaces its error: the listener logs it on every attempted poll, and a declared `onError` receives it. Retry cadence backs off exponentially, capped at five minutes, and resets on the next successful poll.
+A failed poll surfaces its error: the listener logs it on every poll, and a declared `onError` receives it. Polling keeps its configured interval, so the next scheduled poll scans again.
 
 ## 6. Error Types
 
