@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.core.util.polling.SyncPoller;
 import com.azure.storage.file.share.ShareFileClient;
@@ -24,6 +24,11 @@ import com.azure.storage.file.share.models.PermissionCopyModeType;
 import com.azure.storage.file.share.models.ShareFileCopyInfo;
 import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.options.ShareFileCopyOptions;
+import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
+import io.ballerina.lib.azure.storage.files.util.Ops;
+import io.ballerina.lib.azure.storage.files.util.OptionsReader;
+import io.ballerina.lib.azure.storage.files.util.RecordMapper;
+import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;

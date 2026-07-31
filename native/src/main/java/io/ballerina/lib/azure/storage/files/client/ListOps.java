@@ -16,12 +16,16 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.storage.file.share.ShareClient;
 import com.azure.storage.file.share.ShareDirectoryClient;
 import com.azure.storage.file.share.models.ShareFileItem;
 import com.azure.storage.file.share.options.ShareListFilesAndDirectoriesOptions;
+import io.ballerina.lib.azure.storage.files.util.Ops;
+import io.ballerina.lib.azure.storage.files.util.OptionsReader;
+import io.ballerina.lib.azure.storage.files.util.RecordMapper;
+import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
@@ -38,7 +42,7 @@ import java.util.Iterator;
 public final class ListOps {
 
     // Key under which the native iterator state is stored on a stream generator object.
-    private static final String NATIVE_ITERATOR = "azure.storage.files.native.iterator";
+    private static final String NATIVE_ITERATOR = "entryIterator";
 
     private ListOps() {
     }

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.util;
 
 import com.azure.storage.file.share.FileSmbProperties;
 import com.azure.storage.file.share.models.FilePosixProperties;
@@ -44,68 +44,68 @@ import java.util.List;
  * Reads the Ballerina option records into the SDK's option and property classes. Every reader
  * accepts the record as a {@code BMap} and tolerates absent optional fields.
  */
-final class OptionsReader {
+public final class OptionsReader {
 
     // Field names of the option, content-header, SMB, and POSIX records. Owned here as
     // the options schema; other classes reference them from this class.
     // The Ballerina NtfsFileAttribute enum values.
-    static final String ATTRIBUTE_READ_ONLY = "ReadOnly";
-    static final String ATTRIBUTE_HIDDEN = "Hidden";
-    static final String ATTRIBUTE_SYSTEM = "System";
-    static final String ATTRIBUTE_NONE = "None";
-    static final String ATTRIBUTE_DIRECTORY = "Directory";
-    static final String ATTRIBUTE_ARCHIVE = "Archive";
-    static final String ATTRIBUTE_TEMPORARY = "Temporary";
-    static final String ATTRIBUTE_OFFLINE = "Offline";
-    static final String ATTRIBUTE_NOT_CONTENT_INDEXED = "NotContentIndexed";
-    static final String ATTRIBUTE_NO_SCRUB_DATA = "NoScrubData";
-    static final BString PREFIX = StringUtils.fromString("prefix");
-    static final BString INCLUDE_METADATA = StringUtils.fromString("includeMetadata");
-    static final BString INCLUDE_SNAPSHOTS = StringUtils.fromString("includeSnapshots");
-    static final BString INCLUDE_DELETED = StringUtils.fromString("includeDeleted");
-    static final BString METADATA = StringUtils.fromString("metadata");
-    static final BString QUOTA_IN_GB = StringUtils.fromString("quotaInGb");
-    static final BString ACCESS_TIER = StringUtils.fromString("accessTier");
-    static final BString ENABLED_PROTOCOLS = StringUtils.fromString("enabledProtocols");
-    static final BString ROOT_SQUASH = StringUtils.fromString("rootSquash");
-    static final BString DELETE_SNAPSHOTS = StringUtils.fromString("deleteSnapshots");
-    static final BString SNAPSHOT_ID = StringUtils.fromString("snapshotId");
-    static final BString LEASE_ID = StringUtils.fromString("leaseId");
-    static final BString FILE_PERMISSION = StringUtils.fromString("filePermission");
-    static final BString SMB_PROPERTIES = StringUtils.fromString("smbProperties");
-    static final BString POSIX_PROPERTIES = StringUtils.fromString("posixProperties");
-    static final BString RECURSIVE = StringUtils.fromString("recursive");
-    static final BString PAGE_SIZE = StringUtils.fromString("pageSize");
-    static final BString INCLUDE_EXTENDED_INFO = StringUtils.fromString("includeExtendedInfo");
-    static final BString REPLACE_IF_EXISTS = StringUtils.fromString("replaceIfExists");
-    static final BString IGNORE_READ_ONLY = StringUtils.fromString("ignoreReadOnly");
-    static final BString CONTENT_HEADERS = StringUtils.fromString("contentHeaders");
-    static final BString RANGE = StringUtils.fromString("range");
-    static final BString PERMISSION_COPY_MODE = StringUtils.fromString("permissionCopyMode");
-    static final BString CONTENT_TYPE = StringUtils.fromString("contentType");
-    static final BString CONTENT_ENCODING = StringUtils.fromString("contentEncoding");
-    static final BString CONTENT_LANGUAGE = StringUtils.fromString("contentLanguage");
-    static final BString CONTENT_DISPOSITION = StringUtils.fromString("contentDisposition");
-    static final BString CACHE_CONTROL = StringUtils.fromString("cacheControl");
-    static final BString CONTENT_MD5 = StringUtils.fromString("contentMd5");
-    static final BString NTFS_FILE_ATTRIBUTES = StringUtils.fromString("ntfsFileAttributes");
-    static final BString FILE_PERMISSION_KEY = StringUtils.fromString("filePermissionKey");
-    static final BString FILE_CREATION_TIME = StringUtils.fromString("fileCreationTime");
-    static final BString FILE_LAST_WRITE_TIME = StringUtils.fromString("fileLastWriteTime");
-    static final BString FILE_CHANGE_TIME = StringUtils.fromString("fileChangeTime");
-    static final BString FILE_ID = StringUtils.fromString("fileId");
-    static final BString PARENT_ID = StringUtils.fromString("parentId");
-    static final BString OWNER = StringUtils.fromString("owner");
-    static final BString GROUP = StringUtils.fromString("group");
-    static final BString FILE_MODE = StringUtils.fromString("fileMode");
-    static final BString FILE_TYPE = StringUtils.fromString("fileType");
-    static final BString LINK_COUNT = StringUtils.fromString("linkCount");
+    public static final String ATTRIBUTE_READ_ONLY = "ReadOnly";
+    public static final String ATTRIBUTE_HIDDEN = "Hidden";
+    public static final String ATTRIBUTE_SYSTEM = "System";
+    public static final String ATTRIBUTE_NONE = "None";
+    public static final String ATTRIBUTE_DIRECTORY = "Directory";
+    public static final String ATTRIBUTE_ARCHIVE = "Archive";
+    public static final String ATTRIBUTE_TEMPORARY = "Temporary";
+    public static final String ATTRIBUTE_OFFLINE = "Offline";
+    public static final String ATTRIBUTE_NOT_CONTENT_INDEXED = "NotContentIndexed";
+    public static final String ATTRIBUTE_NO_SCRUB_DATA = "NoScrubData";
+    public static final BString PREFIX = StringUtils.fromString("prefix");
+    public static final BString INCLUDE_METADATA = StringUtils.fromString("includeMetadata");
+    public static final BString INCLUDE_SNAPSHOTS = StringUtils.fromString("includeSnapshots");
+    public static final BString INCLUDE_DELETED = StringUtils.fromString("includeDeleted");
+    public static final BString METADATA = StringUtils.fromString("metadata");
+    public static final BString QUOTA_IN_GB = StringUtils.fromString("quotaInGb");
+    public static final BString ACCESS_TIER = StringUtils.fromString("accessTier");
+    public static final BString ENABLED_PROTOCOLS = StringUtils.fromString("enabledProtocols");
+    public static final BString ROOT_SQUASH = StringUtils.fromString("rootSquash");
+    public static final BString DELETE_SNAPSHOTS = StringUtils.fromString("deleteSnapshots");
+    public static final BString SNAPSHOT_ID = StringUtils.fromString("snapshotId");
+    public static final BString LEASE_ID = StringUtils.fromString("leaseId");
+    public static final BString FILE_PERMISSION = StringUtils.fromString("filePermission");
+    public static final BString SMB_PROPERTIES = StringUtils.fromString("smbProperties");
+    public static final BString POSIX_PROPERTIES = StringUtils.fromString("posixProperties");
+    public static final BString RECURSIVE = StringUtils.fromString("recursive");
+    public static final BString PAGE_SIZE = StringUtils.fromString("pageSize");
+    public static final BString INCLUDE_EXTENDED_INFO = StringUtils.fromString("includeExtendedInfo");
+    public static final BString REPLACE_IF_EXISTS = StringUtils.fromString("replaceIfExists");
+    public static final BString IGNORE_READ_ONLY = StringUtils.fromString("ignoreReadOnly");
+    public static final BString CONTENT_HEADERS = StringUtils.fromString("contentHeaders");
+    public static final BString RANGE = StringUtils.fromString("range");
+    public static final BString PERMISSION_COPY_MODE = StringUtils.fromString("permissionCopyMode");
+    public static final BString CONTENT_TYPE = StringUtils.fromString("contentType");
+    public static final BString CONTENT_ENCODING = StringUtils.fromString("contentEncoding");
+    public static final BString CONTENT_LANGUAGE = StringUtils.fromString("contentLanguage");
+    public static final BString CONTENT_DISPOSITION = StringUtils.fromString("contentDisposition");
+    public static final BString CACHE_CONTROL = StringUtils.fromString("cacheControl");
+    public static final BString CONTENT_MD5 = StringUtils.fromString("contentMd5");
+    public static final BString NTFS_FILE_ATTRIBUTES = StringUtils.fromString("ntfsFileAttributes");
+    public static final BString FILE_PERMISSION_KEY = StringUtils.fromString("filePermissionKey");
+    public static final BString FILE_CREATION_TIME = StringUtils.fromString("fileCreationTime");
+    public static final BString FILE_LAST_WRITE_TIME = StringUtils.fromString("fileLastWriteTime");
+    public static final BString FILE_CHANGE_TIME = StringUtils.fromString("fileChangeTime");
+    public static final BString FILE_ID = StringUtils.fromString("fileId");
+    public static final BString PARENT_ID = StringUtils.fromString("parentId");
+    public static final BString OWNER = StringUtils.fromString("owner");
+    public static final BString GROUP = StringUtils.fromString("group");
+    public static final BString FILE_MODE = StringUtils.fromString("fileMode");
+    public static final BString FILE_TYPE = StringUtils.fromString("fileType");
+    public static final BString LINK_COUNT = StringUtils.fromString("linkCount");
 
     private OptionsReader() {
     }
 
     /** Converts a {@code ContentHeaders} record to the SDK header class; {@code null} when absent. */
-    static ShareFileHttpHeaders contentHeaders(Object value) {
+    public static ShareFileHttpHeaders contentHeaders(Object value) {
         if (value == null) {
             return null;
         }
@@ -129,7 +129,7 @@ final class OptionsReader {
     }
 
     /** Converts an {@code SmbProperties} record to the SDK class; {@code null} when absent. */
-    static FileSmbProperties smbProperties(Object value) {
+    public static FileSmbProperties smbProperties(Object value) {
         if (value == null) {
             return null;
         }
@@ -162,7 +162,7 @@ final class OptionsReader {
     }
 
     /** Converts a writable {@code PosixProperties} record to the SDK class; {@code null} when absent. */
-    static FilePosixProperties posixProperties(Object value) {
+    public static FilePosixProperties posixProperties(Object value) {
         if (value == null) {
             return null;
         }
@@ -175,7 +175,7 @@ final class OptionsReader {
     }
 
     /** Converts a {@code Range} record to the SDK range; {@code null} when absent. */
-    static ShareFileRange range(Object value) {
+    public static ShareFileRange range(Object value) {
         if (value == null) {
             return null;
         }
@@ -187,7 +187,7 @@ final class OptionsReader {
     }
 
     /** Converts a {@code ServiceProperties} record to the SDK model. */
-    static ShareServiceProperties serviceProperties(BMap<BString, Object> record) {
+    public static ShareServiceProperties serviceProperties(BMap<BString, Object> record) {
         ShareServiceProperties sdk = new ShareServiceProperties();
         Object hourMetrics = record.get(RecordMapper.HOUR_METRICS);
         if (hourMetrics != null) {

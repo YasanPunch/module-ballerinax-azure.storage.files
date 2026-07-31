@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.util;
 
 import io.ballerina.runtime.api.creators.ErrorCreator;
 import io.ballerina.runtime.api.creators.ValueCreator;
@@ -29,7 +29,7 @@ import io.ballerina.runtime.api.values.BString;
  * Creates the typed Ballerina errors declared in {@code errors.bal}. Each error carries an
  * {@code ErrorDetail} record; the type name string must match the Ballerina error type exactly.
  */
-final class FilesErrorCreator {
+public final class FilesErrorCreator {
 
     private FilesErrorCreator() {
     }
@@ -50,7 +50,8 @@ final class FilesErrorCreator {
      * @param cause      the originating Java exception
      * @return the Ballerina error
      */
-    static BError storageError(String typeName, String message, int httpStatus, String errorCode, Throwable cause) {
+    public static BError storageError(String typeName, String message, int httpStatus, String errorCode,
+            Throwable cause) {
         BMap<BString, Object> detail = ValueCreator.createRecordValue(ModuleUtils.getModule(), ERROR_DETAIL);
         detail.put(HTTP_STATUS, (long) httpStatus);
         detail.put(ERROR_CODE, StringUtils.fromString(errorCode));
@@ -65,7 +66,7 @@ final class FilesErrorCreator {
      * @param cause   the originating Java exception
      * @return the Ballerina error
      */
-    static BError processingError(String message, Throwable cause) {
+    public static BError processingError(String message, Throwable cause) {
         BMap<BString, Object> detail = ValueCreator.createRecordValue(ModuleUtils.getModule(), ERROR_DETAIL);
         detail.put(ERROR_CODE, StringUtils.fromString(PROCESSING_ERROR));
         return ErrorCreator.createError(ModuleUtils.getModule(), PROCESSING_ERROR,

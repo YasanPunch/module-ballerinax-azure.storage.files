@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.core.http.HttpHeaderName;
 import com.azure.core.http.rest.Response;
@@ -25,6 +25,8 @@ import com.azure.storage.file.share.options.ShareAcquireLeaseOptions;
 import com.azure.storage.file.share.options.ShareBreakLeaseOptions;
 import com.azure.storage.file.share.specialized.ShareLeaseClient;
 import com.azure.storage.file.share.specialized.ShareLeaseClientBuilder;
+import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
+import io.ballerina.lib.azure.storage.files.util.Ops;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BObject;

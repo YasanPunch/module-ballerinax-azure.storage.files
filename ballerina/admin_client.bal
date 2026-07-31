@@ -34,7 +34,7 @@ public isolated client class AdminClient {
     # + shareName - The name of the share to check
     # + return - `true` if the share exists, `false` if not, or an `Error`
     isolated remote function hasShare(string shareName) returns boolean|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
     # Lists the shares in the storage account.
@@ -43,7 +43,7 @@ public isolated client class AdminClient {
     # + return - An array of `ShareInfo`, or an `Error`
     isolated remote function listShares(ShareListOptions? options = ())
             returns ShareInfo[]|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
     # Creates a new share in the storage account.
@@ -53,7 +53,7 @@ public isolated client class AdminClient {
     # + return - An `Error` if the share could not be created, otherwise `()`
     isolated remote function createShare(string shareName, ShareCreateOptions? options = ())
             returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
     # Deletes a share from the storage account.
@@ -63,7 +63,7 @@ public isolated client class AdminClient {
     # + return - An `Error` if the share could not be deleted, otherwise `()`
     isolated remote function deleteShare(string shareName, ShareDeleteOptions? options = ())
             returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
     # Restores a soft-deleted share.
@@ -72,7 +72,7 @@ public isolated client class AdminClient {
     # + version - The version of the soft-deleted share (from `ShareInfo.version`)
     # + return - An `Error` if the share could not be restored, otherwise `()`
     isolated remote function undeleteShare(string shareName, string version) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
     // -----------------------------------------------------------------------
@@ -83,7 +83,7 @@ public isolated client class AdminClient {
     #
     # + return - The `ServiceProperties`, or an `Error`
     isolated remote function getServiceProperties() returns ServiceProperties|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
     # Updates the account's file-service configuration. The record replaces the whole
@@ -92,7 +92,7 @@ public isolated client class AdminClient {
     # + properties - The complete file-service configuration to apply
     # + return - An `Error` if the configuration could not be updated, otherwise `()`
     isolated remote function setServiceProperties(ServiceProperties properties) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
     // -----------------------------------------------------------------------
@@ -107,7 +107,7 @@ public isolated client class AdminClient {
     # + return - The `UserDelegationKey`, or an `Error`
     isolated remote function getUserDelegationKey(time:Utc startTime, time:Utc expiryTime)
             returns UserDelegationKey|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.AdminOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
     # Generates an account-level SAS (Shared Access Signature) token. Requires shared key credentials.
@@ -116,7 +116,7 @@ public isolated client class AdminClient {
     # + return - The SAS token, or an `Error`
     public isolated function generateAccountSas(AccountSasSignatureValues values)
             returns string|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.SasOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.SasOps"
     } external;
 
     # Closes the client and releases any connector-owned resources. Subsequent operations on

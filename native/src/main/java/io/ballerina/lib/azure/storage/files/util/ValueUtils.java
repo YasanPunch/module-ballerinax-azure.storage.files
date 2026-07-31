@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.util;
 
 import io.ballerina.runtime.api.creators.TypeCreator;
 import io.ballerina.runtime.api.creators.ValueCreator;
@@ -41,7 +41,7 @@ import java.util.Map;
  * Conversions between Java values and Ballerina values: {@code time:Utc} tuples,
  * {@code map<string>} metadata, and string maps in both directions.
  */
-final class ValueUtils {
+public final class ValueUtils {
 
     private ValueUtils() {
     }
@@ -55,7 +55,7 @@ final class ValueUtils {
      * @param time the timestamp
      * @return the readonly {@code [int, decimal]} tuple
      */
-    static BArray toUtc(OffsetDateTime time) {
+    public static BArray toUtc(OffsetDateTime time) {
         Instant instant = time.toInstant();
         BArray tuple = ValueCreator.createTupleValue(UTC_TUPLE_TYPE);
         tuple.add(0, instant.getEpochSecond());
@@ -71,7 +71,7 @@ final class ValueUtils {
      * @param utc the {@code [int, decimal]} tuple
      * @return the timestamp at UTC
      */
-    static OffsetDateTime fromUtc(BArray utc) {
+    public static OffsetDateTime fromUtc(BArray utc) {
         long seconds = utc.getInt(0);
         long nanos = 0;
         if (utc.size() > 1) {
@@ -90,7 +90,7 @@ final class ValueUtils {
      * @return the Java map, or {@code null} when the input is {@code null}
      */
     @SuppressWarnings("unchecked")
-    static Map<String, String> toStringMap(Object map) {
+    public static Map<String, String> toStringMap(Object map) {
         if (map == null) {
             return null;
         }
@@ -108,7 +108,7 @@ final class ValueUtils {
      * @param map the Java map
      * @return the Ballerina map
      */
-    static BMap<BString, Object> toBStringMap(Map<String, String> map) {
+    public static BMap<BString, Object> toBStringMap(Map<String, String> map) {
         BMap<BString, Object> result = ValueCreator.createMapValue(
                 TypeCreator.createMapType(PredefinedTypes.TYPE_STRING));
         for (Map.Entry<String, String> entry : map.entrySet()) {
@@ -118,13 +118,13 @@ final class ValueUtils {
     }
 
     /** Reads an optional string field off a Ballerina record; {@code null} when absent. */
-    static String optString(BMap<BString, Object> record, BString field) {
+    public static String optString(BMap<BString, Object> record, BString field) {
         Object value = record.get(field);
         return value == null ? null : ((BString) value).getValue();
     }
 
     /** Reads an optional {@code map<string>} field off a Ballerina record; {@code null} when absent. */
-    static Map<String, String> optStringMap(BMap<BString, Object> record, BString field) {
+    public static Map<String, String> optStringMap(BMap<BString, Object> record, BString field) {
         return toStringMap(record.get(field));
     }
 }

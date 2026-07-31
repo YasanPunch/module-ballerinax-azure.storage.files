@@ -16,8 +16,9 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.server;
 
+import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.runtime.api.Module;
 import io.ballerina.runtime.api.creators.ValueCreator;
 import io.ballerina.runtime.api.types.Type;

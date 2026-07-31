@@ -117,7 +117,7 @@ function testAttachRejectsSecondService() returns error? {
     error? rejected = lsn.attach(second);
     test:assertTrue(rejected is error, "a second attach must be rejected");
     if rejected is error {
-        test:assertTrue(rejected.message().includes("one service per listener"), rejected.message());
+        test:assertTrue(rejected.message().includes("Only one service can be attached"), rejected.message());
     }
 }
 
@@ -2019,5 +2019,55 @@ function testStreamHandlerErrorTriggersAfterError() returns error? {
             "an error returned by a stream handler must not notify onError");
     boolean stillPresent = check shareClient->hasFile("/incoming/herr.bin");
     test:assertFalse(stillPresent, "afterError must consume the file the stream handler failed on");
+    check shareClient.close();
+}
+
+// Creates a directory when it does not exist yet, for tests needing a second watched path.
+function ensureTestDirectory(Client shareClient, string path) returns error? {
+    boolean exists = check shareClient->hasDirectory(path);
+    if !exists {
+        check shareClient->createDirectory(path);
+    }
+}
+
+@test:Config {}
+function testDetachThenReattachUsesNewServiceConfig() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-reattach");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    // The conditional lives in the helper: an if statement before the anonymous annotated
+    // services would trip the compiler's annotation-dropping defect (see the file header note).
+    check ensureTestDirectory(shareClient, "/second");
+    check shareClient->uploadContent("first watch", "/incoming/first.dat");
+    check shareClient->uploadContent("second watch", "/second/second.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service first = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content) returns error? {
+            recorder.hit("a");
+        }
+    };
+    Service second = @ServiceConfig {path: "/second"} service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("b");
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(first);
+    check lsn.detach(first);
+    // A detached listener accepts a new service, and dispatch follows the new service's
+    // configuration only.
+    check lsn.attach(second);
+    check lsn.'start();
+    check await(() => recorder.count("b") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(second);
+
+    test:assertEquals(recorder.count("a"), 0,
+            "the detached service's configuration must not linger after a re-attach");
+    boolean firstPresent = check shareClient->hasFile("/incoming/first.dat");
+    test:assertTrue(firstPresent,
+            "a file under the detached service's path must not be dispatched");
     check shareClient.close();
 }

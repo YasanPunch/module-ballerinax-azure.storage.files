@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.util;
 
 import com.azure.core.http.ProxyOptions;
 import com.azure.core.http.netty.NettyAsyncHttpClientBuilder;
@@ -65,7 +65,7 @@ import javax.net.ssl.TrustManagerFactory;
  * session flags and timeouts, and certificate revocation checking through the JDK's PKIX
  * checker.
  */
-final class TransportSupport {
+public final class TransportSupport {
 
     // Ballerina RetryPolicyType and ProxyType enum values matched against the config.
     private static final String RETRY_POLICY_FIXED = "fixed";
@@ -112,7 +112,7 @@ final class TransportSupport {
     private TransportSupport() {
     }
 
-    static RequestRetryOptions retryOptions(BMap<BString, Object> retry) {
+    public static RequestRetryOptions retryOptions(BMap<BString, Object> retry) {
         String policy = retry.getStringValue(RETRY_POLICY_TYPE).getValue();
         return new RequestRetryOptions(
                 RETRY_POLICY_FIXED.equals(policy) ? RetryPolicyType.FIXED : RetryPolicyType.EXPONENTIAL,
@@ -124,7 +124,7 @@ final class TransportSupport {
     }
 
     @SuppressWarnings("unchecked")
-    static com.azure.core.http.HttpClient httpClient(BMap<BString, Object> transport) {
+    public static com.azure.core.http.HttpClient httpClient(BMap<BString, Object> transport) {
         BMap<BString, Object> pool = (BMap<BString, Object>) transport.get(CONNECTION_POOL);
         ConnectionProvider provider = ConnectionProvider.builder("azure-storage-files")
                 .maxConnections(Math.toIntExact((Long) pool.get(MAX_CONNECTIONS)))

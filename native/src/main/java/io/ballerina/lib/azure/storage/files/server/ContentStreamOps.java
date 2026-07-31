@@ -16,8 +16,11 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.server;
 
+import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
+import io.ballerina.lib.azure.storage.files.util.ModuleUtils;
+import io.ballerina.lib.azure.storage.files.util.Ops;
 import io.ballerina.runtime.api.Runtime;
 import io.ballerina.runtime.api.concurrent.StrandMetadata;
 import io.ballerina.runtime.api.creators.TypeCreator;
@@ -45,7 +48,7 @@ import java.util.Arrays;
  */
 public final class ContentStreamOps {
 
-    private static final String NATIVE_INPUT_STREAM = "azure.storage.files.native.contentInputStream";
+    private static final String NATIVE_INPUT_STREAM = "inputStream";
     private static final String CONTENT_BYTE_STREAM_OBJECT = "ContentByteStream";
     private static final String NEW_CONTENT_CSV_STREAM_FUNCTION = "newContentCsvStream";
     private static final String CONTENT_STREAM_ENTRY_RECORD = "ContentStreamEntry";

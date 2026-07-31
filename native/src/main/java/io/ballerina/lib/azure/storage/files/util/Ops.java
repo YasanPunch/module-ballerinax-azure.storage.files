@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.util;
 
 import com.azure.core.http.HttpPipeline;
 import com.azure.core.http.HttpPipelineBuilder;
@@ -42,12 +42,12 @@ import java.util.function.Supplier;
  * scheduler via {@link Environment#yieldAndRun}, converts every failure to a typed Ballerina
  * error, and fetches the SDK clients stored on the Ballerina client objects.
  */
-final class Ops {
+public final class Ops {
 
     // Keys under which client-lifecycle state is stored on client objects.
-    static final String NATIVE_SERVICE_CLIENT = "azure.storage.files.native.serviceClient";
-    static final String NATIVE_SHARE_CLIENT = "azure.storage.files.native.shareClient";
-    static final String NATIVE_CLOSED = "azure.storage.files.native.closed";
+    public static final String NATIVE_SERVICE_CLIENT = "serviceClient";
+    public static final String NATIVE_SHARE_CLIENT = "shareClient";
+    public static final String NATIVE_CLOSED = "closed";
     // The query parameter that addresses a share snapshot on the wire.
     private static final String SHARE_SNAPSHOT_PARAM = "sharesnapshot";
 
@@ -61,7 +61,7 @@ final class Ops {
      * @param body the operation body; its return value is passed through verbatim
      * @return the body's result, or the mapped Ballerina error on failure
      */
-    static Object invoke(Environment env, Supplier<Object> body) {
+    public static Object invoke(Environment env, Supplier<Object> body) {
         return env.yieldAndRun(() -> {
             try {
                 return body.get();
@@ -76,7 +76,7 @@ final class Ops {
     }
 
     /** Builds a human-readable message for an unexpected local exception. */
-    static String describe(Throwable t) {
+    public static String describe(Throwable t) {
         return t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
     }
 
@@ -86,7 +86,7 @@ final class Ops {
      * @param self the Ballerina client object
      * @return the SDK service client
      */
-    static ShareServiceClient serviceClient(BObject self) {
+    public static ShareServiceClient serviceClient(BObject self) {
         ensureOpen(self);
         return (ShareServiceClient) self.getNativeData(NATIVE_SERVICE_CLIENT);
     }
@@ -97,7 +97,7 @@ final class Ops {
      * @param self the Ballerina client object
      * @return the SDK share client
      */
-    static ShareClient shareClient(BObject self) {
+    public static ShareClient shareClient(BObject self) {
         ensureOpen(self);
         return (ShareClient) self.getNativeData(NATIVE_SHARE_CLIENT);
     }
@@ -115,7 +115,7 @@ final class Ops {
      * @param snapshotId the snapshot to read from, or {@code null} for the live share
      * @return the SDK share client
      */
-    static ShareClient shareClient(BObject self, String snapshotId) {
+    public static ShareClient shareClient(BObject self, String snapshotId) {
         ShareClient base = shareClient(self);
         if (snapshotId == null) {
             return base;
@@ -167,7 +167,7 @@ final class Ops {
      * @param path the combined slash-delimited path
      * @return the SDK-form path, relative to the share root without a leading slash
      */
-    static String filePath(BString path) {
+    public static String filePath(BString path) {
         String p = trimSlashes(path.getValue());
         if (p.isEmpty()) {
             throw FilesErrorCreator.processingError("the path must name a file, not the share root", null);
@@ -182,7 +182,7 @@ final class Ops {
      * @param path the combined slash-delimited path
      * @return the SDK-form path; empty string for the share root
      */
-    static String directoryPath(BString path) {
+    public static String directoryPath(BString path) {
         return trimSlashes(path.getValue());
     }
 

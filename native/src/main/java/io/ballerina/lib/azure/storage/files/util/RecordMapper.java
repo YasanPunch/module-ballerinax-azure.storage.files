@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.util;
 
 import com.azure.storage.file.share.FileSmbProperties;
 import com.azure.storage.file.share.models.ClearRange;
@@ -60,113 +60,113 @@ import java.util.EnumSet;
  * Maps the SDK model classes to the Ballerina result records declared in {@code types.bal}.
  * Optional record fields are set only when the service supplied a value.
  */
-final class RecordMapper {
+public final class RecordMapper {
 
     // The Ballerina record type names and result-record field names the mapper materializes.
     // Other classes reference these; the option-record vocabulary lives on OptionsReader.
-    static final String RECORD_SHARE_INFO = "ShareInfo";
-    static final String RECORD_SHARE_PROPERTIES = "ShareProperties";
-    static final String RECORD_DIRECTORY_PROPERTIES = "DirectoryProperties";
-    static final String RECORD_FILE_PROPERTIES = "FileProperties";
-    static final String RECORD_COPY_PROGRESS = "CopyProgress";
-    static final String RECORD_COPY_INFO = "CopyInfo";
-    static final String RECORD_COPY_STATUS_INFO = "CopyStatusInfo";
-    static final String RECORD_ENTRY = "Entry";
-    static final String RECORD_RANGE = "Range";
-    static final String RECORD_SMB_PROPERTIES = "SmbProperties";
-    static final String RECORD_POSIX_PROPERTIES = "PosixProperties";
-    static final String RECORD_SHARE_SNAPSHOT_INFO = "ShareSnapshotInfo";
-    static final String RECORD_RANGE_DIFF = "RangeDiff";
-    static final String RECORD_SIGNED_IDENTIFIER = "SignedIdentifier";
-    static final String RECORD_ACCESS_POLICY = "AccessPolicy";
-    static final String RECORD_HANDLE_INFO = "HandleInfo";
-    static final String RECORD_CLOSE_HANDLES_INFO = "CloseHandlesInfo";
-    static final String RECORD_SERVICE_PROPERTIES = "ServiceProperties";
-    static final String RECORD_METRICS = "Metrics";
-    static final String RECORD_CORS_RULE = "CorsRule";
-    static final String RECORD_PROTOCOL_SETTINGS = "ProtocolSettings";
-    static final String RECORD_USER_DELEGATION_KEY = "UserDelegationKey";
+    public static final String RECORD_SHARE_INFO = "ShareInfo";
+    public static final String RECORD_SHARE_PROPERTIES = "ShareProperties";
+    public static final String RECORD_DIRECTORY_PROPERTIES = "DirectoryProperties";
+    public static final String RECORD_FILE_PROPERTIES = "FileProperties";
+    public static final String RECORD_COPY_PROGRESS = "CopyProgress";
+    public static final String RECORD_COPY_INFO = "CopyInfo";
+    public static final String RECORD_COPY_STATUS_INFO = "CopyStatusInfo";
+    public static final String RECORD_ENTRY = "Entry";
+    public static final String RECORD_RANGE = "Range";
+    public static final String RECORD_SMB_PROPERTIES = "SmbProperties";
+    public static final String RECORD_POSIX_PROPERTIES = "PosixProperties";
+    public static final String RECORD_SHARE_SNAPSHOT_INFO = "ShareSnapshotInfo";
+    public static final String RECORD_RANGE_DIFF = "RangeDiff";
+    public static final String RECORD_SIGNED_IDENTIFIER = "SignedIdentifier";
+    public static final String RECORD_ACCESS_POLICY = "AccessPolicy";
+    public static final String RECORD_HANDLE_INFO = "HandleInfo";
+    public static final String RECORD_CLOSE_HANDLES_INFO = "CloseHandlesInfo";
+    public static final String RECORD_SERVICE_PROPERTIES = "ServiceProperties";
+    public static final String RECORD_METRICS = "Metrics";
+    public static final String RECORD_CORS_RULE = "CorsRule";
+    public static final String RECORD_PROTOCOL_SETTINGS = "ProtocolSettings";
+    public static final String RECORD_USER_DELEGATION_KEY = "UserDelegationKey";
     // The `FileInfo` listener payload record and its own field vocabulary. FileInfo is a
     // distinct record schema, so it keeps its own field constants even where a spelling
     // coincides with another record's field.
-    static final String RECORD_FILE_INFO = "FileInfo";
-    static final BString FILE_INFO_PATH = StringUtils.fromString("path");
-    static final BString FILE_INFO_NAME = StringUtils.fromString("name");
-    static final BString FILE_INFO_SIZE_BYTES = StringUtils.fromString("sizeBytes");
-    static final BString FILE_INFO_E_TAG = StringUtils.fromString("eTag");
-    static final BString FILE_INFO_LAST_MODIFIED = StringUtils.fromString("lastModified");
+    public static final String RECORD_FILE_INFO = "FileInfo";
+    public static final BString FILE_INFO_PATH = StringUtils.fromString("path");
+    public static final BString FILE_INFO_NAME = StringUtils.fromString("name");
+    public static final BString FILE_INFO_SIZE_BYTES = StringUtils.fromString("sizeBytes");
+    public static final BString FILE_INFO_E_TAG = StringUtils.fromString("eTag");
+    public static final BString FILE_INFO_LAST_MODIFIED = StringUtils.fromString("lastModified");
     // The Ballerina CopyStatus enum value reported while a copy is still pending.
-    static final String COPY_STATUS_PENDING = "pending";
+    public static final String COPY_STATUS_PENDING = "pending";
     // The Ballerina Protocol enum values.
-    static final String PROTOCOL_SMB = "SMB";
-    static final String PROTOCOL_NFS = "NFS";
+    public static final String PROTOCOL_SMB = "SMB";
+    public static final String PROTOCOL_NFS = "NFS";
     // The AccessTier value reported when the service omits the tier.
     private static final String ACCESS_TIER_TRANSACTION_OPTIMIZED = "TransactionOptimized";
     // The content type reported when the service omits one.
     private static final String DEFAULT_CONTENT_TYPE = "application/octet-stream";
-    static final BString NAME = StringUtils.fromString("name");
-    static final BString PROPERTIES = StringUtils.fromString("properties");
-    static final BString IS_DELETED = StringUtils.fromString("isDeleted");
-    static final BString VERSION = StringUtils.fromString("version");
-    static final BString E_TAG = StringUtils.fromString("eTag");
-    static final BString LAST_MODIFIED = StringUtils.fromString("lastModified");
-    static final BString LEASE_STATE = StringUtils.fromString("leaseState");
-    static final BString LEASE_STATUS = StringUtils.fromString("leaseStatus");
-    static final BString LEASE_DURATION = StringUtils.fromString("leaseDuration");
-    static final BString PROVISIONED_IOPS = StringUtils.fromString("provisionedIops");
-    static final BString PROVISIONED_BANDWIDTH = StringUtils.fromString("provisionedBandwidthMibps");
-    static final BString IS_SERVER_ENCRYPTED = StringUtils.fromString("isServerEncrypted");
-    static final BString CONTENT_LENGTH = StringUtils.fromString("contentLength");
-    static final BString COPY_STATUS = StringUtils.fromString("copyStatus");
-    static final BString COPY_ID = StringUtils.fromString("copyId");
-    static final BString COPY_PROGRESS = StringUtils.fromString("copyProgress");
-    static final BString COPIED_BYTES = StringUtils.fromString("copiedBytes");
-    static final BString TOTAL_BYTES = StringUtils.fromString("totalBytes");
-    static final BString PATH = StringUtils.fromString("path");
-    static final BString IS_DIRECTORY = StringUtils.fromString("isDirectory");
-    static final BString SIZE_BYTES = StringUtils.fromString("sizeBytes");
-    static final BString ID = StringUtils.fromString("id");
-    static final BString START_BYTE = StringUtils.fromString("startByte");
-    static final BString END_BYTE = StringUtils.fromString("endByte");
-    static final BString RANGES = StringUtils.fromString("ranges");
-    static final BString CLEAR_RANGES = StringUtils.fromString("clearRanges");
-    static final BString HANDLE_ID = StringUtils.fromString("handleId");
-    static final BString SESSION_ID = StringUtils.fromString("sessionId");
-    static final BString CLIENT_IP = StringUtils.fromString("clientIp");
-    static final BString OPEN_TIME = StringUtils.fromString("openTime");
-    static final BString LAST_RECONNECT_TIME = StringUtils.fromString("lastReconnectTime");
-    static final BString CLOSED_HANDLES = StringUtils.fromString("closedHandles");
-    static final BString FAILED_HANDLES = StringUtils.fromString("failedHandles");
-    static final BString HOUR_METRICS = StringUtils.fromString("hourMetrics");
-    static final BString MINUTE_METRICS = StringUtils.fromString("minuteMetrics");
-    static final BString CORS = StringUtils.fromString("cors");
-    static final BString PROTOCOL = StringUtils.fromString("protocol");
-    static final BString ENABLED = StringUtils.fromString("enabled");
-    static final BString INCLUDE_APIS = StringUtils.fromString("includeApis");
-    static final BString RETENTION_DAYS = StringUtils.fromString("retentionDays");
-    static final BString ALLOWED_ORIGINS = StringUtils.fromString("allowedOrigins");
-    static final BString ALLOWED_METHODS = StringUtils.fromString("allowedMethods");
-    static final BString ALLOWED_HEADERS = StringUtils.fromString("allowedHeaders");
-    static final BString EXPOSED_HEADERS = StringUtils.fromString("exposedHeaders");
-    static final BString MAX_AGE_IN_SECONDS = StringUtils.fromString("maxAgeInSeconds");
-    static final BString SMB_MULTICHANNEL_ENABLED = StringUtils.fromString("smbMultichannelEnabled");
-    static final BString SIGNED_OBJECT_ID = StringUtils.fromString("signedObjectId");
-    static final BString SIGNED_TENANT_ID = StringUtils.fromString("signedTenantId");
-    static final BString SIGNED_START = StringUtils.fromString("signedStart");
-    static final BString SIGNED_EXPIRY = StringUtils.fromString("signedExpiry");
-    static final BString SIGNED_SERVICE = StringUtils.fromString("signedService");
-    static final BString SIGNED_VERSION = StringUtils.fromString("signedVersion");
-    static final BString VALUE = StringUtils.fromString("value");
-    static final BString ACCESS_POLICY = StringUtils.fromString("accessPolicy");
-    static final BString STARTS_ON = StringUtils.fromString("startsOn");
-    static final BString EXPIRES_ON = StringUtils.fromString("expiresOn");
-    static final BString PERMISSIONS = StringUtils.fromString("permissions");
+    public static final BString NAME = StringUtils.fromString("name");
+    public static final BString PROPERTIES = StringUtils.fromString("properties");
+    public static final BString IS_DELETED = StringUtils.fromString("isDeleted");
+    public static final BString VERSION = StringUtils.fromString("version");
+    public static final BString E_TAG = StringUtils.fromString("eTag");
+    public static final BString LAST_MODIFIED = StringUtils.fromString("lastModified");
+    public static final BString LEASE_STATE = StringUtils.fromString("leaseState");
+    public static final BString LEASE_STATUS = StringUtils.fromString("leaseStatus");
+    public static final BString LEASE_DURATION = StringUtils.fromString("leaseDuration");
+    public static final BString PROVISIONED_IOPS = StringUtils.fromString("provisionedIops");
+    public static final BString PROVISIONED_BANDWIDTH = StringUtils.fromString("provisionedBandwidthMibps");
+    public static final BString IS_SERVER_ENCRYPTED = StringUtils.fromString("isServerEncrypted");
+    public static final BString CONTENT_LENGTH = StringUtils.fromString("contentLength");
+    public static final BString COPY_STATUS = StringUtils.fromString("copyStatus");
+    public static final BString COPY_ID = StringUtils.fromString("copyId");
+    public static final BString COPY_PROGRESS = StringUtils.fromString("copyProgress");
+    public static final BString COPIED_BYTES = StringUtils.fromString("copiedBytes");
+    public static final BString TOTAL_BYTES = StringUtils.fromString("totalBytes");
+    public static final BString PATH = StringUtils.fromString("path");
+    public static final BString IS_DIRECTORY = StringUtils.fromString("isDirectory");
+    public static final BString SIZE_BYTES = StringUtils.fromString("sizeBytes");
+    public static final BString ID = StringUtils.fromString("id");
+    public static final BString START_BYTE = StringUtils.fromString("startByte");
+    public static final BString END_BYTE = StringUtils.fromString("endByte");
+    public static final BString RANGES = StringUtils.fromString("ranges");
+    public static final BString CLEAR_RANGES = StringUtils.fromString("clearRanges");
+    public static final BString HANDLE_ID = StringUtils.fromString("handleId");
+    public static final BString SESSION_ID = StringUtils.fromString("sessionId");
+    public static final BString CLIENT_IP = StringUtils.fromString("clientIp");
+    public static final BString OPEN_TIME = StringUtils.fromString("openTime");
+    public static final BString LAST_RECONNECT_TIME = StringUtils.fromString("lastReconnectTime");
+    public static final BString CLOSED_HANDLES = StringUtils.fromString("closedHandles");
+    public static final BString FAILED_HANDLES = StringUtils.fromString("failedHandles");
+    public static final BString HOUR_METRICS = StringUtils.fromString("hourMetrics");
+    public static final BString MINUTE_METRICS = StringUtils.fromString("minuteMetrics");
+    public static final BString CORS = StringUtils.fromString("cors");
+    public static final BString PROTOCOL = StringUtils.fromString("protocol");
+    public static final BString ENABLED = StringUtils.fromString("enabled");
+    public static final BString INCLUDE_APIS = StringUtils.fromString("includeApis");
+    public static final BString RETENTION_DAYS = StringUtils.fromString("retentionDays");
+    public static final BString ALLOWED_ORIGINS = StringUtils.fromString("allowedOrigins");
+    public static final BString ALLOWED_METHODS = StringUtils.fromString("allowedMethods");
+    public static final BString ALLOWED_HEADERS = StringUtils.fromString("allowedHeaders");
+    public static final BString EXPOSED_HEADERS = StringUtils.fromString("exposedHeaders");
+    public static final BString MAX_AGE_IN_SECONDS = StringUtils.fromString("maxAgeInSeconds");
+    public static final BString SMB_MULTICHANNEL_ENABLED = StringUtils.fromString("smbMultichannelEnabled");
+    public static final BString SIGNED_OBJECT_ID = StringUtils.fromString("signedObjectId");
+    public static final BString SIGNED_TENANT_ID = StringUtils.fromString("signedTenantId");
+    public static final BString SIGNED_START = StringUtils.fromString("signedStart");
+    public static final BString SIGNED_EXPIRY = StringUtils.fromString("signedExpiry");
+    public static final BString SIGNED_SERVICE = StringUtils.fromString("signedService");
+    public static final BString SIGNED_VERSION = StringUtils.fromString("signedVersion");
+    public static final BString VALUE = StringUtils.fromString("value");
+    public static final BString ACCESS_POLICY = StringUtils.fromString("accessPolicy");
+    public static final BString STARTS_ON = StringUtils.fromString("startsOn");
+    public static final BString EXPIRES_ON = StringUtils.fromString("expiresOn");
+    public static final BString PERMISSIONS = StringUtils.fromString("permissions");
 
     private RecordMapper() {
     }
 
     /** Maps one listed share to a {@code ShareInfo} record. */
-    static BMap<BString, Object> shareInfo(ShareItem item) {
+    public static BMap<BString, Object> shareInfo(ShareItem item) {
         BMap<BString, Object> record = newRecord(RECORD_SHARE_INFO);
         record.put(NAME, StringUtils.fromString(item.getName()));
         record.put(PROPERTIES, shareProperties(item.getProperties()));
@@ -186,7 +186,7 @@ final class RecordMapper {
     }
 
     /** Maps SDK share properties to a {@code ShareProperties} record. */
-    static BMap<BString, Object> shareProperties(ShareProperties p) {
+    public static BMap<BString, Object> shareProperties(ShareProperties p) {
         BMap<BString, Object> record = newRecord(RECORD_SHARE_PROPERTIES);
         record.put(OptionsReader.QUOTA_IN_GB, (long) p.getQuota());
         record.put(OptionsReader.ACCESS_TIER, StringUtils.fromString(
@@ -224,7 +224,7 @@ final class RecordMapper {
     }
 
     /** Maps SDK directory properties to a {@code DirectoryProperties} record. */
-    static BMap<BString, Object> directoryProperties(ShareDirectoryProperties p) {
+    public static BMap<BString, Object> directoryProperties(ShareDirectoryProperties p) {
         BMap<BString, Object> record = newRecord(RECORD_DIRECTORY_PROPERTIES);
         record.put(E_TAG, StringUtils.fromString(p.getETag()));
         record.put(LAST_MODIFIED, ValueUtils.toUtc(p.getLastModified()));
@@ -238,7 +238,7 @@ final class RecordMapper {
     }
 
     /** Maps SDK file properties to a {@code FileProperties} record. */
-    static BMap<BString, Object> fileProperties(ShareFileProperties p) {
+    public static BMap<BString, Object> fileProperties(ShareFileProperties p) {
         BMap<BString, Object> record = newRecord(RECORD_FILE_PROPERTIES);
         record.put(E_TAG, StringUtils.fromString(p.getETag()));
         record.put(LAST_MODIFIED, ValueUtils.toUtc(p.getLastModified()));
@@ -282,7 +282,7 @@ final class RecordMapper {
      * Parses the service's {@code bytesCopied/totalBytes} copy-progress form into a
      * {@code CopyProgress} record; {@code null} when absent or unparseable.
      */
-    static BMap<BString, Object> copyProgress(String raw) {
+    public static BMap<BString, Object> copyProgress(String raw) {
         if (raw == null) {
             return null;
         }
@@ -303,7 +303,7 @@ final class RecordMapper {
     }
 
     /** Builds a {@code CopyInfo} record from the copy-start snapshot values. */
-    static BMap<BString, Object> copyInfo(String copyId, String copyStatus, String eTag,
+    public static BMap<BString, Object> copyInfo(String copyId, String copyStatus, String eTag,
                                           OffsetDateTime lastModified) {
         BMap<BString, Object> record = newRecord(RECORD_COPY_INFO);
         record.put(COPY_ID, StringUtils.fromString(copyId));
@@ -317,7 +317,7 @@ final class RecordMapper {
      * Builds a {@code CopyStatusInfo} record from fetched file properties, or {@code null} when the
      * file has never been a copy destination.
      */
-    static BMap<BString, Object> copyStatusInfo(ShareFileProperties p) {
+    public static BMap<BString, Object> copyStatusInfo(ShareFileProperties p) {
         if (p.getCopyId() == null) {
             return null;
         }
@@ -340,7 +340,7 @@ final class RecordMapper {
      *                   trailing slash; empty for the share root
      * @return the {@code Entry} record
      */
-    static BMap<BString, Object> entry(ShareFileItem item, String parentPath) {
+    public static BMap<BString, Object> entry(ShareFileItem item, String parentPath) {
         BMap<BString, Object> record = newRecord(RECORD_ENTRY);
         String path = parentPath.isEmpty() ? "/" + item.getName() : "/" + parentPath + "/" + item.getName();
         record.put(PATH, StringUtils.fromString(path));
@@ -370,7 +370,7 @@ final class RecordMapper {
      *                   trailing slash; empty for the share root
      * @return the `FileInfo` record
      */
-    static BMap<BString, Object> fileInfo(ShareFileItem item, String parentPath) {
+    public static BMap<BString, Object> fileInfo(ShareFileItem item, String parentPath) {
         BMap<BString, Object> record = newRecord(RECORD_FILE_INFO);
         String path = parentPath.isEmpty() ? "/" + item.getName() : "/" + parentPath + "/" + item.getName();
         record.put(FILE_INFO_PATH, StringUtils.fromString(path));
@@ -392,7 +392,7 @@ final class RecordMapper {
     }
 
     /** Maps one SDK range to a {@code Range} record. */
-    static BMap<BString, Object> range(ShareFileRange r) {
+    public static BMap<BString, Object> range(ShareFileRange r) {
         BMap<BString, Object> record = newRecord(RECORD_RANGE);
         record.put(START_BYTE, r.getStart());
         Long end = r.getEnd();
@@ -404,7 +404,7 @@ final class RecordMapper {
     }
 
     /** Builds a {@code Range} record from explicit bounds. */
-    static BMap<BString, Object> range(long start, long end) {
+    public static BMap<BString, Object> range(long start, long end) {
         BMap<BString, Object> record = newRecord(RECORD_RANGE);
         record.put(START_BYTE, start);
         record.put(END_BYTE, end);
@@ -412,7 +412,7 @@ final class RecordMapper {
     }
 
     /** Builds a {@code ShareSnapshotInfo} record. */
-    static BMap<BString, Object> shareSnapshotInfo(String snapshotId, String eTag,
+    public static BMap<BString, Object> shareSnapshotInfo(String snapshotId, String eTag,
             OffsetDateTime lastModified) {
         BMap<BString, Object> record = newRecord(RECORD_SHARE_SNAPSHOT_INFO);
         record.put(OptionsReader.SNAPSHOT_ID, StringUtils.fromString(snapshotId));
@@ -422,7 +422,7 @@ final class RecordMapper {
     }
 
     /** Maps the SDK file-service configuration to a {@code ServiceProperties} record. */
-    static BMap<BString, Object> serviceProperties(ShareServiceProperties sdk) {
+    public static BMap<BString, Object> serviceProperties(ShareServiceProperties sdk) {
         BMap<BString, Object> record = newRecord(RECORD_SERVICE_PROPERTIES);
         if (sdk.getHourMetrics() != null) {
             record.put(HOUR_METRICS, metrics(sdk.getHourMetrics()));
@@ -472,7 +472,7 @@ final class RecordMapper {
     }
 
     /** Maps the SDK user-delegation key to a {@code UserDelegationKey} record. */
-    static BMap<BString, Object> userDelegationKey(UserDelegationKey key) {
+    public static BMap<BString, Object> userDelegationKey(UserDelegationKey key) {
         BMap<BString, Object> record = newRecord(RECORD_USER_DELEGATION_KEY);
         record.put(SIGNED_OBJECT_ID, StringUtils.fromString(key.getSignedObjectId()));
         record.put(SIGNED_TENANT_ID, StringUtils.fromString(key.getSignedTenantId()));
@@ -485,7 +485,7 @@ final class RecordMapper {
     }
 
     /** Maps one SDK SMB-handle item to a {@code HandleInfo} record. */
-    static BMap<BString, Object> handleInfo(HandleItem item) {
+    public static BMap<BString, Object> handleInfo(HandleItem item) {
         BMap<BString, Object> record = newRecord(RECORD_HANDLE_INFO);
         record.put(HANDLE_ID, StringUtils.fromString(item.getHandleId()));
         record.put(PATH, StringUtils.fromString("/" + (item.getPath() == null ? "" : item.getPath())));
@@ -508,7 +508,7 @@ final class RecordMapper {
     }
 
     /** Maps the SDK close-handles result to a {@code CloseHandlesInfo} record. */
-    static BMap<BString, Object> closeHandlesInfo(CloseHandlesInfo info) {
+    public static BMap<BString, Object> closeHandlesInfo(CloseHandlesInfo info) {
         BMap<BString, Object> record = newRecord(RECORD_CLOSE_HANDLES_INFO);
         record.put(CLOSED_HANDLES, (long) info.getClosedHandles());
         record.put(FAILED_HANDLES, (long) info.getFailedHandles());
@@ -516,7 +516,7 @@ final class RecordMapper {
     }
 
     /** Maps one SDK stored-access-policy identifier to a {@code SignedIdentifier} record. */
-    static BMap<BString, Object> signedIdentifier(ShareSignedIdentifier identifier) {
+    public static BMap<BString, Object> signedIdentifier(ShareSignedIdentifier identifier) {
         BMap<BString, Object> record = newRecord(RECORD_SIGNED_IDENTIFIER);
         record.put(ID, StringUtils.fromString(identifier.getId()));
         BMap<BString, Object> policy = newRecord(RECORD_ACCESS_POLICY);
@@ -536,7 +536,7 @@ final class RecordMapper {
     }
 
     /** Maps the SDK range-diff listing to a {@code RangeDiff} record. */
-    static BMap<BString, Object> rangeDiff(ShareFileRangeList list) {
+    public static BMap<BString, Object> rangeDiff(ShareFileRangeList list) {
         BMap<BString, Object> record = newRecord(RECORD_RANGE_DIFF);
         BArray ranges = recordArray(RECORD_RANGE);
         for (FileRange r : list.getRanges()) {
@@ -552,7 +552,7 @@ final class RecordMapper {
     }
 
     /** Creates an array value typed to the named module record. */
-    static BArray recordArray(String recordTypeName) {
+    public static BArray recordArray(String recordTypeName) {
         BMap<BString, Object> template = newRecord(recordTypeName);
         return ValueCreator.createArrayValue(TypeCreator.createArrayType(TypeUtils.getType(template)));
     }

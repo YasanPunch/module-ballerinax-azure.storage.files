@@ -22,16 +22,16 @@ import ballerina/jballerina.java;
 
 isolated function initAdminClient(AdminClient adminClient, ClientConfiguration config)
         returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.ClientInit"
+    'class: "io.ballerina.lib.azure.storage.files.util.ClientInit"
 } external;
 
 isolated function initClient(Client fileClient, string shareName, ClientConfiguration config)
         returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.ClientInit"
+    'class: "io.ballerina.lib.azure.storage.files.util.ClientInit"
 } external;
 
 isolated function closeClient(Client|AdminClient anyClient) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.ClientInit"
+    'class: "io.ballerina.lib.azure.storage.files.util.ClientInit"
 } external;
 
 // ---------------------------------------------------------------------------
@@ -40,12 +40,12 @@ isolated function closeClient(Client|AdminClient anyClient) returns Error? = @ja
 
 isolated function prepareStreamUpload(Client fileClient, string destinationPath, int contentLength,
         UploadOptions? options) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.TransferOps"
+    'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;
 
 isolated function writeStreamChunk(Client fileClient, string destinationPath, int offset,
         byte[] chunk) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.TransferOps"
+    'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;
 
 // ---------------------------------------------------------------------------
@@ -76,15 +76,15 @@ isolated class EntryStreamGenerator {
 
 isolated function newEntryIterator(Client fileClient, EntryStreamGenerator generator,
         string directoryPath, ListOptions options) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.ListOps"
+    'class: "io.ballerina.lib.azure.storage.files.client.ListOps"
 } external;
 
 isolated function nextEntry(EntryStreamGenerator generator) returns Entry|Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.ListOps"
+    'class: "io.ballerina.lib.azure.storage.files.client.ListOps"
 } external;
 
 isolated function closeEntryIterator(EntryStreamGenerator generator) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.ListOps"
+    'class: "io.ballerina.lib.azure.storage.files.client.ListOps"
 } external;
 
 // ---------------------------------------------------------------------------
@@ -115,13 +115,13 @@ isolated class ContentStreamGenerator {
 
 isolated function openContentStream(Client fileClient, ContentStreamGenerator generator,
         string path, DownloadOptions? options) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.TransferOps"
+    'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;
 
 isolated function nextContentChunk(ContentStreamGenerator generator) returns byte[]|Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.TransferOps"
+    'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;
 
 isolated function closeContentStream(ContentStreamGenerator generator) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.TransferOps"
+    'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;

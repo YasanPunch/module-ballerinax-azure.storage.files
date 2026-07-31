@@ -22,23 +22,9 @@ configurable string accountName = ?;
 configurable string accountKey = ?;
 configurable string shareName = "drop-folder-example";
 
-// Create the share and the watched directory before the listener starts polling. Module
-// initialization runs this first; the runtime starts the listener only after it completes.
-function init() returns error? {
-    files:AdminClient admin = check new (auth = {accountName, accountKey});
-    boolean shareExists = check admin->hasShare(shareName);
-    if !shareExists {
-        check admin->createShare(shareName);
-    }
-    check admin.close();
-
-    files:Client share = check new (shareName, auth = {accountName, accountKey});
-    boolean incomingExists = check share->hasDirectory("/incoming");
-    if !incomingExists {
-        check share->createDirectory("/incoming");
-    }
-    check share.close();
-
+// The share and its /incoming directory are created in the setup steps (see the example
+// description); the listener starts polling the watched path as soon as the program starts.
+function init() {
     log:printInfo(string `Watching /incoming on share '${shareName}'. Drop files there to process them.`);
 }
 

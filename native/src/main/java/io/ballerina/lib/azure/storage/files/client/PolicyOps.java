@@ -16,10 +16,13 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.storage.file.share.models.ShareAccessPolicy;
 import com.azure.storage.file.share.models.ShareSignedIdentifier;
+import io.ballerina.lib.azure.storage.files.util.Ops;
+import io.ballerina.lib.azure.storage.files.util.RecordMapper;
+import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BArray;

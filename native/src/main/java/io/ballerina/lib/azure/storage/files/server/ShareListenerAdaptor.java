@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.server;
 
 import com.azure.storage.file.share.ShareClient;
 import com.azure.storage.file.share.ShareDirectoryClient;
@@ -25,6 +25,12 @@ import com.azure.storage.file.share.models.ShareFileItem;
 import com.azure.storage.file.share.models.ShareStorageException;
 import com.azure.storage.file.share.options.ShareListFilesAndDirectoriesOptions;
 import com.azure.xml.XmlReader;
+import io.ballerina.lib.azure.storage.files.util.ClientInit;
+import io.ballerina.lib.azure.storage.files.util.ErrorMapper;
+import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
+import io.ballerina.lib.azure.storage.files.util.ModuleUtils;
+import io.ballerina.lib.azure.storage.files.util.Ops;
+import io.ballerina.lib.azure.storage.files.util.RecordMapper;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.Runtime;
 import io.ballerina.runtime.api.concurrent.StrandMetadata;
@@ -80,7 +86,7 @@ public final class ShareListenerAdaptor {
     private static final Logger LOG = LoggerFactory.getLogger(ShareListenerAdaptor.class);
 
     // Native-data key under which the per-listener context is stored on the listener object.
-    private static final String NATIVE_LISTENER_CONTEXT = "azure.storage.files.native.listenerContext";
+    private static final String NATIVE_LISTENER_CONTEXT = "listenerContext";
 
     // The Caller object type and the ListenerConfiguration fields this class reads.
     private static final String CALLER_OBJECT = "Caller";
@@ -203,13 +209,11 @@ public final class ShareListenerAdaptor {
         // If a service is already attached to the listener, return an error.
         if (ctx.service != null) {
             return FilesErrorCreator.processingError(
-                    "a service is already attached to this listener; one service per listener", null);
+                    "Only one service can be attached to a files:Listener", null);
         }
         try {
-            // Parse the service config and handlers.
-            parseServiceConfig(ctx, service);
-            parseHandlers(ctx, service);
-            // Set the service on the listener context.
+            // Parse the service's watch configuration and handler set, then attach it.
+            ctx.serviceContext = parseService(service);
             ctx.service = service;
             return null;
         } catch (BError e) {
@@ -233,6 +237,7 @@ public final class ShareListenerAdaptor {
             return FilesErrorCreator.processingError("the given service is not attached to this listener", null);
         }
         ctx.service = null;
+        ctx.serviceContext = null;
         return null;
     }
 
@@ -251,7 +256,8 @@ public final class ShareListenerAdaptor {
     public static Object poll(Environment env, BObject listenerObj) {
         return Ops.invoke(env, () -> {
             ListenerContext ctx = context(listenerObj);
-            if (ctx == null || ctx.stopped || ctx.service == null) {
+            ServiceContext serviceContext = ctx == null ? null : ctx.serviceContext;
+            if (ctx == null || ctx.stopped || ctx.service == null || serviceContext == null) {
                 return null;
             }
             // A poll inside the backoff window is a silent no-op.
@@ -259,7 +265,7 @@ public final class ShareListenerAdaptor {
                 return null;
             }
             try {
-                scan(listenerObj, ctx);
+                scan(listenerObj, ctx, serviceContext);
                 ctx.failureCount.set(0);
                 ctx.nextAllowedPollMillis.set(0L);
             } catch (Throwable e) {
@@ -297,7 +303,8 @@ public final class ShareListenerAdaptor {
      */
     private static void invokeOnError(ListenerContext ctx, BError error) {
         BObject service = ctx.service;
-        int arity = ctx.onErrorArity;
+        ServiceContext serviceContext = ctx.serviceContext;
+        int arity = serviceContext == null ? 0 : serviceContext.onErrorArity();
         if (service == null || arity == 0 || ctx.stopped) {
             return;
         }
@@ -358,13 +365,14 @@ public final class ShareListenerAdaptor {
      * Iterative DFS with an explicit ArrayDeque (no recursion), listing with extended info + timestamps + ETags. 
      * Directories are pushed only if recursive; files go to consider. Checks ctx.stopped each iteration.
      * 
-     * @param listenerObj the Ballerina listener object
-     * @param ctx         the listener context
+     * @param listenerObj    the Ballerina listener object
+     * @param ctx            the listener context
+     * @param serviceContext the attached service's watch configuration
      */
-    private static void scan(BObject listenerObj, ListenerContext ctx) {
+    private static void scan(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext) {
         ShareClient share = Ops.shareClient(listenerObj);
         Deque<String> pending = new ArrayDeque<>();
-        pending.push(ctx.watchedPath);
+        pending.push(serviceContext.watchedPath());
         while (!pending.isEmpty()) {
             if (ctx.stopped) {
                 return;
@@ -379,11 +387,11 @@ public final class ShareListenerAdaptor {
             for (ShareFileItem item : directoryClient.listFilesAndDirectories(options, null, null)) {
                 String childPath = directory.isEmpty() ? item.getName() : directory + "/" + item.getName();
                 if (item.isDirectory()) {
-                    if (ctx.recursive) {
+                    if (serviceContext.recursive()) {
                         pending.push(childPath);
                     }
                 } else {
-                    consider(listenerObj, ctx, item, childPath);
+                    consider(listenerObj, ctx, serviceContext, item, childPath);
                 }
             }
         }
@@ -391,26 +399,28 @@ public final class ShareListenerAdaptor {
 
     /**
      * Step 3. (poll → scan → consider → dispatch)
-     * Considers a file for dispatching. Checks ctx.fileNamePattern and ctx.minFileAgeSeconds.
-     * Adds to ctx.inProgress and dispatches on a virtual thread.
-     * 
-     * @param listenerObj the Ballerina listener object
-     * @param ctx         the listener context
-     * @param item        the file item
-     * @param path        the file path
+     * Considers a file for dispatching. Checks the service's file name pattern and minimum file
+     * age filters. Adds to ctx.inProgress and dispatches on a virtual thread.
+     *
+     * @param listenerObj    the Ballerina listener object
+     * @param ctx            the listener context
+     * @param serviceContext the attached service's watch configuration
+     * @param item           the file item
+     * @param path           the file path
      */
-    private static void consider(BObject listenerObj, ListenerContext ctx, ShareFileItem item, String path) {
+    private static void consider(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext,
+                                 ShareFileItem item, String path) {
         String name = item.getName();
         // Service-level name-pattern filter: Skip if name doesn't match pattern.
-        if (ctx.fileNamePattern != null && !ctx.fileNamePattern.matcher(name).matches()) {
+        if (serviceContext.fileNamePattern() != null && !serviceContext.fileNamePattern().matcher(name).matches()) {
             return;
         }
         // Min-age filter: Skip if too young.
-        if (ctx.minFileAgeSeconds != null && item.getProperties() != null
+        if (serviceContext.minFileAgeSeconds() != null && item.getProperties() != null
                 && item.getProperties().getLastModified() != null) {
             long age = Duration.between(item.getProperties().getLastModified().toInstant(), Instant.now())
                     .getSeconds();
-            if (age < ctx.minFileAgeSeconds) {
+            if (age < serviceContext.minFileAgeSeconds()) {
                 return;
             }
         }
@@ -425,7 +435,7 @@ public final class ShareListenerAdaptor {
         }
         try {
             // Dispatch the file on a virtual thread.
-            ctx.dispatchExecutor.execute(() -> dispatch(listenerObj, ctx, item, path, key));
+            ctx.dispatchExecutor.execute(() -> dispatch(listenerObj, ctx, serviceContext, item, path, key));
         } catch (RejectedExecutionException e) {
             // Remove the key from inProgress if the dispatch is rejected.
             ctx.inProgress.remove(key);
@@ -436,14 +446,15 @@ public final class ShareListenerAdaptor {
      * Step 4. (poll → scan → consider → dispatch).
      * Dispatches a file to the handler.
      * 
-     * @param listenerObj the Ballerina listener object
-     * @param ctx         the listener context
-     * @param item        the file item
-     * @param path        the file path
-     * @param key         the deduplication key
+     * @param listenerObj    the Ballerina listener object
+     * @param ctx            the listener context
+     * @param serviceContext the attached service's watch configuration and handler set
+     * @param item           the file item
+     * @param path           the file path
+     * @param key            the deduplication key
      */
-    private static void dispatch(BObject listenerObj, ListenerContext ctx, ShareFileItem item,
-                                 String path, String key) {
+    private static void dispatch(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext,
+                                 ShareFileItem item, String path, String key) {
         try {
             // Snapshot the service so a concurrent detach cannot null it mid-dispatch; if it is
             // already gone, leave the file unconsumed for a later poll.
@@ -451,7 +462,7 @@ public final class ShareListenerAdaptor {
             if (ctx.stopped || service == null) {
                 return;
             }
-            HandlerConfig handler = resolveHandler(ctx, item.getName());
+            HandlerConfig handler = resolveHandler(serviceContext, item.getName());
             if (handler == null) {
                 LOG.debug("azure.storage.files listener: no handler for {}, skipping", path);
                 return;
@@ -479,7 +490,7 @@ public final class ShareListenerAdaptor {
                                     streamContentType.getConstrainedType());
                 } catch (RuntimeException e) {
                     closeQuietly(inputStream);
-                    handleBindingFailure(listenerObj, ctx, handler, path, e);
+                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, path, e);
                     return;
                 }
             } else {
@@ -496,7 +507,7 @@ public final class ShareListenerAdaptor {
                     // Bind the content to the handler.
                     content = bindContent(ctx, handler, bytes, item.getName());
                 } catch (RuntimeException e) {
-                    handleBindingFailure(listenerObj, ctx, handler, path, e);
+                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, path, e);
                     return;
                 }
             }
@@ -513,10 +524,10 @@ public final class ShareListenerAdaptor {
                 // printed so the failure stays visible without a logging backend.
                 error.printStackTrace();
                 // Post-process (afterError) the file.
-                postProcess(listenerObj, ctx, handler.afterError(), path);
+                postProcess(listenerObj, serviceContext, handler.afterError(), path);
             } else {
                 // Post-process (afterProcess) the file.
-                postProcess(listenerObj, ctx, handler.afterProcess(), path);
+                postProcess(listenerObj, serviceContext, handler.afterProcess(), path);
             }
         } catch (Throwable e) {
             // If the dispatch fails, log the error and remove the key from inProgress.
@@ -529,15 +540,16 @@ public final class ShareListenerAdaptor {
 
     // A content-binding failure notifies onError (when declared) and post-processes (afterError)
     // the file; without an onError the error is printed so the failure stays visible.
-    private static void handleBindingFailure(BObject listenerObj, ListenerContext ctx, HandlerConfig handler,
+    private static void handleBindingFailure(BObject listenerObj, ListenerContext ctx,
+                                             ServiceContext serviceContext, HandlerConfig handler,
                                              String path, RuntimeException e) {
         BError bindingError = e instanceof BError bError
                 ? bError : FilesErrorCreator.processingError(Ops.describe(e), e);
-        if (ctx.onErrorArity == 0) {
+        if (serviceContext.onErrorArity() == 0) {
             bindingError.printStackTrace();
         }
         invokeOnError(ctx, bindingError);
-        postProcess(listenerObj, ctx, handler.afterError(), path);
+        postProcess(listenerObj, serviceContext, handler.afterError(), path);
     }
 
     private static void closeQuietly(InputStream inputStream) {
@@ -548,8 +560,8 @@ public final class ShareListenerAdaptor {
         }
     }
 
-    private static HandlerConfig resolveHandler(ListenerContext ctx, String fileName) {
-        for (HandlerConfig handler : ctx.handlers.values()) {
+    private static HandlerConfig resolveHandler(ServiceContext serviceContext, String fileName) {
+        for (HandlerConfig handler : serviceContext.handlers().values()) {
             Pattern routing = handler.routingPattern();
             // If routing pattern is set and matches the file name, return the handler.
             if (routing != null && routing.matcher(fileName).matches()) {
@@ -559,11 +571,11 @@ public final class ShareListenerAdaptor {
         // If no routing pattern matches, try extension mapping (such as "onFileJson" for "file.json").
         String mapped = EXTENSION_HANDLERS.get(extension(fileName));
         // If a mapped handler is found, return it.
-        if (mapped != null && ctx.handlers.containsKey(mapped)) {
-            return ctx.handlers.get(mapped);
+        if (mapped != null && serviceContext.handlers().containsKey(mapped)) {
+            return serviceContext.handlers().get(mapped);
         }
         // If no mapping is found, return the default handler.
-        return ctx.handlers.get(ON_FILE);
+        return serviceContext.handlers().get(ON_FILE);
     }
 
     private static Object bindContent(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String fileName) {
@@ -635,12 +647,13 @@ public final class ShareListenerAdaptor {
     /**
      * Post-processes the file.
      * 
-     * @param listenerObj the Ballerina listener object
-     * @param ctx         the listener context
-     * @param action      the post-process action
-     * @param path        the file path
+     * @param listenerObj    the Ballerina listener object
+     * @param serviceContext the attached service's watch configuration
+     * @param action         the post-process action
+     * @param path           the file path
      */
-    private static void postProcess(BObject listenerObj, ListenerContext ctx, PostAction action, String path) {
+    private static void postProcess(BObject listenerObj, ServiceContext serviceContext, PostAction action,
+                                    String path) {
         // If the action is null, return.
         if (action == null) {
             return;
@@ -657,7 +670,7 @@ public final class ShareListenerAdaptor {
             String moveRoot = Ops.directoryPath(StringUtils.fromString(action.moveTo()));
             // If the action is a move and subdirectories are preserved, join the move root and the relative path.
             String destination = action.preserveSubDirs()
-                    ? join(moveRoot, relativeTo(path, ctx.watchedPath))
+                    ? join(moveRoot, relativeTo(path, serviceContext.watchedPath()))
                     : join(moveRoot, path.substring(path.lastIndexOf('/') + 1));
             int slash = destination.lastIndexOf('/');
             ensureDirectory(share, slash < 0 ? "" : destination.substring(0, slash));
@@ -696,12 +709,12 @@ public final class ShareListenerAdaptor {
     }
 
     /**
-     * Parses the service config from the service.
-     * 
-     * @param ctx         the listener context
-     * @param service     the service
+     * Parses the attached service's watch configuration and handler set.
+     *
+     * @param service the service being attached
+     * @return the immutable per-attach service context
      */
-    private static void parseServiceConfig(ListenerContext ctx, BObject service) {
+    private static ServiceContext parseService(BObject service) {
         // Get the service type.
         ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
         // Get the service config annotation.
@@ -717,36 +730,17 @@ public final class ShareListenerAdaptor {
         if (pathValue == null || ((BString) pathValue).getValue().strip().isEmpty()) {
             throw FilesErrorCreator.processingError("@files:ServiceConfig requires a non-empty path", null);
         }
-        // Set the watched path on the listener context.
-        ctx.watchedPath = Ops.directoryPath((BString) pathValue);
-        // Get the recursive value from the service config annotation.
+        String watchedPath = Ops.directoryPath((BString) pathValue);
+        // The recursive flag defaults to true when absent.
         Object recursiveValue = config.get(SERVICE_CONFIG_RECURSIVE);
-        // If the recursive value is not present or is not a boolean, set the recursive flag to true.
-        ctx.recursive = recursiveValue == null || (Boolean) recursiveValue;
-        // Get the file name pattern value from the service config annotation.
+        boolean recursive = recursiveValue == null || (Boolean) recursiveValue;
+        // The file name pattern is optional.
         Object patternValue = config.get(FILE_NAME_PATTERN);
-        // If the file name pattern value is not present, set the file name pattern to null.
-        if (patternValue != null) {
-            ctx.fileNamePattern = compile(((BString) patternValue).getValue());
-        }
-        // Get the min file age value from the service config annotation.
+        Pattern fileNamePattern = patternValue == null ? null : compile(((BString) patternValue).getValue());
+        // The minimum file age is optional.
         Object ageValue = config.get(SERVICE_CONFIG_MIN_FILE_AGE);
-        // If the min file age value is not present, set the min file age seconds to null.
-        if (ageValue != null) {
-            // Set the min file age seconds on the listener context.
-            ctx.minFileAgeSeconds = ((BDecimal) ageValue).floatValue();
-        }
-    }
+        Double minFileAgeSeconds = ageValue == null ? null : ((BDecimal) ageValue).floatValue();
 
-    /**
-     * Parses the handlers from the service.
-     * 
-     * @param ctx         the listener context
-     * @param service     the service
-     */
-    private static void parseHandlers(ListenerContext ctx, BObject service) {
-        // Get the service type.
-        ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
         // Create a map of handlers.
         Map<String, HandlerConfig> handlers = new LinkedHashMap<>();
         // Iterate over the methods.
@@ -762,24 +756,24 @@ public final class ShareListenerAdaptor {
                 continue;
             }
             // Get the method config annotation.
-            BMap<BString, Object> config = annotation(method.getAnnotations(), FUNCTION_CONFIG_ANNOTATION);
+            BMap<BString, Object> functionConfig = annotation(method.getAnnotations(), FUNCTION_CONFIG_ANNOTATION);
             // If the method config annotation is not present, set the routing pattern to null.
             Pattern routing = null;
             // If the method config annotation is not present, set the after process action to null.
             PostAction afterProcess = null;
             PostAction afterError = null;
 
-            if (config != null) {
+            if (functionConfig != null) {
                 // Get the file name pattern value from the method config annotation.
-                Object patternValue = config.get(FILE_NAME_PATTERN);
+                Object routingPatternValue = functionConfig.get(FILE_NAME_PATTERN);
                 // If the file name pattern value is not present, set the routing pattern to null.
-                if (patternValue != null) {
-                    routing = compile(((BString) patternValue).getValue());
+                if (routingPatternValue != null) {
+                    routing = compile(((BString) routingPatternValue).getValue());
                 }
                 // Get the after process action from the method config annotation.
-                afterProcess = readAction(config, FUNCTION_CONFIG_AFTER_PROCESS);
+                afterProcess = readAction(functionConfig, FUNCTION_CONFIG_AFTER_PROCESS);
                 // Get the after error action from the method config annotation.
-                afterError = readAction(config, FUNCTION_CONFIG_AFTER_ERROR);
+                afterError = readAction(functionConfig, FUNCTION_CONFIG_AFTER_ERROR);
             }
             // Get the parameters of the method.
             Parameter[] params = method.getParameters();
@@ -792,8 +786,8 @@ public final class ShareListenerAdaptor {
             handlers.put(name, new HandlerConfig(name, routing, afterProcess, afterError,
                     params.length, secondIsCaller, contentType));
         }
-        ctx.handlers = handlers;
-        ctx.onErrorArity = onErrorArity;
+        return new ServiceContext(watchedPath, recursive, fileNamePattern, minFileAgeSeconds,
+                handlers, onErrorArity);
     }
 
     private static PostAction readAction(BMap<BString, Object> config, BString key) {
@@ -876,16 +870,8 @@ public final class ShareListenerAdaptor {
         private final AtomicInteger failureCount = new AtomicInteger();
         private final AtomicLong nextAllowedPollMillis = new AtomicLong();
         private volatile BObject service;
+        private volatile ServiceContext serviceContext;
         private volatile boolean stopped;
-
-        //service context. can be moved to seperate per attached service context
-        private String watchedPath = "";
-        private boolean recursive = true;
-        private Pattern fileNamePattern;
-        private Double minFileAgeSeconds;
-        private Map<String, HandlerConfig> handlers = new LinkedHashMap<>();
-        // The attached service's onError parameter count: 0 when no onError is declared.
-        private volatile int onErrorArity;
 
         private ListenerContext(Runtime runtime, BObject caller, double pollingIntervalSeconds,
                                 boolean laxDataBinding, BMap<BString, Object> csvFailSafe) {
@@ -895,6 +881,13 @@ public final class ShareListenerAdaptor {
             this.laxDataBinding = laxDataBinding;
             this.csvFailSafe = csvFailSafe;
         }
+    }
+
+    // The attached service's parsed watch configuration and handler set, immutable per attach:
+    // set when the service attaches and cleared when it detaches.
+    private record ServiceContext(String watchedPath, boolean recursive, Pattern fileNamePattern,
+                                  Double minFileAgeSeconds, Map<String, HandlerConfig> handlers,
+                                  int onErrorArity) {
     }
 
     // One content handler: its resolved routing pattern, post-process actions, the shape of its

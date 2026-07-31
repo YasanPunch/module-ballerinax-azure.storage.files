@@ -16,11 +16,15 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.storage.file.share.ShareFileClient;
 import com.azure.storage.file.share.StorageFileInputStream;
 import com.azure.storage.file.share.models.ShareFileUploadRangeOptions;
+import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
+import io.ballerina.lib.azure.storage.files.util.Ops;
+import io.ballerina.lib.azure.storage.files.util.OptionsReader;
+import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.creators.ValueCreator;
 import io.ballerina.runtime.api.utils.StringUtils;
@@ -47,7 +51,7 @@ import java.util.Arrays;
 public final class TransferOps {
 
     // Key under which an open content input stream is stored on a stream generator object.
-    private static final String NATIVE_INPUT_STREAM = "azure.storage.files.native.inputStream";
+    private static final String NATIVE_INPUT_STREAM = "inputStream";
 
     private TransferOps() {
     }

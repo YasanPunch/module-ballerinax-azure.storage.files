@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.util;
 
 import com.azure.core.credential.AzureNamedKeyCredential;
 import com.azure.core.credential.AzureSasCredential;
@@ -135,7 +135,7 @@ public final class ClientInit {
      * @return the SDK service client
      */
     @SuppressWarnings("unchecked")
-    static ShareServiceClient buildServiceClient(BMap<BString, Object> config) {
+    public static ShareServiceClient buildServiceClient(BMap<BString, Object> config) {
         BMap<BString, Object> auth = (BMap<BString, Object>) config.getMapValue(AUTH);
         ShareServiceClientBuilder builder = new ShareServiceClientBuilder();
         Object retryConfig = config.get(RETRY_CONFIG);

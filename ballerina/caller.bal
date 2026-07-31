@@ -36,7 +36,7 @@ public isolated client class Caller {
     # + return - An `Error` if the download failed, otherwise `()`
     isolated remote function downloadFile(string sourcePath, string destinationPath,
             DownloadOptions? options = ()) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.TransferOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
 
     # Opens a file's content as a byte stream.
@@ -62,7 +62,7 @@ public isolated client class Caller {
     # + return - An `Error` if the upload failed, otherwise `()`
     isolated remote function uploadFile(string sourcePath, string destinationPath,
             UploadOptions? options = ()) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.TransferOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
 
     # Uploads in-memory content to the watched share. Dispatch is by the value's runtime type:
@@ -75,7 +75,7 @@ public isolated client class Caller {
     # + return - An `Error` if the upload failed, otherwise `()`
     isolated remote function uploadContent(byte[]|string|xml|map<json> content,
             string destinationPath, UploadOptions? options = ()) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.TransferOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
 
     # Deletes a file from the watched share.
@@ -83,7 +83,7 @@ public isolated client class Caller {
     # + path - The share-relative path of the file to delete
     # + return - An `Error` if the file could not be deleted, otherwise `()`
     isolated remote function deleteFile(string path) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.FileOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.FileOps"
     } external;
 
     # Renames or moves a file within the watched share. An existing destination file is
@@ -95,7 +95,7 @@ public isolated client class Caller {
     # + return - An `Error` if the file could not be renamed, otherwise `()`
     isolated remote function renameFile(string sourcePath, string destinationPath,
             RenameOptions? options = ()) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.FileOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.FileOps"
     } external;
 
     # Copies a file within the watched share. The copy is asynchronous; inspect the returned
@@ -107,7 +107,7 @@ public isolated client class Caller {
     # + return - The `CopyInfo` for the started copy, or an `Error`
     isolated remote function copyFile(string sourcePath, string destinationPath,
             CopyOptions? options = ()) returns CopyInfo|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.CopyOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.CopyOps"
     } external;
 
     # Checks the state of the most recent copy operation that targeted a file.
@@ -116,7 +116,7 @@ public isolated client class Caller {
     # + return - The `CopyStatusInfo`, `()` if the file has never been the destination of a
     #            copy operation, or an `Error`
     isolated remote function checkCopyStatus(string path) returns CopyStatusInfo?|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.CopyOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.CopyOps"
     } external;
 
     # Aborts a pending asynchronous copy operation.
@@ -125,7 +125,7 @@ public isolated client class Caller {
     # + copyId - The identifier of the copy to abort (from `CopyInfo.copyId`)
     # + return - An `Error` if the copy could not be aborted, otherwise `()`
     isolated remote function abortCopy(string path, string copyId) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.CopyOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.CopyOps"
     } external;
 
     # Creates a directory in the watched share.
@@ -135,7 +135,7 @@ public isolated client class Caller {
     # + return - An `Error` if the directory could not be created, otherwise `()`
     isolated remote function createDirectory(string directoryPath, DirectoryCreateOptions? options = ())
             returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.DirectoryOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.DirectoryOps"
     } external;
 
     # Deletes a directory from the watched share. The directory must be empty.
@@ -143,7 +143,7 @@ public isolated client class Caller {
     # + directoryPath - The share-relative path of the directory to delete
     # + return - An `Error` if the directory could not be deleted, otherwise `()`
     isolated remote function deleteDirectory(string directoryPath) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.DirectoryOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.DirectoryOps"
     } external;
 
     # Lists the entries (files and subdirectories) under a directory of the watched share.
@@ -175,11 +175,11 @@ public isolated client class Caller {
 isolated function newCallerEntryIterator(Caller caller, EntryStreamGenerator generator,
         string directoryPath, ListOptions options) returns Error? = @java:Method {
     name: "newEntryIterator",
-    'class: "io.ballerina.lib.azure.storage.files.ListOps"
+    'class: "io.ballerina.lib.azure.storage.files.client.ListOps"
 } external;
 
 isolated function openCallerContentStream(Caller caller, ContentStreamGenerator generator,
         string path, DownloadOptions? options) returns Error? = @java:Method {
     name: "openContentStream",
-    'class: "io.ballerina.lib.azure.storage.files.TransferOps"
+    'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;

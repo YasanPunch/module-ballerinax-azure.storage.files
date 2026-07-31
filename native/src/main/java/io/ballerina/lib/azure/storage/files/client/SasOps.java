@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.storage.common.sas.AccountSasPermission;
 import com.azure.storage.common.sas.AccountSasResourceType;
@@ -28,6 +28,9 @@ import com.azure.storage.file.share.models.UserDelegationKey;
 import com.azure.storage.file.share.sas.ShareFileSasPermission;
 import com.azure.storage.file.share.sas.ShareSasPermission;
 import com.azure.storage.file.share.sas.ShareServiceSasSignatureValues;
+import io.ballerina.lib.azure.storage.files.util.Ops;
+import io.ballerina.lib.azure.storage.files.util.RecordMapper;
+import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BArray;

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.util;
 
 import com.azure.storage.file.share.models.ShareStorageException;
 import io.ballerina.runtime.api.values.BError;
@@ -28,7 +28,7 @@ import java.util.Set;
  * code string rather than the HTTP status alone (for example a full share and an authorization
  * failure are both HTTP 403 but map to different types).
  */
-final class ErrorMapper {
+public final class ErrorMapper {
 
     private ErrorMapper() {
     }
@@ -59,7 +59,7 @@ final class ErrorMapper {
      * @param e the Azure service exception
      * @return the Ballerina error
      */
-    static BError toBError(ShareStorageException e) {
+    public static BError toBError(ShareStorageException e) {
         String code = e.getErrorCode() == null ? "" : e.getErrorCode().toString();
         String message = e.getServiceMessage() == null ? e.getMessage() : e.getServiceMessage();
         return FilesErrorCreator.storageError(typeName(code), message, e.getStatusCode(), code, e);

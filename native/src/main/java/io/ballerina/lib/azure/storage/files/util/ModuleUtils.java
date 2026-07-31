@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files;
+package io.ballerina.lib.azure.storage.files.util;
 
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.Module;

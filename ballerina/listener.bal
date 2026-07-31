@@ -209,24 +209,24 @@ isolated function createPollService(Listener l) returns task:Service {
 isolated function externInit(Listener listenerObj, string shareName, ListenerConfiguration config)
         returns Error? = @java:Method {
     name: "initListener",
-    'class: "io.ballerina.lib.azure.storage.files.ShareListenerAdaptor"
+    'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
 } external;
 
 isolated function externAttach(Listener listenerObj, Service serviceRef) returns error? = @java:Method {
     name: "attachService",
-    'class: "io.ballerina.lib.azure.storage.files.ShareListenerAdaptor"
+    'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
 } external;
 
 isolated function externDetach(Listener listenerObj, Service serviceRef) returns error? = @java:Method {
     name: "detachService",
-    'class: "io.ballerina.lib.azure.storage.files.ShareListenerAdaptor"
+    'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
 } external;
 
 isolated function externStop(Listener listenerObj, boolean graceful) returns error? = @java:Method {
     name: "stopListener",
-    'class: "io.ballerina.lib.azure.storage.files.ShareListenerAdaptor"
+    'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
 } external;
 
 isolated function poll(Listener listenerObj) returns error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.ShareListenerAdaptor"
+    'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
 } external;
