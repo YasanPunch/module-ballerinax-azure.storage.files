@@ -1,0 +1,5 @@
+[package]
+org = "azure_files_test"
+name = "invalid_on_error_return_type"
+version = "1.0.0"
+distribution = "2201.12.0"

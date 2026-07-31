@@ -28,19 +28,14 @@ import com.azure.xml.XmlReader;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.Runtime;
 import io.ballerina.runtime.api.concurrent.StrandMetadata;
-import io.ballerina.runtime.api.creators.TypeCreator;
 import io.ballerina.runtime.api.creators.ValueCreator;
-import io.ballerina.runtime.api.types.ArrayType;
 import io.ballerina.runtime.api.types.MethodType;
 import io.ballerina.runtime.api.types.ObjectType;
 import io.ballerina.runtime.api.types.Parameter;
-import io.ballerina.runtime.api.types.PredefinedTypes;
+import io.ballerina.runtime.api.types.StreamType;
 import io.ballerina.runtime.api.types.Type;
-import io.ballerina.runtime.api.utils.JsonUtils;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.utils.TypeUtils;
-import io.ballerina.runtime.api.utils.XmlUtils;
-import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BDecimal;
 import io.ballerina.runtime.api.values.BError;
 import io.ballerina.runtime.api.values.BMap;
@@ -50,14 +45,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -87,9 +82,13 @@ public final class ShareListenerAdaptor {
     // Native-data key under which the per-listener context is stored on the listener object.
     private static final String NATIVE_LISTENER_CONTEXT = "azure.storage.files.native.listenerContext";
 
-    // The Caller object type and the ListenerConfiguration field this class reads.
+    // The Caller object type and the ListenerConfiguration fields this class reads.
     private static final String CALLER_OBJECT = "Caller";
     private static final BString POLLING_INTERVAL = StringUtils.fromString("pollingInterval");
+    private static final BString LAX_DATA_BINDING = StringUtils.fromString("laxDataBinding");
+    private static final BString CSV_FAIL_SAFE = StringUtils.fromString("csvFailSafe");
+    // The module-level Ballerina helper that binds CSV content on a real strand.
+    private static final String BIND_CSV_CONTENT_FUNCTION = "bindCsvContent";
 
     // The listener annotation vocabulary: annotation tag suffixes and the record fields of
     // ServiceConfiguration, FunctionConfiguration, and Move.
@@ -112,14 +111,17 @@ public final class ShareListenerAdaptor {
     private static final String ON_FILE_JSON = "onFileJson";
     private static final String ON_FILE_XML = "onFileXml";
     private static final String ON_FILE_CSV = "onFileCsv";
+    // The optional error-notification handler: not a content handler (no routing, no
+    // afterProcess/afterError semantics of its own).
+    private static final String ON_ERROR = "onError";
     private static final Set<String> HANDLER_NAMES =
             Set.of(ON_FILE, ON_FILE_TEXT, ON_FILE_JSON, ON_FILE_XML, ON_FILE_CSV);
     private static final Map<String, String> EXTENSION_HANDLERS = Map.of(
             "json", ON_FILE_JSON, "xml", ON_FILE_XML, "csv", ON_FILE_CSV, "txt", ON_FILE_TEXT);
 
     // Poll backoff cap and the bounded wait for in-flight handlers on stop.
-    private static final long MAX_BACKOFF_MILLIS = 300_000L;
-    private static final long AWAIT_SECONDS = 30L;
+    private static final long MAX_BACKOFF_MILLIS = 300_000L; 
+    private static final long AWAIT_SECONDS = 30L; 
 
     private ShareListenerAdaptor() {
     }
@@ -141,9 +143,10 @@ public final class ShareListenerAdaptor {
             if (share.isEmpty()) {
                 return FilesErrorCreator.processingError("shareName must not be empty", null);
             }
-            // Azure's XmlReader resolves its StAX factory in a static initializer using the calling
-            // thread's context classloader; force that to happen here, on the init strand, so a poll
-            // thread can never be the first to trigger it and poison the class.
+            // Azure's XmlReader (from azure-xml library) resolves its StAX factory in a static
+            // initializer using the calling thread's context classloader; force that to happen
+            // here, on the init strand, so a poll thread can never be the first to trigger it
+            // and poison the class.
             try (XmlReader ignored = XmlReader.fromString("<x/>")) {
                 // initialization only
             } catch (XMLStreamException | RuntimeException | Error e) {
@@ -152,14 +155,28 @@ public final class ShareListenerAdaptor {
             }
             ShareServiceClient serviceClient = ClientInit.buildServiceClient(config);
             ShareClient shareClient = serviceClient.getShareClient(share);
+
             listenerObj.addNativeData(Ops.NATIVE_SERVICE_CLIENT, serviceClient);
             listenerObj.addNativeData(Ops.NATIVE_SHARE_CLIENT, shareClient);
+
+            // we don't need connection options here. 
             BObject caller = ValueCreator.createObjectValue(ModuleUtils.getModule(), CALLER_OBJECT, shareName);
+            // The Ballerina Caller.init takes only shareName because the Caller never builds a
+            // connection: the already-built ShareServiceClient/ShareClient (constructed by
+            // ClientInit.buildServiceClient(config) from the full config: auth, retry, transport,
+            // TLS) attach to the Caller as native data. Every Caller remote op reads those
+            // native-data clients — the same statics Client uses — so auth/retry/transport are
+            // all carried.
             caller.addNativeData(Ops.NATIVE_SERVICE_CLIENT, serviceClient);
             caller.addNativeData(Ops.NATIVE_SHARE_CLIENT, shareClient);
+
+            // Add the listener context to the listener object.
             double pollingSeconds = ((BDecimal) config.get(POLLING_INTERVAL)).floatValue();
+            boolean laxDataBinding = Boolean.TRUE.equals(config.get(LAX_DATA_BINDING));
+            @SuppressWarnings("unchecked")
+            BMap<BString, Object> csvFailSafe = (BMap<BString, Object>) config.get(CSV_FAIL_SAFE);
             listenerObj.addNativeData(NATIVE_LISTENER_CONTEXT,
-                    new ListenerContext(env.getRuntime(), caller, pollingSeconds));
+                    new ListenerContext(env.getRuntime(), caller, pollingSeconds, laxDataBinding, csvFailSafe));
             return null;
         } catch (BError e) {
             return e;
@@ -179,16 +196,20 @@ public final class ShareListenerAdaptor {
      */
     public static Object attachService(Environment env, BObject listenerObj, BObject service) {
         ListenerContext ctx = context(listenerObj);
+        // If the listener is not initialized, return an error.
         if (ctx == null) {
             return FilesErrorCreator.processingError("the listener is not initialized", null);
         }
+        // If a service is already attached to the listener, return an error.
         if (ctx.service != null) {
             return FilesErrorCreator.processingError(
                     "a service is already attached to this listener; one service per listener", null);
         }
         try {
+            // Parse the service config and handlers.
             parseServiceConfig(ctx, service);
             parseHandlers(ctx, service);
+            // Set the service on the listener context.
             ctx.service = service;
             return null;
         } catch (BError e) {
@@ -216,13 +237,16 @@ public final class ShareListenerAdaptor {
     }
 
     /**
+     * Step 1. (poll → scan → consider → dispatch)
      * Runs one poll of the watched path. Called on a Ballerina strand by the task job. Lists the
-     * present files and dispatches each match on a virtual thread. Never throws: a listing failure
-     * is turned into an exponential backoff.
+     * present files and dispatches each match on a virtual thread. A listing failure is mapped to
+     * the module's typed error and returned, so the Ballerina poll service logs every attempted
+     * failure; retry cadence still backs off exponentially, capped at five minutes, and a poll
+     * inside the backoff window is a silent no-op.
      *
      * @param env         the Ballerina runtime environment
      * @param listenerObj the Ballerina listener object
-     * @return {@code null}
+     * @return {@code null} on success or a gated poll, or the mapped scan error
      */
     public static Object poll(Environment env, BObject listenerObj) {
         return Ops.invoke(env, () -> {
@@ -230,6 +254,7 @@ public final class ShareListenerAdaptor {
             if (ctx == null || ctx.stopped || ctx.service == null) {
                 return null;
             }
+            // A poll inside the backoff window is a silent no-op.
             if (System.currentTimeMillis() < ctx.nextAllowedPollMillis.get()) {
                 return null;
             }
@@ -242,10 +267,60 @@ public final class ShareListenerAdaptor {
                 long backoff = Math.min((long) (Math.pow(2, attempt) * ctx.pollingIntervalSeconds * 1000d),
                         MAX_BACKOFF_MILLIS);
                 ctx.nextAllowedPollMillis.set(System.currentTimeMillis() + backoff);
-                LOG.warn("azure.storage.files listener poll failed; backing off {} ms", backoff, e);
+                BError mapped = mapScanFailure(e);
+                invokeOnError(ctx, mapped);
+                return mapped;
             }
             return null;
         });
+    }
+
+    // Maps a scan failure to the module's typed error: Azure service failures go through the
+    // code-keyed mapper, and anything else becomes a ProcessingError.
+    private static BError mapScanFailure(Throwable e) {
+        if (e instanceof ShareStorageException storageException) {
+            return ErrorMapper.toBError(storageException);
+        }
+        if (e instanceof BError bError) {
+            return bError;
+        }
+        return FilesErrorCreator.processingError(Ops.describe(e), e);
+    }
+
+    /**
+     * Invokes the service's optional {@code onError} handler with the given error, on a dispatch
+     * virtual thread. onError is a notification hook: its own failure is printed and swallowed,
+     * and it never alters the listener's consume or backoff behavior.
+     *
+     * @param ctx   the listener context
+     * @param error the error to hand to the handler
+     */
+    private static void invokeOnError(ListenerContext ctx, BError error) {
+        BObject service = ctx.service;
+        int arity = ctx.onErrorArity;
+        if (service == null || arity == 0 || ctx.stopped) {
+            return;
+        }
+        try {
+            ctx.dispatchExecutor.execute(() -> {
+                try {
+                    ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
+                    boolean isConcurrentSafe = serviceType.isIsolated() && serviceType.isIsolated(ON_ERROR);
+                    StrandMetadata metadata = new StrandMetadata(isConcurrentSafe, null);
+                    Object[] args = arity >= 2 ? new Object[]{error, ctx.caller} : new Object[]{error};
+                    Object result = ctx.runtime.callMethod(service, ON_ERROR, metadata, args);
+                    if (result instanceof BError handlerError) {
+                        handlerError.printStackTrace();
+                    }
+                } catch (BError handlerPanic) {
+                    handlerPanic.printStackTrace();
+                } catch (RuntimeException e) {
+                    LOG.warn("azure.storage.files listener: onError invocation failed", e);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            // The executor is shutting down; the notification is dropped with the listener.
+        }
     }
 
     /**
@@ -277,6 +352,15 @@ public final class ShareListenerAdaptor {
         return null;
     }
 
+    /**
+     * Step 2. (poll → scan → consider → dispatch)
+     * Scans the watched path for files and directories.
+     * Iterative DFS with an explicit ArrayDeque (no recursion), listing with extended info + timestamps + ETags. 
+     * Directories are pushed only if recursive; files go to consider. Checks ctx.stopped each iteration.
+     * 
+     * @param listenerObj the Ballerina listener object
+     * @param ctx         the listener context
+     */
     private static void scan(BObject listenerObj, ListenerContext ctx) {
         ShareClient share = Ops.shareClient(listenerObj);
         Deque<String> pending = new ArrayDeque<>();
@@ -305,11 +389,23 @@ public final class ShareListenerAdaptor {
         }
     }
 
+    /**
+     * Step 3. (poll → scan → consider → dispatch)
+     * Considers a file for dispatching. Checks ctx.fileNamePattern and ctx.minFileAgeSeconds.
+     * Adds to ctx.inProgress and dispatches on a virtual thread.
+     * 
+     * @param listenerObj the Ballerina listener object
+     * @param ctx         the listener context
+     * @param item        the file item
+     * @param path        the file path
+     */
     private static void consider(BObject listenerObj, ListenerContext ctx, ShareFileItem item, String path) {
         String name = item.getName();
+        // Service-level name-pattern filter: Skip if name doesn't match pattern.
         if (ctx.fileNamePattern != null && !ctx.fileNamePattern.matcher(name).matches()) {
             return;
         }
+        // Min-age filter: Skip if too young.
         if (ctx.minFileAgeSeconds != null && item.getProperties() != null
                 && item.getProperties().getLastModified() != null) {
             long age = Duration.between(item.getProperties().getLastModified().toInstant(), Instant.now())
@@ -318,19 +414,34 @@ public final class ShareListenerAdaptor {
                 return;
             }
         }
+        // The in-progress guard: Add to inProgress and dispatch.
         String eTag = item.getProperties() == null || item.getProperties().getETag() == null
                 ? "" : item.getProperties().getETag();
+        // Create a deduplication key for the file.
         String key = path + "|" + eTag;
+        // Add the key to keySet and return if already in progress or stopped.
         if (ctx.stopped || !ctx.inProgress.add(key)) {
             return;
         }
         try {
+            // Dispatch the file on a virtual thread.
             ctx.dispatchExecutor.execute(() -> dispatch(listenerObj, ctx, item, path, key));
         } catch (RejectedExecutionException e) {
+            // Remove the key from inProgress if the dispatch is rejected.
             ctx.inProgress.remove(key);
         }
     }
 
+    /**
+     * Step 4. (poll → scan → consider → dispatch).
+     * Dispatches a file to the handler.
+     * 
+     * @param listenerObj the Ballerina listener object
+     * @param ctx         the listener context
+     * @param item        the file item
+     * @param path        the file path
+     * @param key         the deduplication key
+     */
     private static void dispatch(BObject listenerObj, ListenerContext ctx, ShareFileItem item,
                                  String path, String key) {
         try {
@@ -345,74 +456,163 @@ public final class ShareListenerAdaptor {
                 LOG.debug("azure.storage.files listener: no handler for {}, skipping", path);
                 return;
             }
-            byte[] bytes;
-            try {
-                bytes = download(listenerObj, path);
-            } catch (RuntimeException e) {
-                LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
-                return;
-            }
+
             Object content;
-            try {
-                content = bindContent(handler, bytes);
-            } catch (RuntimeException e) {
-                LOG.warn("azure.storage.files listener: content binding failed for {}", path, e);
-                postProcess(listenerObj, ctx, handler.afterError(), path);
-                return;
+            Type referredContentType = handler.contentType() == null
+                    ? null : TypeUtils.getReferredType(handler.contentType());
+            if (referredContentType instanceof StreamType streamContentType) {
+                // A stream handler skips the eager download: the file is read chunk by chunk as
+                // the handler drains the stream.
+                InputStream inputStream;
+                try {
+                    inputStream = Ops.shareClient(listenerObj).getFileClient(path).openInputStream();
+                } catch (RuntimeException e) {
+                    // If the file cannot be opened, log the error and return to try again next poll.
+                    LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
+                    return;
+                }
+                try {
+                    content = ON_FILE_CSV.equals(handler.methodName())
+                            ? ContentStreamOps.createCsvStream(ctx.runtime, inputStream,
+                                    streamContentType.getConstrainedType(), ctx.laxDataBinding)
+                            : ContentStreamOps.createByteStream(inputStream,
+                                    streamContentType.getConstrainedType());
+                } catch (RuntimeException e) {
+                    closeQuietly(inputStream);
+                    handleBindingFailure(listenerObj, ctx, handler, path, e);
+                    return;
+                }
+            } else {
+                byte[] bytes;
+                // Download the file.
+                try {
+                    bytes = download(listenerObj, path);
+                } catch (RuntimeException e) {
+                    // If the file cannot be read, log the error and return to try again next poll.
+                    LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
+                    return;
+                }
+                try {
+                    // Bind the content to the handler.
+                    content = bindContent(ctx, handler, bytes, item.getName());
+                } catch (RuntimeException e) {
+                    handleBindingFailure(listenerObj, ctx, handler, path, e);
+                    return;
+                }
             }
+
+            // Create the file info record, including the file name, size, and last modified time.
             int slash = path.lastIndexOf('/');
             String parentPath = slash < 0 ? "" : path.substring(0, slash);
             BMap<BString, Object> fileInfo = RecordMapper.fileInfo(item, parentPath);
+
+            // Invoke the handler.
             Object result = invokeHandler(ctx, service, handler, content, fileInfo);
             if (result instanceof BError error) {
-                LOG.warn("azure.storage.files listener: handler {} returned an error for {}",
-                        handler.methodName(), path, error);
+                // The handler already saw its own error, so onError is not notified; the error is
+                // printed so the failure stays visible without a logging backend.
+                error.printStackTrace();
+                // Post-process (afterError) the file.
                 postProcess(listenerObj, ctx, handler.afterError(), path);
             } else {
+                // Post-process (afterProcess) the file.
                 postProcess(listenerObj, ctx, handler.afterProcess(), path);
             }
         } catch (Throwable e) {
+            // If the dispatch fails, log the error and remove the key from inProgress.
             LOG.error("azure.storage.files listener: unexpected dispatch failure for {}", path, e);
         } finally {
+            // Remove the key from inProgress.
             ctx.inProgress.remove(key);
+        }
+    }
+
+    // A content-binding failure notifies onError (when declared) and post-processes (afterError)
+    // the file; without an onError the error is printed so the failure stays visible.
+    private static void handleBindingFailure(BObject listenerObj, ListenerContext ctx, HandlerConfig handler,
+                                             String path, RuntimeException e) {
+        BError bindingError = e instanceof BError bError
+                ? bError : FilesErrorCreator.processingError(Ops.describe(e), e);
+        if (ctx.onErrorArity == 0) {
+            bindingError.printStackTrace();
+        }
+        invokeOnError(ctx, bindingError);
+        postProcess(listenerObj, ctx, handler.afterError(), path);
+    }
+
+    private static void closeQuietly(InputStream inputStream) {
+        try {
+            inputStream.close();
+        } catch (IOException e) {
+            LOG.debug("azure.storage.files listener: failed to close a content stream", e);
         }
     }
 
     private static HandlerConfig resolveHandler(ListenerContext ctx, String fileName) {
         for (HandlerConfig handler : ctx.handlers.values()) {
             Pattern routing = handler.routingPattern();
+            // If routing pattern is set and matches the file name, return the handler.
             if (routing != null && routing.matcher(fileName).matches()) {
                 return handler;
             }
         }
+        // If no routing pattern matches, try extension mapping (such as "onFileJson" for "file.json").
         String mapped = EXTENSION_HANDLERS.get(extension(fileName));
+        // If a mapped handler is found, return it.
         if (mapped != null && ctx.handlers.containsKey(mapped)) {
             return ctx.handlers.get(mapped);
         }
+        // If no mapping is found, return the default handler.
         return ctx.handlers.get(ON_FILE);
     }
 
-    private static Object bindContent(HandlerConfig handler, byte[] bytes) {
+    private static Object bindContent(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String fileName) {
         switch (handler.methodName()) {
+            // Convert the bytes to a string and return it.
             case ON_FILE_TEXT:
                 return StringUtils.fromString(new String(bytes, StandardCharsets.UTF_8));
+            // Bind the bytes to the handler's declared JSON target type.
             case ON_FILE_JSON:
-                Object json = JsonUtils.parse(new String(bytes, StandardCharsets.UTF_8));
-                try {
-                    return JsonUtils.convertJSON(json, handler.contentType());
-                } catch (BError e) {
-                    throw FilesErrorCreator.processingError(
-                            "content does not match the '" + ON_FILE_JSON + "' handler's declared type", e);
-                }
+                return ContentBinder.bindJson(bytes, handler.contentType(), ctx.laxDataBinding);
+            // Bind the bytes to the handler's declared XML target type.
             case ON_FILE_XML:
-                return XmlUtils.parse(new String(bytes, StandardCharsets.UTF_8));
+                return ContentBinder.bindXml(bytes, handler.contentType(), ctx.laxDataBinding);
+            // Bind the bytes to the handler's declared CSV target type.
             case ON_FILE_CSV:
-                return csvMatrix(new String(bytes, StandardCharsets.UTF_8));
+                return bindCsv(ctx, handler, bytes, fileName);
             default:
                 return ValueCreator.createArrayValue(bytes);
         }
     }
 
+    // Binds CSV content on a real Ballerina strand through the module-level bindCsvContent helper,
+    // because the data.csv parser needs the runtime environment of a strand.
+    private static Object bindCsv(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String fileName) {
+        String prefix = fileName.replaceAll("\\.[^.]+$", "");
+        Object result = ctx.runtime.callFunction(ModuleUtils.getModule(), BIND_CSV_CONTENT_FUNCTION,
+                new StrandMetadata(true, null),
+                ValueCreator.createArrayValue(bytes),
+                ValueCreator.createTypedescValue(TypeUtils.getReferredType(handler.contentType())),
+                ctx.laxDataBinding,
+                ctx.csvFailSafe,
+                StringUtils.fromString(prefix));
+        if (result instanceof BError bError) {
+            throw FilesErrorCreator.processingError("content does not bind to the '" + ON_FILE_CSV
+                    + "' handler's declared type: " + bError.getErrorMessage(), bError);
+        }
+        return result;
+    }
+
+    /**
+     * Invokes the handler.
+     * 
+     * @param ctx         the listener context
+     * @param service     the service
+     * @param handler     the handler config
+     * @param content     the content
+     * @param fileInfo    the file info
+     * @return the result of the handler invocation
+     */
     private static Object invokeHandler(ListenerContext ctx, BObject service, HandlerConfig handler, Object content,
                                         BMap<BString, Object> fileInfo) {
         ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
@@ -432,17 +632,30 @@ public final class ShareListenerAdaptor {
         return ctx.runtime.callMethod(service, methodName, metadata, args);
     }
 
+    /**
+     * Post-processes the file.
+     * 
+     * @param listenerObj the Ballerina listener object
+     * @param ctx         the listener context
+     * @param action      the post-process action
+     * @param path        the file path
+     */
     private static void postProcess(BObject listenerObj, ListenerContext ctx, PostAction action, String path) {
+        // If the action is null, return.
         if (action == null) {
             return;
         }
         try {
+            // Get the share client.
             ShareClient share = Ops.shareClient(listenerObj);
+            // If the action is a delete, delete the file.
             if (action.isDelete()) {
                 share.getFileClient(path).delete();
                 return;
             }
+            // If the action is a move, move the file.
             String moveRoot = Ops.directoryPath(StringUtils.fromString(action.moveTo()));
+            // If the action is a move and subdirectories are preserved, join the move root and the relative path.
             String destination = action.preserveSubDirs()
                     ? join(moveRoot, relativeTo(path, ctx.watchedPath))
                     : join(moveRoot, path.substring(path.lastIndexOf('/') + 1));
@@ -450,6 +663,7 @@ public final class ShareListenerAdaptor {
             ensureDirectory(share, slash < 0 ? "" : destination.substring(0, slash));
             share.getFileClient(path).rename(destination);
         } catch (RuntimeException e) {
+            // If the post-process fails, log the error and continue. So handler can run again next poll.
             LOG.warn("azure.storage.files listener: post-process failed for {}", path, e);
         }
     }
@@ -481,58 +695,105 @@ public final class ShareListenerAdaptor {
         return out.toByteArray();
     }
 
+    /**
+     * Parses the service config from the service.
+     * 
+     * @param ctx         the listener context
+     * @param service     the service
+     */
     private static void parseServiceConfig(ListenerContext ctx, BObject service) {
+        // Get the service type.
         ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
+        // Get the service config annotation.
         BMap<BString, Object> config = annotation(serviceType.getAnnotations(), SERVICE_CONFIG_ANNOTATION);
+        // If the service config annotation is not present, throw an error.
         if (config == null) {
             throw FilesErrorCreator.processingError(
                     "the service must declare @files:ServiceConfig with a watched path", null);
         }
+        // Get the path value from the service config annotation.
         Object pathValue = config.get(SERVICE_CONFIG_PATH);
+        // If the path value is not present or is empty, throw an error.
         if (pathValue == null || ((BString) pathValue).getValue().strip().isEmpty()) {
             throw FilesErrorCreator.processingError("@files:ServiceConfig requires a non-empty path", null);
         }
+        // Set the watched path on the listener context.
         ctx.watchedPath = Ops.directoryPath((BString) pathValue);
+        // Get the recursive value from the service config annotation.
         Object recursiveValue = config.get(SERVICE_CONFIG_RECURSIVE);
+        // If the recursive value is not present or is not a boolean, set the recursive flag to true.
         ctx.recursive = recursiveValue == null || (Boolean) recursiveValue;
+        // Get the file name pattern value from the service config annotation.
         Object patternValue = config.get(FILE_NAME_PATTERN);
+        // If the file name pattern value is not present, set the file name pattern to null.
         if (patternValue != null) {
             ctx.fileNamePattern = compile(((BString) patternValue).getValue());
         }
+        // Get the min file age value from the service config annotation.
         Object ageValue = config.get(SERVICE_CONFIG_MIN_FILE_AGE);
+        // If the min file age value is not present, set the min file age seconds to null.
         if (ageValue != null) {
+            // Set the min file age seconds on the listener context.
             ctx.minFileAgeSeconds = ((BDecimal) ageValue).floatValue();
         }
     }
 
+    /**
+     * Parses the handlers from the service.
+     * 
+     * @param ctx         the listener context
+     * @param service     the service
+     */
     private static void parseHandlers(ListenerContext ctx, BObject service) {
+        // Get the service type.
         ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
+        // Create a map of handlers.
         Map<String, HandlerConfig> handlers = new LinkedHashMap<>();
+        // Iterate over the methods.
+        int onErrorArity = 0;
         for (MethodType method : serviceType.getMethods()) {
+            // Get the method name.
             String name = method.getName();
+            if (ON_ERROR.equals(name)) {
+                onErrorArity = method.getParameters().length;
+                continue;
+            }
             if (!HANDLER_NAMES.contains(name)) {
                 continue;
             }
+            // Get the method config annotation.
             BMap<BString, Object> config = annotation(method.getAnnotations(), FUNCTION_CONFIG_ANNOTATION);
+            // If the method config annotation is not present, set the routing pattern to null.
             Pattern routing = null;
+            // If the method config annotation is not present, set the after process action to null.
             PostAction afterProcess = null;
             PostAction afterError = null;
+
             if (config != null) {
+                // Get the file name pattern value from the method config annotation.
                 Object patternValue = config.get(FILE_NAME_PATTERN);
+                // If the file name pattern value is not present, set the routing pattern to null.
                 if (patternValue != null) {
                     routing = compile(((BString) patternValue).getValue());
                 }
+                // Get the after process action from the method config annotation.
                 afterProcess = readAction(config, FUNCTION_CONFIG_AFTER_PROCESS);
+                // Get the after error action from the method config annotation.
                 afterError = readAction(config, FUNCTION_CONFIG_AFTER_ERROR);
             }
+            // Get the parameters of the method.
             Parameter[] params = method.getParameters();
+            // If the second parameter is a caller, set the second parameter is caller flag to true.
             boolean secondIsCaller = params.length >= 2
                     && CALLER_OBJECT.equals(TypeUtils.getReferredType(params[1].type).getName());
+            // Get the content type of the method.
             Type contentType = params.length >= 1 ? params[0].type : null;
+            // Create a new handler config and add it to the handlers map.
             handlers.put(name, new HandlerConfig(name, routing, afterProcess, afterError,
                     params.length, secondIsCaller, contentType));
         }
         ctx.handlers = handlers;
+        ctx.onErrorArity = onErrorArity;
     }
 
     private static PostAction readAction(BMap<BString, Object> config, BString key) {
@@ -568,63 +829,6 @@ public final class ShareListenerAdaptor {
             }
         }
         return null;
-    }
-
-    private static BArray csvMatrix(String text) {
-        ArrayType rowType = TypeCreator.createArrayType(PredefinedTypes.TYPE_STRING);
-        BArray matrix = ValueCreator.createArrayValue(TypeCreator.createArrayType(rowType));
-        for (List<String> row : parseCsv(text)) {
-            BArray rowArray = ValueCreator.createArrayValue(rowType);
-            for (String cell : row) {
-                rowArray.append(StringUtils.fromString(cell));
-            }
-            matrix.append(rowArray);
-        }
-        return matrix;
-    }
-
-    private static List<List<String>> parseCsv(String text) {
-        List<List<String>> rows = new ArrayList<>();
-        List<String> current = new ArrayList<>();
-        StringBuilder field = new StringBuilder();
-        boolean inQuotes = false;
-        int i = 0;
-        while (i < text.length()) {
-            char c = text.charAt(i);
-            if (inQuotes) {
-                if (c == '"') {
-                    if (i + 1 < text.length() && text.charAt(i + 1) == '"') {
-                        field.append('"');
-                        i++;
-                    } else {
-                        inQuotes = false;
-                    }
-                } else {
-                    field.append(c);
-                }
-            } else if (c == '"') {
-                inQuotes = true;
-            } else if (c == ',') {
-                current.add(field.toString());
-                field.setLength(0);
-            } else if (c == '\n' || c == '\r') {
-                if (c == '\r' && i + 1 < text.length() && text.charAt(i + 1) == '\n') {
-                    i++;
-                }
-                current.add(field.toString());
-                field.setLength(0);
-                rows.add(current);
-                current = new ArrayList<>();
-            } else {
-                field.append(c);
-            }
-            i++;
-        }
-        if (field.length() > 0 || !current.isEmpty()) {
-            current.add(field.toString());
-            rows.add(current);
-        }
-        return rows;
     }
 
     private static Pattern compile(String pattern) {
@@ -665,22 +869,31 @@ public final class ShareListenerAdaptor {
         private final Runtime runtime;
         private final BObject caller;
         private final double pollingIntervalSeconds;
+        private final boolean laxDataBinding;
+        private final BMap<BString, Object> csvFailSafe;
         private final ExecutorService dispatchExecutor = Executors.newVirtualThreadPerTaskExecutor();
         private final Set<String> inProgress = ConcurrentHashMap.newKeySet();
         private final AtomicInteger failureCount = new AtomicInteger();
         private final AtomicLong nextAllowedPollMillis = new AtomicLong();
         private volatile BObject service;
         private volatile boolean stopped;
+
+        //service context. can be moved to seperate per attached service context
         private String watchedPath = "";
         private boolean recursive = true;
         private Pattern fileNamePattern;
         private Double minFileAgeSeconds;
         private Map<String, HandlerConfig> handlers = new LinkedHashMap<>();
+        // The attached service's onError parameter count: 0 when no onError is declared.
+        private volatile int onErrorArity;
 
-        private ListenerContext(Runtime runtime, BObject caller, double pollingIntervalSeconds) {
+        private ListenerContext(Runtime runtime, BObject caller, double pollingIntervalSeconds,
+                                boolean laxDataBinding, BMap<BString, Object> csvFailSafe) {
             this.runtime = runtime;
             this.caller = caller;
             this.pollingIntervalSeconds = pollingIntervalSeconds;
+            this.laxDataBinding = laxDataBinding;
+            this.csvFailSafe = csvFailSafe;
         }
     }
 

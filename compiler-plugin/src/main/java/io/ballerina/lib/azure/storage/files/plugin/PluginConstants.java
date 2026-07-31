@@ -41,6 +41,10 @@ public final class PluginConstants {
     public static final String ON_FILE_XML_FUNC = "onFileXml";
     public static final String ON_FILE_CSV_FUNC = "onFileCsv";
 
+    // The optional error-notification handler name. Not a content handler: it does not count
+    // toward the at-least-one-content-handler requirement.
+    public static final String ON_ERROR_FUNC = "onError";
+
     /** The set of allowed content-handler names. */
     public static final Set<String> CONTENT_HANDLERS = Set.of(
             ON_FILE_FUNC, ON_FILE_TEXT_FUNC, ON_FILE_JSON_FUNC, ON_FILE_XML_FUNC, ON_FILE_CSV_FUNC);
@@ -48,6 +52,7 @@ public final class PluginConstants {
     // Parameter type names.
     public static final String CALLER = "Caller";
     public static final String FILE_INFO = "FileInfo";
+    public static final String ERROR_TYPE = "Error";
 
     // The required service annotation.
     public static final String SERVICE_CONFIG_ANNOTATION = "ServiceConfig";
@@ -57,7 +62,7 @@ public final class PluginConstants {
      */
     public enum CompilationErrors {
         INVALID_REMOTE_FUNCTION("Invalid remote method '%s'. A listener service allows only handlers: "
-                + "onFile, onFileText, onFileJson, onFileXml, onFileCsv.", "AZURE_FILES_101"),
+                + "onFile, onFileText, onFileJson, onFileXml, onFileCsv, onError.", "AZURE_FILES_101"),
         RESOURCE_FUNCTION_NOT_ALLOWED("Unsupported resource function.", "AZURE_FILES_102"),
         NO_VALID_REMOTE_METHOD("At least one handler must be added: onFile, onFileText, "
                 + "onFileJson, onFileXml, or onFileCsv.", "AZURE_FILES_103"),
@@ -75,7 +80,13 @@ public final class PluginConstants {
         INVALID_RETURN_TYPE_ERROR_OR_NIL("Invalid return type. Expected 'error?' or 'files:Error?'.",
                 "AZURE_FILES_110"),
         MISSING_SERVICE_CONFIG_ANNOTATION("Missing '@files:ServiceConfig' annotation. A listener service must "
-                + "configure 'path'.", "AZURE_FILES_111");
+                + "configure 'path'.", "AZURE_FILES_111"),
+        INVALID_ON_ERROR_FIRST_PARAMETER("Invalid parameter for 'onError'. The first parameter must be "
+                + "'error' or 'files:Error'.", "AZURE_FILES_112"),
+        INVALID_ON_ERROR_SECOND_PARAMETER("Invalid parameter for 'onError'. Optional second parameter must be "
+                + "'Caller'.", "AZURE_FILES_113"),
+        TOO_MANY_PARAMETERS_ON_ERROR("Too many parameters for 'onError'. It accepts at most 2 parameters: "
+                + "(error, caller?).", "AZURE_FILES_114");
 
         private final String error;
         private final String errorCode;

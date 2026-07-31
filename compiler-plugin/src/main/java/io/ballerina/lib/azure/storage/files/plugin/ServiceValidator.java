@@ -48,22 +48,34 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.isRemoteFu
 
 /**
  * Validates a listener service's members: resource functions are rejected, every remote method
- * must be one of the content handlers, at least one content handler must be present, and each
- * declared handler's signature is checked by {@link ContentFunctionValidator}.
+ * must be one of the content handlers or the optional {@code onError}, at least one content
+ * handler must be present, and each declared handler's signature is checked by
+ * {@link ContentFunctionValidator} (content handlers) or {@link OnErrorFunctionValidator}.
+ *
+ * Enforces: @files:ServiceConfig present, no resource functions, no unknown remote methods, ≥1 content handler
  */
 public class ServiceValidator {
 
+    /**
+     * Validates a listener service's members.
+     * 
+     * @param context the syntax node analysis context
+     */
     public void validate(SyntaxNodeAnalysisContext context) {
+        // Get the service declaration node.
         ServiceDeclarationNode serviceDeclarationNode = (ServiceDeclarationNode) context.node();
+        // If the service has no service config annotation, report an error.
         if (!hasServiceConfigAnnotation(context, serviceDeclarationNode)) {
             context.reportDiagnostic(getDiagnostic(MISSING_SERVICE_CONFIG_ANNOTATION,
                     DiagnosticSeverity.ERROR, serviceDeclarationNode.location()));
         }
+        // Get the members of the service declaration.
         NodeList<Node> members = serviceDeclarationNode.members();
-
+        // Create a list of content methods.
         List<FunctionDefinitionNode> contentMethods = new ArrayList<>();
+        // Create a list of content method names.
         List<String> contentMethodNames = new ArrayList<>();
-
+        // Iterate over the members.
         for (Node node : members) {
             if (node.kind() == RESOURCE_ACCESSOR_DEFINITION) {
                 context.reportDiagnostic(getDiagnostic(RESOURCE_FUNCTION_NOT_ALLOWED,
@@ -86,6 +98,10 @@ public class ServiceValidator {
             if (CONTENT_HANDLERS.contains(name)) {
                 contentMethods.add(functionDefinitionNode);
                 contentMethodNames.add(name);
+            } else if (PluginConstants.ON_ERROR_FUNC.equals(name)) {
+                // onError is validated separately and deliberately not added to contentMethods:
+                // a service declaring only onError still fails the at-least-one-handler check.
+                new OnErrorFunctionValidator(context, functionDefinitionNode).validate();
             } else if (isRemoteFunction(context, functionDefinitionNode)) {
                 context.reportDiagnostic(getDiagnostic(INVALID_REMOTE_FUNCTION,
                         DiagnosticSeverity.ERROR, functionDefinitionNode.location(), name));

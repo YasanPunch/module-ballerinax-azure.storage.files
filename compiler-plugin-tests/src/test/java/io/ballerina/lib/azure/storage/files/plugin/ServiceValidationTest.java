@@ -177,4 +177,115 @@ public class ServiceValidationTest {
         assertEquals(result.errorCount(), 1);
         assertError(result, 0, "AZURE_FILES_110", "Expected error?");
     }
+
+    @Test
+    public void testValidOnErrorService() {
+        DiagnosticResult result = loadPackage("valid_on_error");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onError with files:Error");
+    }
+
+    @Test
+    public void testValidOnErrorBareErrorService() {
+        DiagnosticResult result = loadPackage("valid_on_error_bare_error");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onError with a bare error");
+    }
+
+    @Test
+    public void testValidOnErrorWithCallerService() {
+        DiagnosticResult result = loadPackage("valid_on_error_with_caller");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onError with a Caller");
+    }
+
+    @Test
+    public void testInvalidOnErrorFirstParameter() {
+        DiagnosticResult result = loadPackage("invalid_on_error_first_param");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_112", "The first parameter must be");
+    }
+
+    @Test
+    public void testInvalidOnErrorSecondParameter() {
+        DiagnosticResult result = loadPackage("invalid_on_error_second_param");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_113", "Optional second parameter must be");
+    }
+
+    @Test
+    public void testInvalidOnErrorTooManyParameters() {
+        DiagnosticResult result = loadPackage("invalid_on_error_too_many_params");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_114", "Too many parameters for");
+    }
+
+    @Test
+    public void testInvalidOnErrorNonRemote() {
+        DiagnosticResult result = loadPackage("invalid_on_error_non_remote");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_104", "handler must be declared as remote");
+    }
+
+    @Test
+    public void testInvalidOnErrorReturnType() {
+        DiagnosticResult result = loadPackage("invalid_on_error_return_type");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_110", "Expected error?");
+    }
+
+    @Test
+    public void testOnErrorOnlyServiceStillNeedsContentHandler() {
+        DiagnosticResult result = loadPackage("invalid_on_error_only");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_103", "At least one handler must be added");
+    }
+
+    @Test
+    public void testValidOnFileByteStreamService() {
+        DiagnosticResult result = loadPackage("valid_on_file_stream");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFile byte stream service");
+    }
+
+    @Test
+    public void testValidOnFileCsvRecordArrayService() {
+        DiagnosticResult result = loadPackage("valid_on_file_csv_record_array");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv record-array service");
+    }
+
+    @Test
+    public void testValidOnFileCsvStringArrayStreamService() {
+        DiagnosticResult result = loadPackage("valid_on_file_csv_stream_string_array");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv string[] stream service");
+    }
+
+    @Test
+    public void testValidOnFileCsvRecordStreamService() {
+        DiagnosticResult result = loadPackage("valid_on_file_csv_stream_record");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv record stream service");
+    }
+
+    @Test
+    public void testValidOnFileXmlRecordService() {
+        DiagnosticResult result = loadPackage("valid_on_file_xml_record");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileXml record service");
+    }
+
+    @Test
+    public void testInvalidOnFileStreamItemType() {
+        DiagnosticResult result = loadPackage("invalid_on_file_stream_item");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFile");
+    }
+
+    @Test
+    public void testInvalidOnFileCsvStreamItemType() {
+        DiagnosticResult result = loadPackage("invalid_on_file_csv_stream_item");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
+    }
+
+    @Test
+    public void testInvalidOnFileCsvScalarArray() {
+        DiagnosticResult result = loadPackage("invalid_on_file_csv_scalar_array");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
+    }
 }

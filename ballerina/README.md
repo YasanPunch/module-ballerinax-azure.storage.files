@@ -8,7 +8,7 @@ The Azure Files connector offers APIs to connect to Azure Files and manage share
 
 - Share-scoped `Client` for directory and file operations, transfers, copies, and byte ranges
 - Account-level `AdminClient` for creating, listing, deleting, and restoring shares
-- Polling `Listener` that routes files arriving on a watched path to raw or typed content handlers
+- Polling `Listener` that routes files arriving on a watched path to raw, typed, or streaming content handlers, with an optional `onError` notification handler
 - Share snapshots, leases, access policies, SMB handles, and NFS links
 - Authentication with shared key, SAS tokens, connection strings, and Microsoft Entra ID
 - GraalVM compatible for native image builds

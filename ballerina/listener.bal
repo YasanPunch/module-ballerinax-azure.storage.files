@@ -29,7 +29,30 @@ public type ListenerConfiguration record {|
     RetryConfig retryConfig?;
     # HTTP transport settings (proxy, connection pool, TLS); omit for the defaults
     TransportConfig transportConfig?;
+    # Relaxed data binding for the typed content handlers: JSON, XML, and CSV record binding
+    # treat a null value as an optional field and an absent field as a nilable field
+    boolean laxDataBinding = false;
+    # Fail safe CSV processing: a malformed CSV record is skipped and appended to an error
+    # log file named after the source file in the current directory, instead of failing the
+    # whole binding. Applies to the materialized CSV handler forms, not the stream forms
+    FailSafeOptions csvFailSafe?;
 |};
+
+# Configuration for fail safe CSV content processing.
+public type FailSafeOptions record {|
+    # What each skipped CSV record's error log entry carries
+    ErrorLogContentType contentType = METADATA;
+|};
+
+# The content of a fail safe CSV error log entry.
+public enum ErrorLogContentType {
+    # Log only the metadata of the failure (position and message)
+    METADATA,
+    # Log only the raw content that caused the failure
+    RAW,
+    # Log both the raw content and the metadata
+    RAW_AND_METADATA
+}
 
 # The per-service watch configuration, supplied through the `@files:ServiceConfig` annotation.
 # It declares which share-relative path a service watches and how.
@@ -78,7 +101,9 @@ public type FunctionConfiguration record {|
 public annotation FunctionConfiguration FunctionConfig on object function;
 
 # The service type attached to a `Listener`. Declare at least one content handler (`onFile` or a
-# typed `onFileText`/`onFileJson`/`onFileXml`/`onFileCsv` variant).
+# typed `onFileText`/`onFileJson`/`onFileXml`/`onFileCsv` variant), and optionally an `onError`
+# handler (`remote function onError(files:Error err, files:Caller caller?) returns error?`) that
+# is notified when a poll fails or a typed handler's content binding fails.
 public type Service distinct service object {
 };
 

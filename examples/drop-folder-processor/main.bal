@@ -65,4 +65,11 @@ service on dropListener {
     remote function onFile(byte[] content, files:FileInfo file, files:Caller caller) returns error? {
         log:printInfo(string `Processed ${file.name} (${content.length()} bytes); moved to /processed`);
     }
+
+    // Notified when a poll fails (for example a credential or network problem) or a file's
+    // content fails to bind to a typed handler. Purely observational: the afterError move
+    // above still consumes a malformed file.
+    remote function onError(files:Error err) returns error? {
+        log:printError("drop-folder listener reported an error", 'error = err);
+    }
 }

@@ -931,3 +931,1093 @@ function testUnconsumedFileRedelivers() returns error? {
             "an unconsumed file must be redelivered on a later poll");
     check shareClient.close();
 }
+
+// ===== Poll-failure surfacing =====
+// Pinned to the mock: a failing directory listing cannot be provoked on a real account on
+// demand. The mock's listing-fault hook forces every directory listing to fail until it is
+// cleared, letting these tests drive the poller's failure path directly through poll().
+
+// Creates (once) a mock-backed share with its watched "/incoming" directory, for the
+// mock-pinned poll-failure tests.
+function setupMockWatchedShare(string base) returns [Client, string]|error {
+    string share = testShare(base);
+    AdminClient admin = check newMockAdmin();
+    boolean shareExists = check admin->hasShare(share);
+    if !shareExists {
+        check admin->createShare(share);
+    }
+    check admin.close();
+    Client shareClient = check newMockShareClient(share);
+    boolean dirExists = check shareClient->hasDirectory("/incoming");
+    if !dirExists {
+        check shareClient->createDirectory("/incoming");
+    }
+    return [shareClient, share];
+}
+
+@test:Config {}
+function testPollFailureSurfacesTypedError() returns error? {
+    [Client, string] setup = check setupMockWatchedShare("lsn-pollfail");
+    Client shareClient = setup[0];
+    string share = setup[1];
+
+    Listener lsn = check newMockListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+    };
+    check lsn.attach(svc);
+
+    mockListFaultCode = "AuthenticationFailed";
+    error? result = poll(lsn);
+    mockListFaultCode = ();
+
+    test:assertTrue(result is AuthorizationError,
+            "a 403 AuthenticationFailed listing must surface from poll() as an AuthorizationError");
+    check lsn.detach(svc);
+    check shareClient.close();
+}
+
+@test:Config {}
+function testPollFailureMapsProcessingError() returns error? {
+    // A scan failure that is not an Azure service error (here, the endpoint refuses the
+    // connection) surfaces as a ProcessingError.
+    Listener lsn = check new ("pollfail-conn", auth = {
+        accountName: "mockaccount",
+        accountKey: MOCK_KEY,
+        serviceUrl: "http://localhost:1"
+    }, pollingInterval = 1, retryConfig = {maxTries: 1});
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+    };
+    check lsn.attach(svc);
+
+    error? result = poll(lsn);
+    test:assertTrue(result is ProcessingError,
+            "a non-Azure scan failure must surface from poll() as a ProcessingError");
+    check lsn.detach(svc);
+}
+
+@test:Config {}
+function testPollFailureBacksOffAndRecovers() returns error? {
+    [Client, string] setup = check setupMockWatchedShare("lsn-backoff");
+    Client shareClient = setup[0];
+    string share = setup[1];
+
+    final Recorder recorder = new;
+    Listener lsn = check newMockListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("dispatch");
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+
+    mockListFaultCode = "AuthenticationFailed";
+    error? first = poll(lsn);
+    // Still inside the backoff window, with the fault still armed: a gated poll must not
+    // scan at all, so it cannot observe the armed fault and returns nil.
+    error? gated = poll(lsn);
+    mockListFaultCode = ();
+
+    test:assertTrue(first is Error, "the first failing poll must surface its error");
+    test:assertTrue(gated is (), "a poll inside the backoff window must be a silent no-op");
+
+    check shareClient->uploadContent("recovered", "/incoming/recover.dat");
+    // The first failure's backoff window is twice the polling interval; wait it out.
+    runtime:sleep(2.5);
+    error? recovered = poll(lsn);
+    test:assertTrue(recovered is (), "a poll after the fault clears must succeed");
+    check await(() => recorder.count("dispatch") >= 1);
+    check lsn.detach(svc);
+    check shareClient.close();
+}
+
+@test:Config {}
+function testPollFailureLogsEveryAttempt() returns error? {
+    // Every non-gated failing poll returns its error, so the poll service's log line runs
+    // on each attempt, not only the first.
+    [Client, string] setup = check setupMockWatchedShare("lsn-pollrepeat");
+    Client shareClient = setup[0];
+    string share = setup[1];
+
+    Listener lsn = check newMockListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+    };
+    check lsn.attach(svc);
+
+    mockListFaultCode = "AuthenticationFailed";
+    error? first = poll(lsn);
+    // Wait out the first backoff window (twice the polling interval) with the fault still
+    // armed, so the next poll attempts a scan and fails again.
+    runtime:sleep(2.5);
+    error? second = poll(lsn);
+    mockListFaultCode = ();
+
+    test:assertTrue(first is AuthorizationError, "the first failing poll must surface its error");
+    test:assertTrue(second is AuthorizationError,
+            "every attempted poll failure must surface, not only the first");
+    check lsn.detach(svc);
+    check shareClient.close();
+}
+
+// ===== onError =====
+
+// Pinned to the mock: uses the listing-fault hook to fail the poll on demand.
+@test:Config {}
+function testOnErrorFiresOnPollFailure() returns error? {
+    [Client, string] setup = check setupMockWatchedShare("lsn-onerr-poll");
+    Client shareClient = setup[0];
+    string share = setup[1];
+
+    final Recorder recorder = new;
+    Listener lsn = check newMockListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+
+        remote function onError(Error err) returns error? {
+            if err is AuthorizationError {
+                recorder.hit("onerror-auth");
+            } else {
+                recorder.hit("onerror-other");
+            }
+        }
+    };
+    check lsn.attach(svc);
+
+    mockListFaultCode = "AuthenticationFailed";
+    error? result = poll(lsn);
+    mockListFaultCode = ();
+
+    test:assertTrue(result is AuthorizationError, "the failing poll must still surface its error");
+    check await(() => recorder.count("onerror-auth") >= 1);
+    test:assertEquals(recorder.count("onerror-other"), 0,
+            "onError must receive the mapped typed error for a poll failure");
+    check lsn.detach(svc);
+    check shareClient.close();
+}
+
+@test:Config {}
+function testOnErrorFiresOnBindingFailure() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-onerr-bind");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("{not-json", "/incoming/broken.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFileJson(map<json> content) returns error? {
+            recorder.hit("json");
+        }
+
+        remote function onError(Error err) returns error? {
+            if err is ProcessingError {
+                recorder.put("onerror", err.message());
+            }
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("onerror") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("json"), 0, "malformed content must not reach the typed handler");
+    test:assertTrue(recorder.count("onerror") >= 1,
+            "a content-binding failure must notify onError with a ProcessingError");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testOnErrorReceivesCaller() returns error? {
+    [Client, string] setup = check setupMockWatchedShare("lsn-onerr-caller");
+    Client shareClient = setup[0];
+    string share = setup[1];
+
+    final Recorder recorder = new;
+    Listener lsn = check newMockListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+
+        remote function onError(Error err, Caller caller) returns error? {
+            recorder.put("onerror-share", caller.getShareName());
+        }
+    };
+    check lsn.attach(svc);
+
+    mockListFaultCode = "AuthenticationFailed";
+    error? result = poll(lsn);
+    mockListFaultCode = ();
+    test:assertTrue(result is Error);
+
+    check await(() => recorder.count("onerror-share") >= 1);
+    test:assertEquals(recorder.payload("onerror-share"), share,
+            "the two-parameter onError must receive a usable Caller");
+    check lsn.detach(svc);
+    check shareClient.close();
+}
+
+@test:Config {}
+function testOnErrorNotFiredOnHandlerError() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-onerr-handler");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("handler fails", "/incoming/fail.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("attempt");
+            if recorder.count("attempt") == 1 {
+                return error("handler failure");
+            }
+            check caller->deleteFile(info.path);
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("attempt") >= 2);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("onerror"), 0,
+            "an error returned by a content handler must not notify onError");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testBindingFailureAfterErrorInteraction() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-onerr-after");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("{still-not-json", "/incoming/broken.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterError: DELETE}
+        remote function onFileJson(map<json> content) returns error? {
+            recorder.hit("json");
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("onerror") >= 1);
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/broken.json");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertTrue(recorder.count("onerror") >= 1,
+            "a binding failure must notify a declared onError");
+    boolean stillPresent = check shareClient->hasFile("/incoming/broken.json");
+    test:assertFalse(stillPresent,
+            "afterError must still consume the file when onError is declared");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testOnErrorErrorReturnIsSwallowed() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-onerr-swallow");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("{bad", "/incoming/bad.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterError: DELETE}
+        remote function onFileJson(map<json> content) returns error? {
+            recorder.hit("json");
+        }
+
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("onfile");
+            check caller->deleteFile(info.path);
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+            return error("onError itself failed");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("onerror") >= 1);
+    // A failing onError must not disturb the listener: a later file still dispatches.
+    check shareClient->uploadContent("plain payload", "/incoming/next.dat");
+    check await(() => recorder.count("onfile") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+    check shareClient.close();
+}
+
+// ===== laxDataBinding and record binding =====
+
+// A JSON/CSV binding target with a required nilable field, for the projection tests.
+type BindingRow record {|
+    int id;
+    string? name;
+|};
+
+// An XML binding target.
+type XmlDoc record {|
+    int v;
+|};
+
+// A closed XML binding target, for the projection tests: an extra element in the document
+// binds only when relaxed projection is on.
+type XmlOpen record {|
+    int v;
+|};
+
+// A CSV binding target whose fields map to a header row.
+type CsvPerson record {|
+    string name;
+    int age;
+|};
+
+// A CSV binding target with a required nilable field, for the projection tests.
+type CsvSparse record {|
+    string name;
+    int? age;
+|};
+
+@test:Config {}
+function testJsonRecordStrictBindingRejectsAbsentField() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-strict-json");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent(string `{"id": 1}`, "/incoming/row.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterError: DELETE}
+        remote function onFileJson(BindingRow content) returns error? {
+            recorder.hit("json");
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("onerror") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("json"), 0,
+            "with the default strict binding, JSON missing a required field must not bind");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testJsonRecordLaxBindingProjects() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-lax-json");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent(string `{"id": 2}`, "/incoming/row.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileJson(BindingRow content) returns error? {
+            recorder.put("json", string `${content.id}:${content.name ?: "<nil>"}`);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("json") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("json"), "2:<nil>",
+            "lax binding must project an absent JSON member onto the nilable field");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testXmlRecordBinding() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-xml-rec");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("<XmlDoc><v>7</v></XmlDoc>", "/incoming/doc.xml");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileXml(XmlDoc content) returns error? {
+            recorder.put("xml", content.v.toString());
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("xml") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("xml"), "7",
+            "well formed XML must bind to the declared record");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testXmlRecordLaxBinding() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-xml-lax");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("<XmlOpen><v>9</v><extra>x</extra></XmlOpen>", "/incoming/doc.xml");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileXml(XmlOpen content) returns error? {
+            recorder.put("xml", content.v.toString());
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("xml") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("xml"), "9",
+            "lax binding must project away an XML element the record does not declare");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvRecordArrayBindingUsesHeaderRow() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-csv-rec");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name,age\nalice,30\nbob,25", "/incoming/people.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(CsvPerson[] rows) returns error? {
+            string[] parts = [];
+            foreach CsvPerson row in rows {
+                parts.push(string `${row.name}=${row.age}`);
+            }
+            recorder.put("csv", string:'join(";", ...parts));
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("csv"), "alice=30;bob=25",
+            "CSV record binding must use the first row as the header");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvLaxBindingRecordArray() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-csv-lax");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name\ncara", "/incoming/people.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(CsvSparse[] rows) returns error? {
+            string[] parts = [];
+            foreach CsvSparse row in rows {
+                parts.push(string `${row.name}=${row.age ?: -1}`);
+            }
+            recorder.put("csv", string:'join(";", ...parts));
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("csv"), "cara=-1",
+            "lax binding must project an absent CSV column onto the nilable field");
+    check shareClient.close();
+}
+
+// ===== csvFailSafe =====
+
+// Removes a fail safe error log left in the working directory, tolerating its absence.
+function cleanupErrorLog(string prefix) {
+    error? removed = trap file:remove(prefix + "_error.log");
+    if removed is error {
+        // Nothing to clean.
+    }
+}
+
+// Reads a fail safe error log's content, or an empty string when it does not exist.
+function readErrorLog(string prefix) returns string {
+    string|io:Error content = io:fileReadString(prefix + "_error.log");
+    return content is string ? content : "";
+}
+
+@test:Config {}
+function testCsvFailSafeSkipsMalformedRows() returns error? {
+    cleanupErrorLog("people");
+    [Client, string] setup = check setupWatchedShare("lsn-failsafe");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name,age\nalice,30\nbob,notanint\ncara,22",
+            "/incoming/people.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, csvFailSafe = {});
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(CsvPerson[] rows) returns error? {
+            string[] parts = [];
+            foreach CsvPerson row in rows {
+                parts.push(string `${row.name}=${row.age}`);
+            }
+            recorder.put("csv", string:'join(";", ...parts));
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("csv"), "alice=30;cara=22",
+            "fail safe mode must skip the malformed row and bind the valid rows");
+    test:assertEquals(recorder.count("onerror"), 0,
+            "fail safe mode must not treat a skipped row as a binding failure");
+    cleanupErrorLog("people");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvFailSafeQuarantinesMetadata() returns error? {
+    cleanupErrorLog("meta");
+    [Client, string] setup = check setupWatchedShare("lsn-failsafe-meta");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name,age\ndana,notanint\neve,40", "/incoming/meta.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, csvFailSafe = {});
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(CsvPerson[] rows) returns error? {
+            recorder.hit("csv");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    string logContent = readErrorLog("meta");
+    test:assertTrue(logContent.includes("location"),
+            "with the default METADATA content type, the failure metadata must be logged");
+    test:assertFalse(logContent.includes("dana,notanint"),
+            "with the default METADATA content type, the raw row must not be logged");
+    cleanupErrorLog("meta");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvFailSafeQuarantinesRaw() returns error? {
+    cleanupErrorLog("raw");
+    [Client, string] setup = check setupWatchedShare("lsn-failsafe-raw");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name,age\ndana,notanint\neve,40", "/incoming/raw.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1,
+            csvFailSafe = {contentType: RAW});
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(CsvPerson[] rows) returns error? {
+            recorder.hit("csv");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    string logContent = readErrorLog("raw");
+    test:assertTrue(logContent.includes("dana,notanint"),
+            "with the RAW content type, the raw offending row must be logged");
+    cleanupErrorLog("raw");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvFailSafeQuarantinesRawAndMetadata() returns error? {
+    cleanupErrorLog("both");
+    [Client, string] setup = check setupWatchedShare("lsn-failsafe-both");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name,age\ndana,notanint\neve,40", "/incoming/both.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1,
+            csvFailSafe = {contentType: RAW_AND_METADATA});
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(CsvPerson[] rows) returns error? {
+            recorder.hit("csv");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    string logContent = readErrorLog("both");
+    test:assertTrue(logContent.includes("offendingRow"),
+            "with RAW_AND_METADATA, the raw offending row must be logged");
+    test:assertTrue(logContent.includes("location"),
+            "with RAW_AND_METADATA, the metadata must be logged too");
+    cleanupErrorLog("both");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvFailSafeNotAppliedWithoutConfig() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-failsafe-off");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name,age\ndana,notanint", "/incoming/strict.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterError: DELETE}
+        remote function onFileCsv(CsvPerson[] rows) returns error? {
+            recorder.hit("csv");
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("onerror") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("csv"), 0,
+            "without csvFailSafe, a malformed CSV row must fail the whole binding");
+    check shareClient.close();
+}
+
+// ===== Streaming content handlers =====
+
+// Drains a byte stream fully, concatenating every chunk.
+function drainByteStream(stream<byte[], error?> content) returns byte[]|error {
+    byte[] all = [];
+    record {|byte[] value;|}|error? entry = content.next();
+    while entry is record {|byte[] value;|} {
+        foreach byte b in entry.value {
+            all.push(b);
+        }
+        entry = content.next();
+    }
+    if entry is error {
+        return entry;
+    }
+    return all;
+}
+
+@test:Config {}
+function testOnFileByteStreamDeliversContent() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-bytestream");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("stream-payload", "/incoming/data.bin");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(stream<byte[], error?> content, FileInfo info, Caller caller) returns error? {
+            byte[] all = check drainByteStream(content);
+            recorder.put("stream", check string:fromBytes(all));
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("stream") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("stream"), "stream-payload",
+            "a drained byte stream must deliver the file's full content");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testOnFileByteStreamLargeFileChunks() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-bigstream");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    byte[] big = [];
+    foreach int i in 0 ..< 20000 {
+        big.push(<byte>(i % 256));
+    }
+    check shareClient->uploadContent(big, "/incoming/big.bin");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        remote function onFile(stream<byte[], error?> content, FileInfo info, Caller caller) returns error? {
+            int chunks = 0;
+            int total = 0;
+            record {|byte[] value;|}|error? entry = content.next();
+            while entry is record {|byte[] value;|} {
+                chunks += 1;
+                total += entry.value.length();
+                entry = content.next();
+            }
+            if entry is error {
+                return entry;
+            }
+            recorder.put("chunks", string `${chunks}:${total}`);
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("chunks") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    string[] parts = re `:`.split(recorder.payload("chunks"));
+    int chunkCount = check int:fromString(parts[0]);
+    int totalBytes = check int:fromString(parts[1]);
+    test:assertEquals(totalBytes, 20000, "the chunks must add up to the file size");
+    test:assertTrue(chunkCount >= 2,
+            "a payload larger than one chunk must arrive as multiple stream entries");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testStreamHandlerAfterProcessOnReturn() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-stream-after");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("consume me", "/incoming/done.bin");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFile(stream<byte[], error?> content) returns error? {
+            byte[] all = check drainByteStream(content);
+            recorder.put("stream", check string:fromBytes(all));
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("stream") >= 1);
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/done.bin");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    boolean stillPresent = check shareClient->hasFile("/incoming/done.bin");
+    test:assertFalse(stillPresent, "afterProcess must consume the file when the handler returns");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testStreamPartialDrainThenClose() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-stream-close");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("partial read", "/incoming/partial.bin");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFile(stream<byte[], error?> content) returns error? {
+            record {|byte[] value;|}|error? first = content.next();
+            if first is record {|byte[] value;|} {
+                recorder.hit("read");
+            }
+            check content.close();
+            recorder.hit("closed");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("closed") >= 1);
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/partial.bin");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertTrue(recorder.count("read") >= 1, "the first chunk must be readable");
+    boolean stillPresent = check shareClient->hasFile("/incoming/partial.bin");
+    test:assertFalse(stillPresent,
+            "afterProcess must still run when the handler closes the stream early and returns");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvStreamStringArrays() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-csvstream-str");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("a,b\nc,d", "/incoming/rows.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(stream<string[], error?> rows) returns error? {
+            string[] collected = [];
+            record {|string[] value;|}|error? entry = rows.next();
+            while entry is record {|string[] value;|} {
+                collected.push(string:'join(",", ...entry.value));
+                entry = rows.next();
+            }
+            if entry is error {
+                return entry;
+            }
+            recorder.put("csv", string:'join(";", ...collected));
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("csv"), "a,b;c,d",
+            "the string array stream must yield every row of the file");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvStreamRecords() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-csvstream-rec");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name,age\nalice,30\nbob,25", "/incoming/people.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(stream<CsvPerson, error?> rows) returns error? {
+            string[] collected = [];
+            record {|CsvPerson value;|}|error? entry = rows.next();
+            while entry is record {|CsvPerson value;|} {
+                collected.push(string `${entry.value.name}=${entry.value.age}`);
+                entry = rows.next();
+            }
+            if entry is error {
+                return entry;
+            }
+            recorder.put("csv", string:'join(";", ...collected));
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("csv"), "alice=30;bob=25",
+            "the record stream must map each row through the header row");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvStreamLaxBinding() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-csvstream-lax");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name\ncara", "/incoming/sparse.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(stream<CsvSparse, error?> rows) returns error? {
+            string[] collected = [];
+            record {|CsvSparse value;|}|error? entry = rows.next();
+            while entry is record {|CsvSparse value;|} {
+                collected.push(string `${entry.value.name}=${entry.value.age ?: -1}`);
+                entry = rows.next();
+            }
+            if entry is error {
+                return entry;
+            }
+            recorder.put("csv", string:'join(";", ...collected));
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("csv"), "cara=-1",
+            "lax binding must apply to the CSV record stream");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvStreamBindingErrorMidStream() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-csvstream-err");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name,age\nalice,30\nbob,notanint\ncara,22",
+            "/incoming/people.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(stream<CsvPerson, error?> rows) returns error? {
+            int good = 0;
+            record {|CsvPerson value;|}|error? entry = rows.next();
+            while entry is record {|CsvPerson value;|} {
+                good += 1;
+                entry = rows.next();
+            }
+            if entry is error {
+                recorder.put("midstream", string `${good}:${entry is ProcessingError ? "typed" : "untyped"}`);
+            }
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("midstream") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("midstream"), "1:typed",
+            "a malformed row must surface as a typed error from next() after the valid rows");
+    test:assertEquals(recorder.count("onerror"), 0,
+            "a lazy stream binding failure belongs to the handler, not onError");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testCsvStreamFailSafeNotApplied() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-csvstream-fs");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name,age\nalice,30\nbob,notanint\ncara,22",
+            "/incoming/people.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, csvFailSafe = {});
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(stream<CsvPerson, error?> rows) returns error? {
+            int good = 0;
+            record {|CsvPerson value;|}|error? entry = rows.next();
+            while entry is record {|CsvPerson value;|} {
+                good += 1;
+                entry = rows.next();
+            }
+            recorder.put("failsafe", entry is error ? string `error-after-${good}` : string `clean-${good}`);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("failsafe") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("failsafe"), "error-after-1",
+            "csvFailSafe must not alter the stream forms: the malformed row still errors");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testStreamHandlerErrorTriggersAfterError() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-stream-herr");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("some bytes", "/incoming/herr.bin");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {path: "/incoming"} service object {
+        @FunctionConfig {afterError: DELETE}
+        remote function onFile(stream<byte[], error?> content) returns error? {
+            recorder.hit("attempt");
+            check content.close();
+            return error("stream handler failure");
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("attempt") >= 1);
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/herr.bin");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("onerror"), 0,
+            "an error returned by a stream handler must not notify onError");
+    boolean stillPresent = check shareClient->hasFile("/incoming/herr.bin");
+    test:assertFalse(stillPresent, "afterError must consume the file the stream handler failed on");
+    check shareClient.close();
+}

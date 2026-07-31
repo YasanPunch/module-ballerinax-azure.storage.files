@@ -72,6 +72,21 @@ artifactId = "slf4j-api"
 version = "@slf4j.version@"
 
 [[platform.java21.dependency]]
+groupId = "io.ballerina.lib"
+artifactId = "data.jsondata-native"
+version = "@data.jsondata.version@"
+
+[[platform.java21.dependency]]
+groupId = "io.ballerina.lib"
+artifactId = "data.xmldata-native"
+version = "@data.xmldata.version@"
+
+[[platform.java21.dependency]]
+groupId = "io.ballerina.lib"
+artifactId = "data.csv-native"
+version = "@data.csv.version@"
+
+[[platform.java21.dependency]]
 groupId = "com.azure"
 artifactId = "azure-json"
 version = "@azure.json.version@"

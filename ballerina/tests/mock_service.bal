@@ -81,6 +81,10 @@ int mockLeaseCounter = 0;
 int mockSnapshotCounter = 0;
 int mockPermissionCounter = 0;
 string mockServicePropsXml = string `<?xml version="1.0" encoding="utf-8"?><StorageServiceProperties />`;
+// Forced listing-fault hook for the listener poll-failure tests: while the code is set,
+// every directory listing fails with it (and mockListFaultStatus) until cleared.
+string? mockListFaultCode = ();
+int mockListFaultStatus = 403;
 
 function snapshotKey(string shareName, string snapshotId) returns string {
     return shareName + "\n" + snapshotId;
@@ -519,6 +523,10 @@ function directoryDispatch(string method, string shareName, string path, string 
         return forceCloseHandlesResponse(share, path);
     }
     if method == "GET" && comp == "list" {
+        string? faultCode = mockListFaultCode;
+        if faultCode is string {
+            return errorResponse(mockListFaultStatus, faultCode);
+        }
         return listDirectoryResponse(shareName, share, path, prefix, include);
     }
     if method == "GET" || method == "HEAD" {

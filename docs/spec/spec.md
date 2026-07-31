@@ -3,7 +3,7 @@
 _Owners_: @YasanPunch \
 _Reviewers_: @niveathika \
 _Created_: 2026/07/13 \
-_Updated_: 2026/07/27 \
+_Updated_: 2026/07/30 \
 _Edition_: Swan Lake
 
 ## Introduction
@@ -50,21 +50,24 @@ The official implementation aligns with this specification. Any deviation qualif
    * 4.14 [SAS Generation](#414-sas-generation)
    * 4.15 [NFS Link Operations](#415-nfs-link-operations)
    * 4.16 [Closing the Client](#416-closing-the-client)
-5. [Error Types](#5-error-types)
-6. [Samples](#6-samples)
+5. [The Listener and Caller](#5-the-listener-and-caller)
+6. [Error Types](#6-error-types)
+7. [Samples](#7-samples)
 
 ## 1. Overview
 
 [Azure Files](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-introduction) is the fully managed file-share service of Azure Storage, offering shares accessible over SMB, NFS, and REST. The `ballerinax/azure.storage.files` module provides an idiomatic Ballerina API for the service. It is built on the official Azure SDK for Java (`com.azure:azure-storage-file-share`), which supplies request signing, retry, and chunked transfer underneath the Ballerina surface.
 
-The public surface is two client classes:
+The public surface is four types:
 
 * `AdminClient` operates at the storage-account level. It creates, lists, deletes, and restores shares, manages the account's file-service configuration, and mints account-level SAS tokens.
 * `Client` is bound to a single share at initialization and carries every operation inside that share: directories, files, transfers, copies, byte ranges, snapshots, leases, SMB handles, access policies, stored permissions, SAS generation, and NFS links.
+* `Listener` polls one watched path on a share and dispatches each present file to the matching content handler of its attached service.
+* `Caller` is passed to each listener handler. It forwards a curated share-scoped subset of `Client`, so a handler can act on the event's file without constructing a separate client.
 
 Directory and file operations take a single slash-delimited, share-relative path (for example `/reports/2026/q4.pdf`). Where two paths co-occur, they are named `sourcePath` and `destinationPath`, in source-first order. Every entry returned by a listing carries its full share-relative path, so listing results feed directly into the path-taking operations.
 
-Both classes are isolated client classes holding only immutable configuration, so a single client instance can be used safely from concurrent strands. Every operation that calls the service is a remote method, invoked with `->`. Methods that make no service call are ordinary methods, invoked with `.`: each client's `close`, and the SAS generation methods, which sign tokens locally with the credential the client already holds.
+`AdminClient`, `Client`, and `Caller` are isolated client classes holding only immutable configuration, and the `Listener` is an isolated class, so a single instance of any of them can be used safely from concurrent strands. Every operation that calls the service is a remote method, invoked with `->`. Methods that make no service call are ordinary methods, invoked with `.`: each client's `close`, the `Caller`'s `getShareName`, the `Listener`'s lifecycle methods, and the SAS generation methods, which sign tokens locally with the credential the client already holds.
 
 For brevity, the `isolated` qualifier is omitted from the signatures in this specification.
 
@@ -318,7 +321,7 @@ remote function deleteShare(string shareName, ShareDeleteOptions? options = ()) 
 remote function undeleteShare(string shareName, string version) returns Error?;
 ```
 
-`hasShare` returns `false` only when Azure confirms absence (HTTP 404); an `Error` means the check itself could not complete, so an auth problem is never misreported as a missing share. `createShare` accepts a quota, an access tier, the protocols to enable (SMB and/or NFS), the NFS root-squash setting, and metadata through `ShareCreateOptions`. When the account's soft-delete retention policy is enabled, `deleteShare` retains the share for the configured period; find restorable shares and their versions with `listShares(includeDeleted = true)` and restore them with `undeleteShare`.
+`hasShare` returns `false` only when Azure confirms absence (HTTP 404); an `Error` means the check itself could not complete, so an auth problem is never misreported as a missing share. `createShare` accepts a quota, an access tier, the protocols to enable (SMB and/or NFS), the NFS root-squash setting, and metadata through `ShareCreateOptions`. When the account's soft-delete retention policy is enabled, `deleteShare` retains the share for the configured period; find restorable shares and their versions with `listShares({includeDeleted: true})` and restore them with `undeleteShare`.
 
 ### 3.3 Service Configuration Operations
 
@@ -586,7 +589,128 @@ public function close() returns Error?;
 
 `close` is an ordinary method, invoked with `.`. It releases connector-owned resources and makes no service call. Subsequent operations on a closed client fail.
 
-## 5. Error Types
+## 5. The Listener and Caller
+
+Azure Files is not exposed as an Event Grid source, so the listener polls. It uses **stateless dispatch**: each polling tick lists the watched path and reads each present file, invoking the content handler that matches it. No per-file state is kept, so the contract is that handlers consume files by processing them and then deleting or moving them out of the watched path; an unprocessed file fires again on a later poll. This mode is trivially restart-safe. Delivery is at-least-once. Polling runs on the platform task scheduler at a fixed `pollingInterval`, with the scheduler's waiting policy pinned so a tick that fires during a still-running scan waits for it; dispatched handlers run concurrently beyond the scan. An in-progress guard keyed on the file's path and entity tag keeps one version of a file from being dispatched twice at once, so an unchanged file re-fires only after its previous handling has finished and it is still present; a file overwritten while its previous version is still being handled counts as a new version and can be dispatched alongside it. Handlers should be idempotent, or claim a file by renaming it out of the watched path before processing.
+
+One listener watches exactly one service and one path. The listener configuration carries the share-level concerns (credentials, polling cadence, transport). What to watch is declared on the service through the `@ServiceConfig` annotation: its required `path` field is the share-relative path the service watches (write `path: "/"` for the share root), and the annotation's remaining fields configure recursion and file-name filtering.
+
+```ballerina
+public type ListenerConfiguration record {|
+    # The authentication configuration
+    AuthConfig auth;
+    # Polling interval in seconds
+    decimal pollingInterval = 60;
+    # Retry configuration for the underlying client
+    RetryConfig retryConfig?;
+    # HTTP transport configuration for the underlying client
+    TransportConfig transportConfig?;
+    # Relaxed data binding for the typed content handlers
+    boolean laxDataBinding = false;
+    # Fail safe CSV processing; skipped records go to an error log file
+    FailSafeOptions csvFailSafe?;
+|};
+
+public type FailSafeOptions record {|
+    # What each skipped CSV record's error log entry carries
+    ErrorLogContentType contentType = METADATA;
+|};
+
+public enum ErrorLogContentType {
+    METADATA,
+    RAW,
+    RAW_AND_METADATA
+}
+
+public type ServiceConfiguration record {|
+    # Share-relative path this service watches (required; "/" is the share root)
+    string path;
+    # Whether the service watches subdirectories under its path
+    boolean recursive = true;
+    # Regex on the file name; non-matching files are never dispatched to this service
+    string fileNamePattern?;
+    # Skip files younger than this many seconds, guarding against partial writes
+    decimal minFileAgeSeconds?;
+|};
+
+public annotation ServiceConfiguration ServiceConfig on service;
+```
+
+A listener already bound to a service rejects a second `attach` at runtime, so to watch several paths, run several independent listeners. Overlap can still arise across separate listeners (a file under a path watched by two of them reaches each), so handling races there are the user's responsibility (idempotent handlers, or claim a file by renaming it out of the watched path). Attaching a service with no `path`, or an invalid `fileNamePattern`, fails. Calling `start` on a listener that is already running fails, and `detach` of a service that is not attached fails.
+
+```ballerina
+public isolated class Listener {
+    public isolated function init(string shareName, *ListenerConfiguration config) returns Error?;
+
+    public isolated function attach(Service serviceRef, string[]|string? name = ()) returns error?;
+
+    public isolated function 'start() returns error?;
+
+    public isolated function gracefulStop() returns error?;
+
+    public isolated function immediateStop() returns error?;
+
+    public isolated function detach(Service serviceRef) returns error?;
+}
+
+# A bare distinct service object; the handler set is validated at compile time.
+public type Service distinct service object {
+};
+
+# Carries what a directory listing provides, the Listener's data source.
+public type FileInfo record {|
+    # Share-relative path, e.g. "/dir1/dir2/file.ext"
+    string path;
+    # File name only
+    string name;
+    # Size in bytes
+    int sizeBytes;
+    # Entity tag of the file
+    string eTag;
+    # Last-modified time
+    time:Utc lastModified;
+|};
+```
+
+A service declares at least one content handler. `onFile` is the raw-bytes catch-all, taking its content as `byte[]` or as `stream<byte[], error?>`, and the typed variants receive a matching file's content already deserialised: `onFileText` takes a `string`, `onFileJson` takes a `map<json>`, a record, a `map<json>[]`, or a record array, `onFileXml` takes an `xml` document or a record, and `onFileCsv` takes a `string[][]`, a record array, a `stream<string[], error?>`, or a `stream<record{}, error?>`. An object root binds the `onFileJson` map and record forms (a record binds by projection), and an array root binds the array forms element by element. The `string[][]` and `stream<string[]>` CSV forms yield every row of the file; the CSV record forms map each row's fields through the file's first row, the header. An XML record target binds the document's elements to the record's fields. A root that does not match the declared form is a content-binding error. The `FileInfo` and `Caller` parameters are optional trailing parameters: a handler declares its content parameter first, then either, both, or neither of `FileInfo` and `Caller` (with `FileInfo` before `Caller` when both are present), so the accepted shapes are `(content)`, `(content, FileInfo)`, `(content, Caller)`, and `(content, FileInfo, Caller)`, and the listener passes only what the handler declares. Routing is by file extension (`txt` to `onFileText`, `json` to `onFileJson`, `xml` to `onFileXml`, `csv` to `onFileCsv`), and a per-handler `@FunctionConfig` pattern overrides it. A file routed to a typed variant whose content is malformed raises a content-binding error rather than falling through to `onFile`. Binding is strict by default; setting `laxDataBinding` on the listener relaxes it, so JSON and CSV record binding treat a null value as an optional field and an absent member as a nilable field, and XML record binding tolerates elements the record does not declare. With `csvFailSafe` set, a malformed record in a materialized CSV binding is skipped instead of failing the whole binding, and is appended to an error log file named `<sourceBaseName>_error.log` in the process working directory; the `contentType` field selects what each entry carries. Fail safe mode applies to the materialized CSV forms only, not the stream forms.
+
+The stream content forms read the file from the service in chunks as the handler drains the stream, instead of downloading it up front. A stream closes its underlying source at the end of the file, and a handler that abandons a stream early should call its `close()`. A CSV stream row that fails to bind surfaces as the error entry of that `next()` call, after which the stream is closed. The consume actions run on the handler's return exactly as for materialized content, so a handler that deletes or moves the file (or declares `afterProcess`) while its stream is not fully drained loses access to the remaining content.
+
+A service may also declare an `onError` handler, `remote function onError(Error err, Caller caller?) returns error?`, which is notified when a poll fails (with the mapped typed error, for example an `AuthorizationError` when the credential lacks access) and when a typed handler's content binding fails (with a `ProcessingError`). It is not a content handler: it does not satisfy the at-least-one-handler requirement, takes no annotation, and does not change what happens to the file, so a declared `afterError` still applies to a binding failure. An error returned by `onError` itself is swallowed. Errors returned by content handlers do not notify `onError`, and neither does a CSV stream row that fails to bind lazily (that error belongs to the handler draining the stream).
+
+A compiler plugin validates the service at compile time: at least one content handler, each handler's parameter types and `error?` return (including the accepted parameter shapes and the `onError` signature), no resource functions or unknown remote methods, and the presence of `@ServiceConfig` (whose required `path` field the type checker then enforces).
+
+A handler can consume a file by declaring `@FunctionConfig`, which moves or deletes the file after the handler runs:
+
+```ballerina
+public const DELETE = "DELETE";
+
+public type Move record {|
+    # Target directory; the file keeps its name and the directory is created if absent
+    string moveTo;
+    # Recreate the file's sub-path under the watched root on recursive watches
+    boolean preserveSubDirs = true;
+|};
+
+public type FunctionConfiguration record {|
+    # Per-handler routing override (regex on the file name)
+    string fileNamePattern?;
+    # Auto-consume after the handler succeeds
+    DELETE|Move afterProcess?;
+    # Auto-consume after the handler errors or content-binding fails
+    DELETE|Move afterError?;
+|};
+
+public annotation FunctionConfiguration FunctionConfig on object function;
+```
+
+`afterProcess` runs when the handler returns normally, and `afterError` when it errors or content-binding fails; when neither is set the file stays and re-fires. A `Move` onto an existing same-named file fails.
+
+A `Caller` is passed to each handler so it can act on the event's file without constructing a separate client. It forwards a curated share-scoped subset of `Client` (`downloadFile`, `getFileContent`, `uploadFile`, `uploadContent`, `deleteFile`, `copyFile`, `checkCopyStatus`, `abortCopy`, `renameFile`, `createDirectory`, `deleteDirectory`, `list`) plus a non-remote `getShareName()`. Handlers pass the event's path explicitly, e.g. `caller->deleteFile(file.path)`.
+
+A failed poll surfaces its error: the listener logs it on every attempted poll, and a declared `onError` receives it. Retry cadence backs off exponentially, capped at five minutes, and resets on the next successful poll.
+
+## 6. Error Types
 
 Every error raised by an operation of this module is a subtype of the distinct `Error` type and carries an `ErrorDetail`, so callers can pattern-match on specific failures:
 
@@ -627,7 +751,7 @@ public type ProcessingError distinct Error;
 
 Mapping keys on the Azure error code string, not the HTTP status alone: `ShareSizeLimitReached` (HTTP 403) maps to `QuotaExceededError`, distinct from auth failures (also HTTP 403) mapping to `AuthorizationError`. The human-readable description becomes the Ballerina error's `message()` rather than being duplicated into the detail record.
 
-## 6. Samples
+## 7. Samples
 
 Working with files in a share:
 
@@ -685,5 +809,27 @@ if properties is files:NotFoundError {
     // the file is absent; create it, or skip
 } else if properties is files:Error {
     return properties;
+}
+```
+
+Reacting to files arriving in a share:
+
+```ballerina
+import ballerinax/azure.storage.files;
+
+listener files:Listener invoiceListener = check new ("invoices",
+    auth = {accountName: "myacct", accountKey: "..."},
+    pollingInterval = 30
+);
+
+@files:ServiceConfig {
+    path: "/incoming"
+}
+service on invoiceListener {
+    remote function onFile(byte[] content, files:FileInfo file, files:Caller caller) returns error? {
+        check caller->downloadFile(file.path, "./processed/" + file.name);
+        // Consume the file so it does not fire again on the next poll.
+        check caller->deleteFile(file.path);
+    }
 }
 ```

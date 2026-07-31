@@ -143,6 +143,23 @@ isolated function newMockShareClient(string share) returns Client|Error => new (
     serviceUrl: string `http://localhost:${MOCK_PORT}`
 });
 
+isolated function newMockListener(string share, decimal pollingInterval = 1) returns Listener|Error
+    => new (share, auth = {
+        accountName: "mockaccount",
+        accountKey: MOCK_KEY,
+        serviceUrl: string `http://localhost:${MOCK_PORT}`
+    }, pollingInterval = pollingInterval);
+
+// The shared-key auth record for the current backend, for tests that construct a Listener
+// inline to pass extra configuration (binding options and the like).
+isolated function testAuth() returns SharedKeyConfig => liveRun
+    ? {accountName: liveAccountName, accountKey: liveAccountKey}
+    : {
+        accountName: "mockaccount",
+        accountKey: MOCK_KEY,
+        serviceUrl: string `http://localhost:${MOCK_PORT}`
+    };
+
 // Entra-authenticated admin client, for the user-delegation tests in live runs.
 isolated function newEntraAdmin() returns AdminClient|Error => new (auth = {
     accountName: liveAccountName,
