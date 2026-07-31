@@ -89,10 +89,10 @@ public class ServiceValidationTest {
     }
 
     @Test
-    public void testMissingServiceConfigAnnotation() {
-        DiagnosticResult result = loadPackage("invalid_missing_service_config");
-        assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_111", "Missing @files:ServiceConfig annotation");
+    public void testServiceWithoutPathIsValid() {
+        DiagnosticResult result = loadPackage("valid_no_path_defaults_root");
+        assertEquals(result.errorCount(), 0,
+                "expected no diagnostics for a service with no attach point (share-root default)");
     }
 
     @Test

@@ -22,8 +22,7 @@ type Doc record {|
     int v;
 |};
 
-@files:ServiceConfig {path: "/incoming"}
-service on lsn {
+service /incoming on lsn {
     remote function onFileXml(Doc content) returns error? {
     }
 }

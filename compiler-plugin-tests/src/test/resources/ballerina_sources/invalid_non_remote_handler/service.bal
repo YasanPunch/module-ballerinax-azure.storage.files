@@ -18,8 +18,7 @@ import ballerinax/azure.storage.files as files;
 
 listener files:Listener lsn = new ("share", auth = {accountName: "acc", accountKey: "a2V5"});
 
-@files:ServiceConfig {path: "/incoming"}
-service on lsn {
+service /incoming on lsn {
     function onFileText(string content) returns error? {
     }
 }

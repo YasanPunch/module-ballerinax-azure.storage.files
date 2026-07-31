@@ -23,8 +23,7 @@ type Person record {|
     int age;
 |};
 
-@files:ServiceConfig {path: "/incoming"}
-service on lsn {
+service /incoming on lsn {
     remote function onFileCsv(Person[] rows) returns error? {
     }
 }

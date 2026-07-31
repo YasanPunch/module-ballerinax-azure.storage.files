@@ -18,12 +18,8 @@
 
 package io.ballerina.lib.azure.storage.files.plugin;
 
-import io.ballerina.compiler.api.symbols.AnnotationSymbol;
 import io.ballerina.compiler.api.symbols.MethodSymbol;
-import io.ballerina.compiler.api.symbols.Symbol;
-import io.ballerina.compiler.syntax.tree.AnnotationNode;
 import io.ballerina.compiler.syntax.tree.FunctionDefinitionNode;
-import io.ballerina.compiler.syntax.tree.MetadataNode;
 import io.ballerina.compiler.syntax.tree.Node;
 import io.ballerina.compiler.syntax.tree.NodeList;
 import io.ballerina.compiler.syntax.tree.ServiceDeclarationNode;
@@ -38,10 +34,8 @@ import java.util.Optional;
 import static io.ballerina.compiler.syntax.tree.SyntaxKind.RESOURCE_ACCESSOR_DEFINITION;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CONTENT_HANDLERS;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.INVALID_REMOTE_FUNCTION;
-import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.MISSING_SERVICE_CONFIG_ANNOTATION;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.NO_VALID_REMOTE_METHOD;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.RESOURCE_FUNCTION_NOT_ALLOWED;
-import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.SERVICE_CONFIG_ANNOTATION;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.getDiagnostic;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.getMethodSymbol;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.isRemoteFunction;
@@ -50,9 +44,11 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.isRemoteFu
  * Validates a listener service's members: resource functions are rejected, every remote method
  * must be one of the content handlers or the optional {@code onError}, at least one content
  * handler must be present, and each declared handler's signature is checked by
- * {@link ContentFunctionValidator} (content handlers) or {@link OnErrorFunctionValidator}.
+ * {@link ContentFunctionValidator} (content handlers) or {@link OnErrorFunctionValidator}. The
+ * watched path is the service's attach point (share root when absent), so no annotation is
+ * required.
  *
- * Enforces: @files:ServiceConfig present, no resource functions, no unknown remote methods, ≥1 content handler
+ * Enforces: no resource functions, no unknown remote methods, ≥1 content handler
  */
 public class ServiceValidator {
 
@@ -64,11 +60,6 @@ public class ServiceValidator {
     public void validate(SyntaxNodeAnalysisContext context) {
         // Get the service declaration node.
         ServiceDeclarationNode serviceDeclarationNode = (ServiceDeclarationNode) context.node();
-        // If the service has no service config annotation, report an error.
-        if (!hasServiceConfigAnnotation(context, serviceDeclarationNode)) {
-            context.reportDiagnostic(getDiagnostic(MISSING_SERVICE_CONFIG_ANNOTATION,
-                    DiagnosticSeverity.ERROR, serviceDeclarationNode.location()));
-        }
         // Get the members of the service declaration.
         NodeList<Node> members = serviceDeclarationNode.members();
         // Create a list of content methods.
@@ -119,28 +110,4 @@ public class ServiceValidator {
         }
     }
 
-    // The watched path has no home other than @files:ServiceConfig (no listener-level fallback),
-    // so the annotation itself is mandatory; its required 'path' field is then enforced by the
-    // type checker.
-    private boolean hasServiceConfigAnnotation(SyntaxNodeAnalysisContext context,
-                                               ServiceDeclarationNode serviceDeclarationNode) {
-        Optional<MetadataNode> metadata = serviceDeclarationNode.metadata();
-        if (metadata.isEmpty()) {
-            return false;
-        }
-        for (AnnotationNode annotation : metadata.get().annotations()) {
-            Optional<Symbol> symbol = context.semanticModel().symbol(annotation);
-            if (symbol.isEmpty() || !(symbol.get() instanceof AnnotationSymbol annotationSymbol)) {
-                continue;
-            }
-            boolean isServiceConfig = annotationSymbol.getName()
-                    .map(SERVICE_CONFIG_ANNOTATION::equals).orElse(false);
-            boolean isOurModule = annotationSymbol.getModule()
-                    .map(PluginUtils::validateModuleId).orElse(false);
-            if (isServiceConfig && isOurModule) {
-                return true;
-            }
-        }
-        return false;
-    }
 }

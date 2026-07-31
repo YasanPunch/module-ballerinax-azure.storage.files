@@ -1,6 +1,6 @@
 # Drop folder processor
 
-This example watches a folder on an Azure file share and reacts to each file dropped into it. It uses the connector's `Listener`, which polls the watched path on a fixed interval and dispatches every file it finds to a matching handler. JSON files are logged and then deleted, and every other file is logged and then moved into a `/processed` folder, so each successfully handled file is cleared out of the watched folder. A JSON file that fails to bind (malformed content, or a root that is not an object) is moved into `/failed` instead. Delivery is at least once: a file that stays in the watched folder is dispatched again on a later poll, so handlers should tolerate a repeat.
+This example watches a folder on an Azure file share and reacts to each file dropped into it. It uses the connector's `Listener`, which polls the watched path on a fixed interval and dispatches every file it finds to a matching handler. The watched path is the service's attach point, `service /incoming on dropListener`. JSON files are logged and then deleted, and every other file is logged and then moved into a `/processed` folder, so each successfully handled file is cleared out of the watched folder. A JSON file that fails to bind (malformed content, or a root that is not an object) is moved into `/failed` instead. Delivery is at least once: a file that stays in the watched folder is dispatched again on a later poll, so handlers should tolerate a repeat.
 
 ## Prerequisites
 

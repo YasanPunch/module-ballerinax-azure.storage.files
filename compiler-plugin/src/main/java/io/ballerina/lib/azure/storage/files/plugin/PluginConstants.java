@@ -54,9 +54,6 @@ public final class PluginConstants {
     public static final String FILE_INFO = "FileInfo";
     public static final String ERROR_TYPE = "Error";
 
-    // The required service annotation.
-    public static final String SERVICE_CONFIG_ANNOTATION = "ServiceConfig";
-
     /**
      * The diagnostics the plugin can report, each paired with its stable code.
      */
@@ -79,8 +76,6 @@ public final class PluginConstants {
                 + "(content, fileInfo?, caller?).", "AZURE_FILES_109"),
         INVALID_RETURN_TYPE_ERROR_OR_NIL("Invalid return type. Expected 'error?' or 'files:Error?'.",
                 "AZURE_FILES_110"),
-        MISSING_SERVICE_CONFIG_ANNOTATION("Missing '@files:ServiceConfig' annotation. A listener service must "
-                + "configure 'path'.", "AZURE_FILES_111"),
         INVALID_ON_ERROR_FIRST_PARAMETER("Invalid parameter for 'onError'. The first parameter must be "
                 + "'error' or 'files:Error'.", "AZURE_FILES_112"),
         INVALID_ON_ERROR_SECOND_PARAMETER("Invalid parameter for 'onError'. Optional second parameter must be "

@@ -42,6 +42,7 @@ import io.ballerina.runtime.api.types.StreamType;
 import io.ballerina.runtime.api.types.Type;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.utils.TypeUtils;
+import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BDecimal;
 import io.ballerina.runtime.api.values.BError;
 import io.ballerina.runtime.api.values.BMap;
@@ -86,8 +87,16 @@ public final class ShareListenerAdaptor {
     // Native-data key under which the per-listener context is stored on the listener object.
     private static final String NATIVE_LISTENER_CONTEXT = "listenerContext";
 
-    // The Caller object type and the ListenerConfiguration fields this class reads.
+    // The Caller and Client object types and the ListenerConfiguration fields this class reads.
     private static final String CALLER_OBJECT = "Caller";
+    private static final String CLIENT_OBJECT = "Client";
+    private static final String CLIENT_CONFIGURATION_RECORD = "ClientConfiguration";
+    // The connection fields ClientConfiguration shares with ListenerConfiguration.
+    private static final BString[] CLIENT_CONFIGURATION_FIELDS = {
+            StringUtils.fromString("auth"),
+            StringUtils.fromString("retryConfig"),
+            StringUtils.fromString("transportConfig")
+    };
     private static final BString LAX_DATA_BINDING = StringUtils.fromString("laxDataBinding");
     private static final BString CSV_FAIL_SAFE = StringUtils.fromString("csvFailSafe");
     // The module-level Ballerina helper that binds CSV content on a real strand.
@@ -97,7 +106,6 @@ public final class ShareListenerAdaptor {
     // ServiceConfiguration, FunctionConfiguration, and Move.
     private static final String SERVICE_CONFIG_ANNOTATION = "ServiceConfig";
     private static final String FUNCTION_CONFIG_ANNOTATION = "FunctionConfig";
-    private static final BString SERVICE_CONFIG_PATH = StringUtils.fromString("path");
     private static final BString SERVICE_CONFIG_RECURSIVE = StringUtils.fromString("recursive");
     private static final BString SERVICE_CONFIG_MIN_FILE_AGE = StringUtils.fromString("minFileAgeSeconds");
     private static final BString FILE_NAME_PATTERN = StringUtils.fromString("fileNamePattern");
@@ -161,16 +169,22 @@ public final class ShareListenerAdaptor {
             listenerObj.addNativeData(Ops.NATIVE_SERVICE_CLIENT, serviceClient);
             listenerObj.addNativeData(Ops.NATIVE_SHARE_CLIENT, shareClient);
 
-            // we don't need connection options here. 
-            BObject caller = ValueCreator.createObjectValue(ModuleUtils.getModule(), CALLER_OBJECT, shareName);
-            // The Ballerina Caller.init takes only shareName because the Caller never builds a
-            // connection: the already-built ShareServiceClient/ShareClient (constructed by
-            // ClientInit.buildServiceClient(config) from the full config: auth, retry, transport,
-            // TLS) attach to the Caller as native data. Every Caller remote op reads those
-            // native-data clients — the same statics Client uses — so auth/retry/transport are
-            // all carried.
-            caller.addNativeData(Ops.NATIVE_SERVICE_CLIENT, serviceClient);
-            caller.addNativeData(Ops.NATIVE_SHARE_CLIENT, shareClient);
+            // The Caller wraps a Client built from the listener's connection configuration
+            // (auth, retry, transport, TLS) and delegates every remote operation to it. The
+            // listener record's extra fields cannot pass the closed ClientConfiguration type,
+            // so the connection fields are copied into a fresh record.
+            BMap<BString, Object> clientConfig =
+                    ValueCreator.createRecordValue(ModuleUtils.getModule(), CLIENT_CONFIGURATION_RECORD);
+            for (BString field : CLIENT_CONFIGURATION_FIELDS) {
+                Object value = config.get(field);
+                if (value != null) {
+                    clientConfig.put(field, value);
+                }
+            }
+            BObject callerClient = ValueCreator.createObjectValue(ModuleUtils.getModule(), CLIENT_OBJECT,
+                    shareName, clientConfig);
+            BObject caller = ValueCreator.createObjectValue(ModuleUtils.getModule(), CALLER_OBJECT,
+                    callerClient, shareName);
 
             // Add the listener context to the listener object.
             boolean laxDataBinding = Boolean.TRUE.equals(config.get(LAX_DATA_BINDING));
@@ -195,7 +209,7 @@ public final class ShareListenerAdaptor {
      * @param service     the service being attached
      * @return {@code null} on success, or the validation error
      */
-    public static Object attachService(Environment env, BObject listenerObj, BObject service) {
+    public static Object attachService(Environment env, BObject listenerObj, BObject service, Object name) {
         ListenerContext ctx = context(listenerObj);
         // If the listener is not initialized, return an error.
         if (ctx == null) {
@@ -208,7 +222,7 @@ public final class ShareListenerAdaptor {
         }
         try {
             // Parse the service's watch configuration and handler set, then attach it.
-            ctx.serviceContext = parseService(service);
+            ctx.serviceContext = parseService(service, name);
             ctx.service = service;
             return null;
         } catch (BError e) {
@@ -694,37 +708,35 @@ public final class ShareListenerAdaptor {
     }
 
     /**
-     * Parses the attached service's watch configuration and handler set.
+     * Parses the attached service's watch configuration and handler set. The watched path is
+     * the service's attach point, carried in {@code name} (a string, a resource path's segment
+     * array, or nil); a service with no attach point watches the share root. The optional
+     * {@code @files:ServiceConfig} annotation supplies only the filters.
      *
      * @param service the service being attached
+     * @param name    the service's attach point
      * @return the immutable per-attach service context
      */
-    private static ServiceContext parseService(BObject service) {
+    private static ServiceContext parseService(BObject service, Object name) {
+        String watchedPath = watchedPathFrom(name);
         // Get the service type.
         ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
-        // Get the service config annotation.
+        // The filter annotation is optional; every filter has a default.
         BMap<BString, Object> config = annotation(serviceType.getAnnotations(), SERVICE_CONFIG_ANNOTATION);
-        // If the service config annotation is not present, throw an error.
-        if (config == null) {
-            throw FilesErrorCreator.processingError(
-                    "the service must declare @files:ServiceConfig with a watched path", null);
+        boolean recursive = true;
+        Pattern fileNamePattern = null;
+        Double minFileAgeSeconds = null;
+        if (config != null) {
+            // The recursive flag defaults to true when absent.
+            Object recursiveValue = config.get(SERVICE_CONFIG_RECURSIVE);
+            recursive = recursiveValue == null || (Boolean) recursiveValue;
+            // The file name pattern is optional.
+            Object patternValue = config.get(FILE_NAME_PATTERN);
+            fileNamePattern = patternValue == null ? null : compile(((BString) patternValue).getValue());
+            // The minimum file age is optional.
+            Object ageValue = config.get(SERVICE_CONFIG_MIN_FILE_AGE);
+            minFileAgeSeconds = ageValue == null ? null : ((BDecimal) ageValue).floatValue();
         }
-        // Get the path value from the service config annotation.
-        Object pathValue = config.get(SERVICE_CONFIG_PATH);
-        // If the path value is not present or is empty, throw an error.
-        if (pathValue == null || ((BString) pathValue).getValue().strip().isEmpty()) {
-            throw FilesErrorCreator.processingError("@files:ServiceConfig requires a non-empty path", null);
-        }
-        String watchedPath = Ops.directoryPath((BString) pathValue);
-        // The recursive flag defaults to true when absent.
-        Object recursiveValue = config.get(SERVICE_CONFIG_RECURSIVE);
-        boolean recursive = recursiveValue == null || (Boolean) recursiveValue;
-        // The file name pattern is optional.
-        Object patternValue = config.get(FILE_NAME_PATTERN);
-        Pattern fileNamePattern = patternValue == null ? null : compile(((BString) patternValue).getValue());
-        // The minimum file age is optional.
-        Object ageValue = config.get(SERVICE_CONFIG_MIN_FILE_AGE);
-        Double minFileAgeSeconds = ageValue == null ? null : ((BDecimal) ageValue).floatValue();
 
         // Create a map of handlers.
         Map<String, HandlerConfig> handlers = new LinkedHashMap<>();
@@ -732,12 +744,12 @@ public final class ShareListenerAdaptor {
         int onErrorArity = 0;
         for (MethodType method : serviceType.getMethods()) {
             // Get the method name.
-            String name = method.getName();
-            if (ON_ERROR.equals(name)) {
+            String methodName = method.getName();
+            if (ON_ERROR.equals(methodName)) {
                 onErrorArity = method.getParameters().length;
                 continue;
             }
-            if (!HANDLER_NAMES.contains(name)) {
+            if (!HANDLER_NAMES.contains(methodName)) {
                 continue;
             }
             // Get the method config annotation.
@@ -768,11 +780,36 @@ public final class ShareListenerAdaptor {
             // Get the content type of the method.
             Type contentType = params.length >= 1 ? params[0].type : null;
             // Create a new handler config and add it to the handlers map.
-            handlers.put(name, new HandlerConfig(name, routing, afterProcess, afterError,
+            handlers.put(methodName, new HandlerConfig(methodName, routing, afterProcess, afterError,
                     params.length, secondIsCaller, contentType));
         }
         return new ServiceContext(watchedPath, recursive, fileNamePattern, minFileAgeSeconds,
                 handlers, onErrorArity);
+    }
+
+    // Resolves the watched path from the service's attach point: a resource path's segments
+    // join with a slash, a string normalizes (trimmed, double slashes collapsed, leading and
+    // trailing slashes stripped to the internal share-relative form), and nil or an empty
+    // value is the share root.
+    private static String watchedPathFrom(Object name) {
+        if (name instanceof BArray segments) {
+            StringBuilder joined = new StringBuilder();
+            for (int i = 0; i < segments.size(); i++) {
+                if (joined.length() > 0) {
+                    joined.append('/');
+                }
+                joined.append(segments.getBString(i).getValue());
+            }
+            return Ops.directoryPath(StringUtils.fromString(joined.toString()));
+        }
+        if (name instanceof BString path) {
+            String collapsed = path.getValue().strip();
+            while (collapsed.contains("//")) {
+                collapsed = collapsed.replace("//", "/");
+            }
+            return Ops.directoryPath(StringUtils.fromString(collapsed));
+        }
+        return "";
     }
 
     private static PostAction readAction(BMap<BString, Object> config, BString key) {

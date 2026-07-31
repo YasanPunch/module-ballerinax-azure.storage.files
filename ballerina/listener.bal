@@ -54,12 +54,11 @@ public enum ErrorLogContentType {
     RAW_AND_METADATA
 }
 
-# The per-service watch configuration, supplied through the `@files:ServiceConfig` annotation.
-# It declares which share-relative path a service watches and how.
+# Optional per-service filters, supplied through the `@files:ServiceConfig` annotation. The
+# watched path itself is the service's attach point (for example `service /invoices on lsn`),
+# and a service with no attach point watches the share root.
 public type ServiceConfiguration record {|
-    # The share-relative path this service watches (required; `/` is the share root)
-    string path;
-    # Watch subdirectories under the path
+    # Watch subdirectories under the watched path
     boolean recursive = true;
     # A regular expression matched against the file name (not the path); non-matching files
     # are never dispatched
@@ -68,7 +67,7 @@ public type ServiceConfiguration record {|
     decimal minFileAgeSeconds?;
 |};
 
-# Declares the watch configuration of a listener service.
+# Declares the optional filters of a listener service.
 public annotation ServiceConfiguration ServiceConfig on service;
 
 # The auto-consume action that deletes the file after the handler runs.
@@ -137,13 +136,15 @@ public isolated class Listener {
         return externInit(self, shareName, config);
     }
 
-    # Attaches a service to the listener. One service attaches per listener; a second attach fails.
+    # Attaches a service to the listener. One service attaches per listener; a second attach
+    # fails. The `name` argument carries the service's attach point, which is the watched
+    # share-relative path; when absent, the service watches the share root.
     #
     # + serviceRef - The service to attach
-    # + name - The standard listener-contract argument; unused
+    # + name - The watched path, from the service's attach point
     # + return - An `error` if the service could not be attached, otherwise `()`
     public isolated function attach(Service serviceRef, string[]|string? name = ()) returns error? {
-        return externAttach(self, serviceRef);
+        return externAttach(self, serviceRef, name);
     }
 
     # Detaches a service from the listener.
@@ -212,7 +213,8 @@ isolated function externInit(Listener listenerObj, string shareName, ListenerCon
     'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
 } external;
 
-isolated function externAttach(Listener listenerObj, Service serviceRef) returns error? = @java:Method {
+isolated function externAttach(Listener listenerObj, Service serviceRef, string[]|string? name)
+        returns error? = @java:Method {
     name: "attachService",
     'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
 } external;

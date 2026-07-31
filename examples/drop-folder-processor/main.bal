@@ -33,10 +33,10 @@ listener files:Listener dropListener = new (shareName,
     pollingInterval = 5
 );
 
-// The service watches "/incoming". Files are routed to a handler by extension: a .json file goes
-// to onFileJson, and everything else to onFile.
-@files:ServiceConfig {path: "/incoming"}
-service on dropListener {
+// The service's attach point is the watched path: this service watches "/incoming". Files are
+// routed to a handler by extension: a .json file goes to onFileJson, and everything else to
+// onFile.
+service /incoming on dropListener {
 
     // Handle JSON object drops, then delete each file once it is processed. A .json file that is
     // malformed or whose root is not an object cannot bind to map<json>; afterError moves it to

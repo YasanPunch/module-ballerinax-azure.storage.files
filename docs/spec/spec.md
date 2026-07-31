@@ -593,7 +593,7 @@ public function close() returns Error?;
 
 Azure Files is not exposed as an Event Grid source, so the listener polls. It uses **stateless dispatch**: each polling tick lists the watched path and reads each present file, invoking the content handler that matches it. No per-file state is kept, so the contract is that handlers consume files by processing them and then deleting or moving them out of the watched path; an unprocessed file fires again on a later poll. This mode is trivially restart-safe. Delivery is at-least-once. Polling runs on the platform task scheduler at a fixed `pollingInterval`, with the scheduler's waiting policy pinned so a tick that fires during a still-running scan waits for it; dispatched handlers run concurrently beyond the scan. An in-progress guard keyed on the file's path and entity tag keeps one version of a file from being dispatched twice at once, so an unchanged file re-fires only after its previous handling has finished and it is still present; a file overwritten while its previous version is still being handled counts as a new version and can be dispatched alongside it. Handlers should be idempotent, or claim a file by renaming it out of the watched path before processing.
 
-One listener watches exactly one service and one path. The listener configuration carries the share-level concerns (credentials, polling cadence, transport). What to watch is declared on the service through the `@ServiceConfig` annotation: its required `path` field is the share-relative path the service watches (write `path: "/"` for the share root), and the annotation's remaining fields configure recursion and file-name filtering.
+One listener watches exactly one service and one path. The listener configuration carries the share-level concerns (credentials, polling cadence, transport). What to watch is the service's attach point: `service /invoices on lsn` (a resource path, whose segments join with `/`) or `service "/dir one/reports" on lsn` (a string, for names a resource path cannot express). The path normalizes by trimming whitespace, collapsing repeated slashes, ensuring a leading slash, and stripping a trailing one. A service with no attach point watches the share root. The optional `@ServiceConfig` annotation configures recursion and file-name filtering; no annotation is needed for a service to work.
 
 ```ballerina
 public type ListenerConfiguration record {|
@@ -623,9 +623,7 @@ public enum ErrorLogContentType {
 }
 
 public type ServiceConfiguration record {|
-    # Share-relative path this service watches (required; "/" is the share root)
-    string path;
-    # Whether the service watches subdirectories under its path
+    # Whether the service watches subdirectories under the watched path
     boolean recursive = true;
     # Regex on the file name; non-matching files are never dispatched to this service
     string fileNamePattern?;
@@ -636,7 +634,7 @@ public type ServiceConfiguration record {|
 public annotation ServiceConfiguration ServiceConfig on service;
 ```
 
-A listener already bound to a service rejects a second `attach` at runtime, so to watch several paths, run several independent listeners. Overlap can still arise across separate listeners (a file under a path watched by two of them reaches each), so handling races there are the user's responsibility (idempotent handlers, or claim a file by renaming it out of the watched path). Attaching a service with no `path`, or an invalid `fileNamePattern`, fails. Calling `start` on a listener that is already running fails, and `detach` of a service that is not attached fails.
+A listener already bound to a service rejects a second `attach` at runtime, so to watch several paths, run several independent listeners. Overlap can still arise across separate listeners (a file under a path watched by two of them reaches each), so handling races there are the user's responsibility (idempotent handlers, or claim a file by renaming it out of the watched path). The `attach` `name` argument carries the service's attach point, which is the watched path. Attaching a service with an invalid `fileNamePattern` fails. A credential that cannot list the watched path does not fail `attach`; the first poll surfaces the authorization error instead. Calling `start` on a listener that is already running fails, and `detach` of a service that is not attached fails.
 
 ```ballerina
 public isolated class Listener {
@@ -678,7 +676,7 @@ The stream content forms read the file from the service in chunks as the handler
 
 A service may also declare an `onError` handler, `remote function onError(Error err, Caller caller?) returns error?`, which is notified when a poll fails (with the mapped typed error, for example an `AuthorizationError` when the credential lacks access) and when a typed handler's content binding fails (with a `ProcessingError`). It is not a content handler: it does not satisfy the at-least-one-handler requirement, takes no annotation, and does not change what happens to the file, so a declared `afterError` still applies to a binding failure. An error returned by `onError` itself is swallowed. Errors returned by content handlers do not notify `onError`, and neither does a CSV stream row that fails to bind lazily (that error belongs to the handler draining the stream).
 
-A compiler plugin validates the service at compile time: at least one content handler, each handler's parameter types and `error?` return (including the accepted parameter shapes and the `onError` signature), no resource functions or unknown remote methods, and the presence of `@ServiceConfig` (whose required `path` field the type checker then enforces).
+A compiler plugin validates the service at compile time: at least one content handler, each handler's parameter types and `error?` return (including the accepted parameter shapes and the `onError` signature), and no resource functions or unknown remote methods.
 
 A handler can consume a file by declaring `@FunctionConfig`, which moves or deletes the file after the handler runs:
 
@@ -822,10 +820,7 @@ listener files:Listener invoiceListener = check new ("invoices",
     pollingInterval = 30
 );
 
-@files:ServiceConfig {
-    path: "/incoming"
-}
-service on invoiceListener {
+service /incoming on invoiceListener {
     remote function onFile(byte[] content, files:FileInfo file, files:Caller caller) returns error? {
         check caller->downloadFile(file.path, "./processed/" + file.name);
         // Consume the file so it does not fire again on the next poll.

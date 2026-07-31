@@ -1,5 +1,5 @@
 [package]
 org = "azure_files_test"
-name = "invalid_missing_service_config"
+name = "valid_no_path_defaults_root"
 version = "1.0.0"
 distribution = "2201.12.0"

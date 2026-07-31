@@ -85,13 +85,13 @@ function testListenerOnFileDispatch() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.put("onfile", check string:fromBytes(content));
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("onfile") >= 1);
     check lsn.gracefulStop();
@@ -105,16 +105,16 @@ function testListenerOnFileDispatch() returns error? {
 function testAttachRejectsSecondService() returns error? {
     string share = testShare("lsn-attach2");
     Listener lsn = check newListener(share);
-    Service first = @ServiceConfig {path: "/incoming"} service object {
+    Service first = service object {
         remote function onFile(byte[] content) returns error? {
         }
     };
-    Service second = @ServiceConfig {path: "/incoming"} service object {
+    Service second = service object {
         remote function onFile(byte[] content) returns error? {
         }
     };
-    check lsn.attach(first);
-    error? rejected = lsn.attach(second);
+    check lsn.attach(first, "/incoming");
+    error? rejected = lsn.attach(second, "/incoming");
     test:assertTrue(rejected is error, "a second attach must be rejected");
     if rejected is error {
         test:assertTrue(rejected.message().includes("Only one service can be attached"), rejected.message());
@@ -127,11 +127,11 @@ function testStartTwiceRejected() returns error? {
     Client shareClient = setup[0];
     string share = setup[1];
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content) returns error? {
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     error? second = lsn.'start();
     test:assertTrue(second is error, "a second start must be rejected");
@@ -147,15 +147,15 @@ function testStartTwiceRejected() returns error? {
 function testDetachWrongServiceRejected() returns error? {
     string share = testShare("lsn-detach2");
     Listener lsn = check newListener(share);
-    Service attached = @ServiceConfig {path: "/incoming"} service object {
+    Service attached = service object {
         remote function onFile(byte[] content) returns error? {
         }
     };
-    Service other = @ServiceConfig {path: "/incoming"} service object {
+    Service other = service object {
         remote function onFile(byte[] content) returns error? {
         }
     };
-    check lsn.attach(attached);
+    check lsn.attach(attached, "/incoming");
     error? mismatch = lsn.detach(other);
     test:assertTrue(mismatch is error, "detaching a service that is not attached must fail");
     if mismatch is error {
@@ -174,7 +174,7 @@ function testTypedJsonRouting() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
             recorder.put("json", content.toJsonString());
             check caller->deleteFile(info.path);
@@ -184,7 +184,7 @@ function testTypedJsonRouting() returns error? {
             recorder.hit("fallback");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("json") >= 1);
     check lsn.gracefulStop();
@@ -204,7 +204,7 @@ function testUnmappedExtensionFallsBackToOnFile() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
             recorder.hit("json");
         }
@@ -214,7 +214,7 @@ function testUnmappedExtensionFallsBackToOnFile() returns error? {
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("onfile") >= 1);
     check lsn.gracefulStop();
@@ -236,7 +236,7 @@ function testMalformedJsonTriggersAfterError() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterError: DELETE}
         remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
             recorder.hit("json");
@@ -246,7 +246,7 @@ function testMalformedJsonTriggersAfterError() returns error? {
             recorder.hit("fallback");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     // The malformed file is consumed by afterError; wait for it to disappear.
     check await(function() returns boolean|error {
@@ -277,13 +277,13 @@ function testOnFileJsonRecordBinding() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFileJson(OrderDoc content, FileInfo info, Caller caller) returns error? {
             recorder.put("record", content.sku + ":" + content.qty.toString());
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("record") >= 1);
     check lsn.gracefulStop();
@@ -304,7 +304,7 @@ function testOnFileJsonArrayRootBindingError() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterError: DELETE}
         remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
             recorder.hit("json");
@@ -314,7 +314,7 @@ function testOnFileJsonArrayRootBindingError() returns error? {
             recorder.hit("fallback");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     // The array-root file is consumed by afterError; wait for it to disappear.
     check await(function() returns boolean|error {
@@ -338,7 +338,7 @@ function testOnFileJsonMapArrayBinding() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFileJson(map<json>[] content, FileInfo info, Caller caller) returns error? {
             string[] skus = [];
             foreach map<json> item in content {
@@ -348,7 +348,7 @@ function testOnFileJsonMapArrayBinding() returns error? {
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("maparr") >= 1);
     check lsn.gracefulStop();
@@ -368,7 +368,7 @@ function testOnFileJsonRecordArrayBinding() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFileJson(OrderDoc[] content, FileInfo info, Caller caller) returns error? {
             string[] parts = [];
             foreach OrderDoc item in content {
@@ -378,7 +378,7 @@ function testOnFileJsonRecordArrayBinding() returns error? {
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("recarr") >= 1);
     check lsn.gracefulStop();
@@ -400,13 +400,13 @@ function testOnFileJsonArrayTargetObjectRootBindingError() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterError: DELETE}
         remote function onFileJson(map<json>[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit("maparr");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     // The mismatched file is consumed by afterError; wait for it to disappear.
     check await(function() returns boolean|error {
@@ -429,13 +429,13 @@ function testFunctionConfigDeleteConsumes() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit("delete");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("delete") >= 1);
     check await(function() returns boolean|error {
@@ -458,13 +458,13 @@ function testFunctionConfigMoveConsumes() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: {moveTo: "/processed"}}
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit("move");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("move") >= 1);
     check await(function() returns boolean|error {
@@ -486,7 +486,7 @@ function testCallerOperations() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.put("shareName", caller.getShareName());
 
@@ -530,7 +530,7 @@ function testCallerOperations() returns error? {
             recorder.hit("done");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("done") >= 1, timeoutSeconds = 90);
     check lsn.immediateStop();
@@ -560,7 +560,7 @@ function testCallerFileTransfer() returns error? {
     final string localUploadPath = localUpload;
     final string localDownloadPath = localDownload;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             check caller->createDirectory("/work");
             check caller->uploadFile(localUploadPath, "/work/uploaded.txt");
@@ -571,7 +571,7 @@ function testCallerFileTransfer() returns error? {
             recorder.hit("done");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("done") >= 1, timeoutSeconds = 90);
     check lsn.gracefulStop();
@@ -590,13 +590,13 @@ function testTypedTextRouting() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFileText(string content, FileInfo info, Caller caller) returns error? {
             recorder.put("text", content);
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("text") >= 1);
     check lsn.gracefulStop();
@@ -615,13 +615,13 @@ function testTypedXmlRouting() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFileXml(xml content, FileInfo info, Caller caller) returns error? {
             recorder.put("xml", content.toString());
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("xml") >= 1);
     check lsn.gracefulStop();
@@ -640,7 +640,7 @@ function testTypedCsvRouting() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFileCsv(string[][] content, FileInfo info, Caller caller) returns error? {
             string[] rows = [];
             foreach string[] row in content {
@@ -650,7 +650,7 @@ function testTypedCsvRouting() returns error? {
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("csv") >= 1);
     check lsn.gracefulStop();
@@ -669,12 +669,12 @@ function testMinFileAgeSkipsYoungFiles() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming", minFileAgeSeconds: 3600} service object {
+    Service svc = @ServiceConfig {minFileAgeSeconds: 3600} service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit("dispatched");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     // The age gate is categorical here (an hour), so a few polls suffice as the negative window.
     runtime:sleep(4);
@@ -698,13 +698,13 @@ function testNonRecursiveIgnoresSubdirectories() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming", recursive: false} service object {
+    Service svc = @ServiceConfig {recursive: false} service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit(info.name);
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("top.dat") >= 1);
     runtime:sleep(3);
@@ -727,13 +727,13 @@ function testServiceFileNamePatternFilters() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming", fileNamePattern: "^match\\..*"} service object {
+    Service svc = @ServiceConfig {fileNamePattern: "^match\\..*"} service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit(info.name);
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("match.dat") >= 1);
     runtime:sleep(3);
@@ -757,7 +757,7 @@ function testFunctionConfigPatternOverridesExtension() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {fileNamePattern: ".*\\.dat$"}
         remote function onFileText(string content, FileInfo info, Caller caller) returns error? {
             recorder.put("text", content);
@@ -768,7 +768,7 @@ function testFunctionConfigPatternOverridesExtension() returns error? {
             recorder.hit("fallback");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("text") >= 1);
     check lsn.gracefulStop();
@@ -783,25 +783,14 @@ function testFunctionConfigPatternOverridesExtension() returns error? {
 function testInvalidFileNamePatternRejectedAtAttach() returns error? {
     string share = testShare("lsn-badpattern");
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming", fileNamePattern: "["} service object {
+    Service svc = @ServiceConfig {fileNamePattern: "["} service object {
         remote function onFile(byte[] content) returns error? {
         }
     };
-    error? attached = lsn.attach(svc);
+    error? attached = lsn.attach(svc, "/incoming");
     test:assertTrue(attached is error, "an invalid fileNamePattern regex must fail at attach");
 }
 
-@test:Config {}
-function testEmptyPathRejectedAtAttach() returns error? {
-    string share = testShare("lsn-emptypath");
-    Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: ""} service object {
-        remote function onFile(byte[] content) returns error? {
-        }
-    };
-    error? attached = lsn.attach(svc);
-    test:assertTrue(attached is error, "an empty watched path must fail at attach");
-}
 
 @test:Config {}
 function testMoveOntoExistingFileFails() returns error? {
@@ -814,13 +803,13 @@ function testMoveOntoExistingFileFails() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: {moveTo: "/processed"}}
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit("ran");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("ran") >= 1);
     runtime:sleep(3);
@@ -850,13 +839,13 @@ function testMovePreserveSubDirsFalseFlattens() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: {moveTo: "/flat", preserveSubDirs: false}}
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit("moved");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(function() returns boolean|error {
         boolean atFlat = check shareClient->hasFile("/flat/deep.dat");
@@ -882,12 +871,12 @@ function testUnmappedFileSkippedWithoutOnFile() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
             recorder.hit("json");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     runtime:sleep(4);
     check lsn.gracefulStop();
@@ -908,7 +897,7 @@ function testUnconsumedFileRedelivers() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit("attempt");
             if recorder.count("attempt") == 1 {
@@ -917,7 +906,7 @@ function testUnconsumedFileRedelivers() returns error? {
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("attempt") >= 2);
     check await(function() returns boolean|error {
@@ -962,11 +951,11 @@ function testPollFailureSurfacesTypedError() returns error? {
     string share = setup[1];
 
     Listener lsn = check newMockListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content) returns error? {
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
 
     mockListFaultCode = "AuthenticationFailed";
     error? result = poll(lsn);
@@ -987,11 +976,11 @@ function testPollFailureMapsProcessingError() returns error? {
         accountKey: MOCK_KEY,
         serviceUrl: "http://localhost:1"
     }, pollingInterval = 1, retryConfig = {maxTries: 1});
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content) returns error? {
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
 
     error? result = poll(lsn);
     test:assertTrue(result is ProcessingError,
@@ -1007,13 +996,13 @@ function testPollFailureRecoversOnNextPoll() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newMockListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit("dispatch");
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
 
     mockListFaultCode = "AuthenticationFailed";
     error? failed = poll(lsn);
@@ -1040,7 +1029,7 @@ function testPollFailureSurfacesEveryPoll() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newMockListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content) returns error? {
         }
 
@@ -1048,7 +1037,7 @@ function testPollFailureSurfacesEveryPoll() returns error? {
             recorder.hit("onerror");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
 
     mockListFaultCode = "AuthenticationFailed";
     error? first = poll(lsn);
@@ -1076,7 +1065,7 @@ function testOnErrorFiresOnPollFailure() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newMockListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content) returns error? {
         }
 
@@ -1088,7 +1077,7 @@ function testOnErrorFiresOnPollFailure() returns error? {
             }
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
 
     mockListFaultCode = "AuthenticationFailed";
     error? result = poll(lsn);
@@ -1111,7 +1100,7 @@ function testOnErrorFiresOnBindingFailure() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFileJson(map<json> content) returns error? {
             recorder.hit("json");
         }
@@ -1122,7 +1111,7 @@ function testOnErrorFiresOnBindingFailure() returns error? {
             }
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("onerror") >= 1);
     check lsn.gracefulStop();
@@ -1142,7 +1131,7 @@ function testOnErrorReceivesCaller() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newMockListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content) returns error? {
         }
 
@@ -1150,7 +1139,7 @@ function testOnErrorReceivesCaller() returns error? {
             recorder.put("onerror-share", caller.getShareName());
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
 
     mockListFaultCode = "AuthenticationFailed";
     error? result = poll(lsn);
@@ -1173,7 +1162,7 @@ function testOnErrorNotFiredOnHandlerError() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit("attempt");
             if recorder.count("attempt") == 1 {
@@ -1186,7 +1175,7 @@ function testOnErrorNotFiredOnHandlerError() returns error? {
             recorder.hit("onerror");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("attempt") >= 2);
     check lsn.gracefulStop();
@@ -1206,7 +1195,7 @@ function testBindingFailureAfterErrorInteraction() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterError: DELETE}
         remote function onFileJson(map<json> content) returns error? {
             recorder.hit("json");
@@ -1216,7 +1205,7 @@ function testBindingFailureAfterErrorInteraction() returns error? {
             recorder.hit("onerror");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("onerror") >= 1);
     check await(function() returns boolean|error {
@@ -1243,7 +1232,7 @@ function testOnErrorErrorReturnIsSwallowed() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterError: DELETE}
         remote function onFileJson(map<json> content) returns error? {
             recorder.hit("json");
@@ -1259,7 +1248,7 @@ function testOnErrorErrorReturnIsSwallowed() returns error? {
             return error("onError itself failed");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("onerror") >= 1);
     // A failing onError must not disturb the listener: a later file still dispatches.
@@ -1310,7 +1299,7 @@ function testJsonRecordStrictBindingRejectsAbsentField() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterError: DELETE}
         remote function onFileJson(BindingRow content) returns error? {
             recorder.hit("json");
@@ -1320,7 +1309,7 @@ function testJsonRecordStrictBindingRejectsAbsentField() returns error? {
             recorder.hit("onerror");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("onerror") >= 1);
     check lsn.gracefulStop();
@@ -1340,13 +1329,13 @@ function testJsonRecordLaxBindingProjects() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileJson(BindingRow content) returns error? {
             recorder.put("json", string `${content.id}:${content.name ?: "<nil>"}`);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("json") >= 1);
     check lsn.gracefulStop();
@@ -1366,13 +1355,13 @@ function testXmlRecordBinding() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileXml(XmlDoc content) returns error? {
             recorder.put("xml", content.v.toString());
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("xml") >= 1);
     check lsn.gracefulStop();
@@ -1392,13 +1381,13 @@ function testXmlRecordLaxBinding() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileXml(XmlOpen content) returns error? {
             recorder.put("xml", content.v.toString());
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("xml") >= 1);
     check lsn.gracefulStop();
@@ -1418,7 +1407,7 @@ function testCsvRecordArrayBindingUsesHeaderRow() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(CsvPerson[] rows) returns error? {
             string[] parts = [];
@@ -1428,7 +1417,7 @@ function testCsvRecordArrayBindingUsesHeaderRow() returns error? {
             recorder.put("csv", string:'join(";", ...parts));
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("csv") >= 1);
     check lsn.gracefulStop();
@@ -1448,7 +1437,7 @@ function testCsvLaxBindingRecordArray() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(CsvSparse[] rows) returns error? {
             string[] parts = [];
@@ -1458,7 +1447,7 @@ function testCsvLaxBindingRecordArray() returns error? {
             recorder.put("csv", string:'join(";", ...parts));
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("csv") >= 1);
     check lsn.gracefulStop();
@@ -1496,7 +1485,7 @@ function testCsvFailSafeSkipsMalformedRows() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, csvFailSafe = {});
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(CsvPerson[] rows) returns error? {
             string[] parts = [];
@@ -1510,7 +1499,7 @@ function testCsvFailSafeSkipsMalformedRows() returns error? {
             recorder.hit("onerror");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("csv") >= 1);
     check lsn.gracefulStop();
@@ -1534,13 +1523,13 @@ function testCsvFailSafeQuarantinesMetadata() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, csvFailSafe = {});
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(CsvPerson[] rows) returns error? {
             recorder.hit("csv");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("csv") >= 1);
     check lsn.gracefulStop();
@@ -1566,13 +1555,13 @@ function testCsvFailSafeQuarantinesRaw() returns error? {
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1,
             csvFailSafe = {contentType: RAW});
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(CsvPerson[] rows) returns error? {
             recorder.hit("csv");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("csv") >= 1);
     check lsn.gracefulStop();
@@ -1596,13 +1585,13 @@ function testCsvFailSafeQuarantinesRawAndMetadata() returns error? {
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1,
             csvFailSafe = {contentType: RAW_AND_METADATA});
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(CsvPerson[] rows) returns error? {
             recorder.hit("csv");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("csv") >= 1);
     check lsn.gracefulStop();
@@ -1626,7 +1615,7 @@ function testCsvFailSafeNotAppliedWithoutConfig() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterError: DELETE}
         remote function onFileCsv(CsvPerson[] rows) returns error? {
             recorder.hit("csv");
@@ -1636,7 +1625,7 @@ function testCsvFailSafeNotAppliedWithoutConfig() returns error? {
             recorder.hit("onerror");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("onerror") >= 1);
     check lsn.gracefulStop();
@@ -1674,14 +1663,14 @@ function testOnFileByteStreamDeliversContent() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(stream<byte[], error?> content, FileInfo info, Caller caller) returns error? {
             byte[] all = check drainByteStream(content);
             recorder.put("stream", check string:fromBytes(all));
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("stream") >= 1);
     check lsn.gracefulStop();
@@ -1705,7 +1694,7 @@ function testOnFileByteStreamLargeFileChunks() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         remote function onFile(stream<byte[], error?> content, FileInfo info, Caller caller) returns error? {
             int chunks = 0;
             int total = 0;
@@ -1722,7 +1711,7 @@ function testOnFileByteStreamLargeFileChunks() returns error? {
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("chunks") >= 1);
     check lsn.gracefulStop();
@@ -1746,14 +1735,14 @@ function testStreamHandlerAfterProcessOnReturn() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFile(stream<byte[], error?> content) returns error? {
             byte[] all = check drainByteStream(content);
             recorder.put("stream", check string:fromBytes(all));
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("stream") >= 1);
     check await(function() returns boolean|error {
@@ -1777,7 +1766,7 @@ function testStreamPartialDrainThenClose() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFile(stream<byte[], error?> content) returns error? {
             record {|byte[] value;|}|error? first = content.next();
@@ -1788,7 +1777,7 @@ function testStreamPartialDrainThenClose() returns error? {
             recorder.hit("closed");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("closed") >= 1);
     check await(function() returns boolean|error {
@@ -1814,7 +1803,7 @@ function testCsvStreamStringArrays() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(stream<string[], error?> rows) returns error? {
             string[] collected = [];
@@ -1829,7 +1818,7 @@ function testCsvStreamStringArrays() returns error? {
             recorder.put("csv", string:'join(";", ...collected));
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("csv") >= 1);
     check lsn.gracefulStop();
@@ -1849,7 +1838,7 @@ function testCsvStreamRecords() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(stream<CsvPerson, error?> rows) returns error? {
             string[] collected = [];
@@ -1864,7 +1853,7 @@ function testCsvStreamRecords() returns error? {
             recorder.put("csv", string:'join(";", ...collected));
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("csv") >= 1);
     check lsn.gracefulStop();
@@ -1884,7 +1873,7 @@ function testCsvStreamLaxBinding() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(stream<CsvSparse, error?> rows) returns error? {
             string[] collected = [];
@@ -1899,7 +1888,7 @@ function testCsvStreamLaxBinding() returns error? {
             recorder.put("csv", string:'join(";", ...collected));
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("csv") >= 1);
     check lsn.gracefulStop();
@@ -1920,7 +1909,7 @@ function testCsvStreamBindingErrorMidStream() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(stream<CsvPerson, error?> rows) returns error? {
             int good = 0;
@@ -1938,7 +1927,7 @@ function testCsvStreamBindingErrorMidStream() returns error? {
             recorder.hit("onerror");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("midstream") >= 1);
     check lsn.gracefulStop();
@@ -1961,7 +1950,7 @@ function testCsvStreamFailSafeNotApplied() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, csvFailSafe = {});
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(stream<CsvPerson, error?> rows) returns error? {
             int good = 0;
@@ -1973,7 +1962,7 @@ function testCsvStreamFailSafeNotApplied() returns error? {
             recorder.put("failsafe", entry is error ? string `error-after-${good}` : string `clean-${good}`);
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("failsafe") >= 1);
     check lsn.gracefulStop();
@@ -1993,7 +1982,7 @@ function testStreamHandlerErrorTriggersAfterError() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = @ServiceConfig {path: "/incoming"} service object {
+    Service svc = service object {
         @FunctionConfig {afterError: DELETE}
         remote function onFile(stream<byte[], error?> content) returns error? {
             recorder.hit("attempt");
@@ -2005,7 +1994,7 @@ function testStreamHandlerErrorTriggersAfterError() returns error? {
             recorder.hit("onerror");
         }
     };
-    check lsn.attach(svc);
+    check lsn.attach(svc, "/incoming");
     check lsn.'start();
     check await(() => recorder.count("attempt") >= 1);
     check await(function() returns boolean|error {
@@ -2043,22 +2032,22 @@ function testDetachThenReattachUsesNewServiceConfig() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service first = @ServiceConfig {path: "/incoming"} service object {
+    Service first = service object {
         remote function onFile(byte[] content) returns error? {
             recorder.hit("a");
         }
     };
-    Service second = @ServiceConfig {path: "/second"} service object {
+    Service second = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.hit("b");
             check caller->deleteFile(info.path);
         }
     };
-    check lsn.attach(first);
+    check lsn.attach(first, "/incoming");
     check lsn.detach(first);
     // A detached listener accepts a new service, and dispatch follows the new service's
     // configuration only.
-    check lsn.attach(second);
+    check lsn.attach(second, "/second");
     check lsn.'start();
     check await(() => recorder.count("b") >= 1);
     check lsn.gracefulStop();
@@ -2069,5 +2058,202 @@ function testDetachThenReattachUsesNewServiceConfig() returns error? {
     boolean firstPresent = check shareClient->hasFile("/incoming/first.dat");
     test:assertTrue(firstPresent,
             "a file under the detached service's path must not be dispatched");
+    check shareClient.close();
+}
+
+// ===== Watched path from the service attach point =====
+
+@test:Config {}
+function testAttachPointPathWatches() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-attachpath");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("by attach point", "/incoming/point.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.put("file", check string:fromBytes(content));
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("file") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("file"), "by attach point",
+            "a string attach point must be the watched path, with no annotation involved");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testAttachPointResourcePathForm() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-attachres");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("by resource path", "/incoming/res.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("file");
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc, ["incoming"]);
+    check lsn.'start();
+    check await(() => recorder.count("file") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertTrue(recorder.count("file") >= 1,
+            "a resource path attach point must join its segments into the watched path");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testAttachPointNormalization() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-attachnorm");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("normalized", "/incoming/norm.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("file");
+            check caller->deleteFile(info.path);
+        }
+    };
+    // No leading slash, a trailing slash: both normalize away.
+    check lsn.attach(svc, "incoming/");
+    check lsn.'start();
+    check await(() => recorder.count("file") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertTrue(recorder.count("file") >= 1,
+            "the attach point must normalize the leading and trailing slashes");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testAbsentPathDefaultsToShareRoot() returns error? {
+    string share = testShare("lsn-rootdefault");
+    AdminClient admin = check newAdmin();
+    boolean shareExists = check admin->hasShare(share);
+    if !shareExists {
+        check admin->createShare(share);
+    }
+    check admin.close();
+    Client shareClient = check newShareClient(share);
+    check shareClient->uploadContent("at the root", "/root.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.put("file", check string:fromBytes(content));
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc);
+    check lsn.'start();
+    check await(() => recorder.count("file") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("file"), "at the root",
+            "a service without an attach point must watch the share root");
+    check shareClient.close();
+}
+
+@test:Config {}
+function testEmptyAttachPointDefaultsToShareRoot() returns error? {
+    string share = testShare("lsn-emptyroot");
+    AdminClient admin = check newAdmin();
+    boolean shareExists = check admin->hasShare(share);
+    if !shareExists {
+        check admin->createShare(share);
+    }
+    check admin.close();
+    Client shareClient = check newShareClient(share);
+    check shareClient->uploadContent("empty means root", "/empty.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("file");
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc, "");
+    check lsn.'start();
+    check await(() => recorder.count("file") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertTrue(recorder.count("file") >= 1,
+            "an empty attach point must watch the share root");
+    check shareClient.close();
+}
+
+// Pinned to the mock: uses the listing-fault hook. A root-defaulted watch under a credential
+// that cannot list surfaces the typed error on the first poll; nothing fails silently.
+@test:Config {}
+function testRootDefaultSurfacesAuthorizationError() returns error? {
+    [Client, string] setup = check setupMockWatchedShare("lsn-rootauth");
+    Client shareClient = setup[0];
+    string share = setup[1];
+
+    Listener lsn = check newMockListener(share);
+    Service svc = service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+    };
+    check lsn.attach(svc);
+
+    mockListFaultCode = "AuthenticationFailed";
+    error? result = poll(lsn);
+    mockListFaultCode = ();
+
+    test:assertTrue(result is AuthorizationError,
+            "an unauthorized listing under the root default must surface as an AuthorizationError");
+    check lsn.detach(svc);
+    check shareClient.close();
+}
+
+@test:Config {}
+function testAnnotationFiltersApplyWithAttachPoint() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-attachfilter");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("should match", "/incoming/match.one");
+    check shareClient->uploadContent("should not", "/incoming/skip.two");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = @ServiceConfig {fileNamePattern: "^match\\..*"} service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.put("file", info.name);
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("file") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("file"), "match.one",
+            "annotation filters must apply to the attach point's watched path");
+    boolean skipped = check shareClient->hasFile("/incoming/skip.two");
+    test:assertTrue(skipped, "a non-matching file must not be dispatched");
     check shareClient.close();
 }
