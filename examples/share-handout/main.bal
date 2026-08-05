@@ -30,7 +30,6 @@ public function main() returns error? {
     if !shareExists {
         check admin->createShare(shareName);
     }
-    check admin.close();
 
     // Upload the report to hand out.
     files:Client share = check new (shareName, auth = {accountName, accountKey});
@@ -46,5 +45,4 @@ public function main() returns error? {
     io:println("Hand out this URL; it grants read access to this file only, for 24 hours:");
     io:println(string `https://${accountName}.file.core.windows.net/${shareName}/q2-summary.txt?${sasToken}`);
 
-    check share.close();
 }

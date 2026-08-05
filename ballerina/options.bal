@@ -18,8 +18,7 @@
 // Content headers
 // ---------------------------------------------------------------------------
 
-# The standard content headers that can be set on a file. Azure serves these back verbatim
-# on every download.
+# The standard content headers that can be set on a file.
 public type ContentHeaders record {|
     # The MIME type of the content (e.g. `application/pdf`), served as `Content-Type` on downloads
     string contentType?;
@@ -114,7 +113,7 @@ public type ListOptions record {|
     # The number of entries fetched per service round-trip, up to the service maximum of
     # 5,000. Does not cap the total number of results
     int pageSize = 5000;
-    # Include the ETag and timestamps on each entry, at the cost of a more expensive listing
+    # Include the ETag and timestamps on each entry
     boolean includeExtendedInfo = false;
     # List from the share snapshot with this id instead of the live share
     string snapshotId?;
@@ -155,7 +154,6 @@ public type CreateOptions record {|
 |};
 
 # Options for the upload operations (`uploadFile`, `uploadContent`, `uploadFromStream`).
-# Upload creates the destination file, so the create-time attributes are available here too.
 public type UploadOptions record {|
     # Content headers to set on the file, such as `Content-Type` and `Cache-Control`
     ContentHeaders contentHeaders?;
@@ -210,8 +208,7 @@ public type FileSetPropertiesOptions record {|
     SmbProperties smbProperties?;
     # An SDDL (Security Descriptor Definition Language) permission string to apply
     string filePermission?;
-    # A new size for the file, in bytes. Growing pre-allocates the added space; shrinking
-    # truncates the content
+    # A new size for the file, in bytes
     int newFileSizeBytes?;
     # POSIX owner, group, and mode to apply (NFS shares only)
     PosixProperties posixProperties?;

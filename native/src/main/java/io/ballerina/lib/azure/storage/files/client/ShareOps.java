@@ -1,0 +1,80 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package io.ballerina.lib.azure.storage.files.client;
+
+import com.azure.core.util.Context;
+import com.azure.storage.file.share.models.ShareAccessTier;
+import com.azure.storage.file.share.models.ShareRequestConditions;
+import com.azure.storage.file.share.options.ShareSetPropertiesOptions;
+import io.ballerina.lib.azure.storage.files.util.OptionsReader;
+import io.ballerina.lib.azure.storage.files.util.RecordMapper;
+import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
+import io.ballerina.lib.azure.storage.files.util.ValueUtils;
+import io.ballerina.runtime.api.Environment;
+import io.ballerina.runtime.api.values.BMap;
+import io.ballerina.runtime.api.values.BObject;
+import io.ballerina.runtime.api.values.BString;
+
+/**
+ * Native implementations of the {@code Client} operations on the bound share itself.
+ */
+public final class ShareOps {
+
+    private ShareOps() {
+    }
+
+    /** Fetches the bound share's properties as a {@code ShareProperties} record. */
+    public static Object getShareProperties(Environment env, BObject self) {
+        return SdkInvoker.invoke(env, () -> RecordMapper.shareProperties(SdkInvoker.shareClient(self).getProperties()));
+    }
+
+    /** Replaces the bound share's user-defined metadata. */
+    public static Object setShareMetadata(Environment env, BObject self, BMap<BString, BString> metadata) {
+        return SdkInvoker.invoke(env, () -> {
+            SdkInvoker.shareClient(self).setMetadata(ValueUtils.toStringMap(metadata));
+            return null;
+        });
+    }
+
+    /** Reports the bound share's current usage in bytes. */
+    public static Object getShareUsage(Environment env, BObject self) {
+        return SdkInvoker.invoke(env, () -> SdkInvoker.shareClient(self).getStatistics().getShareUsageInBytes());
+    }
+
+    /** Updates the bound share's quota and access tier. */
+    public static Object setShareProperties(Environment env, BObject self, BMap<BString, Object> options) {
+        return SdkInvoker.invoke(env, () -> {
+            ShareSetPropertiesOptions sdkOptions = new ShareSetPropertiesOptions();
+            Object quota = options.get(OptionsReader.QUOTA_IN_GB);
+            if (quota != null) {
+                sdkOptions.setQuotaInGb(Math.toIntExact((Long) quota));
+            }
+            String tier = ValueUtils.optString(options, OptionsReader.ACCESS_TIER);
+            if (tier != null) {
+                sdkOptions.setAccessTier(ShareAccessTier.fromString(tier));
+            }
+            String leaseId = ValueUtils.optString(options, OptionsReader.LEASE_ID);
+            if (leaseId != null) {
+                sdkOptions.setRequestConditions(new ShareRequestConditions().setLeaseId(leaseId));
+            }
+            SdkInvoker.shareClient(self).setPropertiesWithResponse(sdkOptions, null, Context.NONE);
+            return null;
+        });
+    }
+}

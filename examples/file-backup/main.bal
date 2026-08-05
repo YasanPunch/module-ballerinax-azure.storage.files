@@ -30,7 +30,6 @@ public function main() returns error? {
     if !shareExists {
         check admin->createShare(shareName);
     }
-    check admin.close();
 
     files:Client share = check new (shareName, auth = {accountName, accountKey});
 
@@ -69,5 +68,4 @@ public function main() returns error? {
     check share->downloadFile("/daily/notes.txt", "restored-notes.txt");
     io:println("Restored content: ", check io:fileReadString("restored-notes.txt"));
 
-    check share.close();
 }

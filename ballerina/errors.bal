@@ -14,8 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-# Structured detail carried by every connector error. The human-readable description of the
-# failure is carried by the error's own message, not duplicated here.
+# Structured detail carried by every connector error.
 public type ErrorDetail record {|
     # The HTTP status code returned by Azure. Absent when the failure happened without a
     # server exchange (e.g. a `ProcessingError` raised client-side).

@@ -33,7 +33,7 @@ Pointed at a **premium (FileStorage)** account instead, the suite adapts its tie
 
 ### Configure and run
 
-Copy `ballerina/tests/Config.toml.template` to `ballerina/tests/Config.toml` (gitignored; never commit it) and fill in the values:
+Create `ballerina/tests/Config.toml` (gitignored; never commit it) with the following values:
 
 ```toml
 liveAccountName = "<storage account name>"
@@ -63,6 +63,6 @@ az storage share-rm list --storage-account <account-name> --include-deleted --qu
 
 Treat the account key as a development-only secret: it can be regenerated at any time under **Access keys**, which immediately invalidates the old value.
 
-## Gradle and Docker
+## Gradle
 
-`./gradlew build` runs `bal test` inside the `ballerina/ballerina` Docker container (standard behavior of the Ballerina Gradle plugin for connectors), mounting the repository. The same credential rule applies to the containerized run.
+`./gradlew build` (or `./gradlew test`) runs the same `bal test` natively, using the Ballerina distribution the build downloads and manages. The same credential rule applies: without credentials the run is mock-backed.

@@ -21,6 +21,7 @@
 // response, which is how the error-mapping tests drive specific Azure error codes.
 
 import ballerina/http;
+import ballerina/time;
 import ballerina/url;
 
 const int MOCK_PORT = 9099;
@@ -32,10 +33,18 @@ type MockFile record {|
     map<string> metadata;
     map<string> contentHeaders;
     string etag;
+    // Real write time: the listener's minFileAgeSeconds gate computes age from the listing's
+    // Last-Modified, so listings must serve the actual write time, as live Azure does.
+    string lastModified;
     string copyId?;
     string? leaseId = ();
     string? linkText = ();
 |};
+
+// The current time in the RFC 1123 shape Azure uses for Last-Modified.
+function rfcNow() returns string {
+    return time:utcToEmailString(time:utcNow(), "GMT");
+}
 
 type MockDir record {|
     map<string> metadata;
@@ -72,6 +81,10 @@ int mockLeaseCounter = 0;
 int mockSnapshotCounter = 0;
 int mockPermissionCounter = 0;
 string mockServicePropsXml = string `<?xml version="1.0" encoding="utf-8"?><StorageServiceProperties />`;
+// Forced listing-fault hook for the listener poll-failure tests: while the code is set,
+// every directory listing fails with it (and mockListFaultStatus) until cleared.
+string? mockListFaultCode = ();
+int mockListFaultStatus = 403;
 
 function snapshotKey(string shareName, string snapshotId) returns string {
     return shareName + "\n" + snapshotId;
@@ -510,6 +523,10 @@ function directoryDispatch(string method, string shareName, string path, string 
         return forceCloseHandlesResponse(share, path);
     }
     if method == "GET" && comp == "list" {
+        string? faultCode = mockListFaultCode;
+        if faultCode is string {
+            return errorResponse(mockListFaultStatus, faultCode);
+        }
         return listDirectoryResponse(shareName, share, path, prefix, include);
     }
     if method == "GET" || method == "HEAD" {
@@ -569,7 +586,7 @@ function listDirectoryResponse(string shareName, MockShare share, string path,
         string? name = directChildName(path, filePath);
         if name is string && (prefix == "" || name.startsWith(prefix)) {
             string extendedProperties = extended
-                ? string `<Last-Modified>${LAST_MODIFIED}</Last-Modified><Etag>${file.etag}</Etag>`
+                ? string `<Last-Modified>${file.lastModified}</Last-Modified><Etag>${file.etag}</Etag>`
                 : "";
             entries += string `<File><Name>${name}</Name><FileId>2</FileId><Properties><Content-Length>${file.size}</Content-Length>${extendedProperties}</Properties></File>`;
         }
@@ -610,6 +627,7 @@ function fileDispatch(string method, string shareName, string path, string comp,
                 metadata: metadataFrom(headers),
                 contentHeaders: {},
                 etag: nextEtag(),
+                lastModified: rfcNow(),
                 // The SDK sends the link text raw in this header; store it verbatim.
                 linkText: headers["x-ms-link-text"] ?: ""
             };
@@ -664,7 +682,8 @@ function fileDispatch(string method, string shareName, string path, string comp,
             content: zeros(size),
             metadata: metadataFrom(headers),
             contentHeaders,
-            etag: nextEtag()
+            etag: nextEtag(),
+            lastModified: rfcNow()
         };
         return okResponse(201);
     }
@@ -862,6 +881,7 @@ function putRange(MockShare share, string path, map<string> headers, byte[] payl
         file.content[i] = clearWrite ? 0 : payload[i - rangeStart];
     }
     file.etag = nextEtag();
+    file.lastModified = rfcNow();
     return okResponse(201);
 }
 
@@ -980,6 +1000,7 @@ function startCopy(MockShare share, string path, map<string> headers) returns Mo
         metadata: metadata.length() > 0 ? metadata : sourceFile.metadata.clone(),
         contentHeaders: sourceFile.contentHeaders.clone(),
         etag: nextEtag(),
+        lastModified: rfcNow(),
         copyId
     };
     return okResponse(202, {"x-ms-copy-id": copyId, "x-ms-copy-status": "success"});

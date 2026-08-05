@@ -116,8 +116,7 @@ public type FileProperties record {|
     # Whether the active lease is infinite or fixed-duration; present only while a lease
     # exists
     LeaseDuration leaseDuration?;
-    # The status of the most recent copy operation, if any. Use `Client.checkCopyStatus` to
-    # observe a pending copy's progress.
+    # The status of the most recent copy operation, if any
     CopyStatus copyStatus?;
     # The identifier of the most recent copy operation, if any
     string copyId?;
@@ -155,6 +154,24 @@ public type Entry record {|
     # The last-modified time (UTC); present only when the listing requests extended info
     # (`ListOptions.includeExtendedInfo`)
     time:Utc lastModified?;
+|};
+
+# The listing-derived payload delivered to a listener service's handlers, identifying the file
+# an event is about. It carries what a directory listing provides; for full properties
+# (content type, metadata, headers), construct a `Client` and call `getFileProperties`.
+public type FileInfo record {|
+    # The name of the share the file lives on
+    string shareName;
+    # The share-relative path of the file, e.g. `/dir1/dir2/file.ext`
+    string path;
+    # The file name only, without the directory component
+    string name;
+    # The file size in bytes
+    int sizeBytes;
+    # The entity tag of the file
+    string eTag;
+    # The last-modified time (UTC)
+    time:Utc lastModified;
 |};
 
 # SMB-specific properties of a file or directory. Populated on SMB shares and absent on
@@ -563,8 +580,7 @@ public enum CopyStatus {
     FAILED = "failed"
 }
 
-# The lifecycle state of a share's or file's lease. For the binary locked-or-not answer,
-# read `LeaseStatus`.
+# The lifecycle state of a share's or file's lease.
 public enum LeaseState {
     # No lease is held and a new lease can be acquired
     AVAILABLE = "available",
@@ -627,8 +643,7 @@ public type SharedKeyConfig record {|
 |};
 
 # Shared Access Signature (SAS) authentication with a bare SAS token, as issued by
-# `az storage share generate-sas` or the SAS-generation operations. For the Azure portal's
-# ready-made "File service SAS URL", use `SasUrlConfig` instead.
+# `az storage share generate-sas` or the SAS-generation operations.
 public type SasConfig record {|
     # The name of the storage account the token belongs to (determines the service URL)
     string accountName;
@@ -738,9 +753,7 @@ public type WorkloadIdentityConfig record {|
     string serviceUrl?;
 |};
 
-# Microsoft Entra ID authentication: one record per credential kind. Azure Files honors OAuth
-# tokens only on requests carrying the backup intent, which the connector sets automatically.
-# The intent bypasses file and directory ACLs and requires the identity to hold the
+# Microsoft Entra ID authentication: one record per credential kind. The identity must hold the
 # `Storage File Data Privileged Reader` or `Storage File Data Privileged Contributor` role.
 public type EntraIdConfig DefaultEntraIdConfig|ManagedIdentityConfig|ClientSecretConfig|
     ClientCertificateConfig|WorkloadIdentityConfig;

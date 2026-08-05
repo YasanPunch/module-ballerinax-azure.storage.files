@@ -1,0 +1,149 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package io.ballerina.lib.azure.storage.files.plugin;
+
+import io.ballerina.compiler.api.SemanticModel;
+import io.ballerina.compiler.api.symbols.Symbol;
+import io.ballerina.compiler.api.symbols.TypeDefinitionSymbol;
+import io.ballerina.compiler.api.symbols.TypeDescKind;
+import io.ballerina.compiler.api.symbols.TypeReferenceTypeSymbol;
+import io.ballerina.compiler.api.symbols.TypeSymbol;
+import io.ballerina.compiler.syntax.tree.FunctionDefinitionNode;
+import io.ballerina.compiler.syntax.tree.ParameterNode;
+import io.ballerina.compiler.syntax.tree.SeparatedNodeList;
+import io.ballerina.projects.plugins.SyntaxNodeAnalysisContext;
+import io.ballerina.tools.diagnostics.DiagnosticSeverity;
+
+import java.util.Optional;
+
+import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.ERROR_TYPE;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.ON_ERROR_FUNC;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.PACKAGE_ORG;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.PACKAGE_PREFIX;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.CONTENT_METHOD_MUST_BE_REMOTE;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.INVALID_ON_ERROR_FIRST_PARAMETER;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.INVALID_ON_ERROR_SECOND_PARAMETER;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.TOO_MANY_PARAMETERS_ON_ERROR;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.getDiagnostic;
+import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.isRemoteFunction;
+
+/**
+ * Validates the optional {@code onError} handler: it must be remote, take an {@code error} (or a
+ * subtype of the module's {@code Error}) as its first parameter, may take the {@code Caller} as an
+ * optional second parameter, and must return {@code error?}.
+ */
+public class OnErrorFunctionValidator {
+
+    private final SyntaxNodeAnalysisContext context;
+    private final FunctionDefinitionNode functionDefinitionNode;
+
+    public OnErrorFunctionValidator(SyntaxNodeAnalysisContext context, FunctionDefinitionNode functionDefinitionNode) {
+        this.context = context;
+        this.functionDefinitionNode = functionDefinitionNode;
+    }
+
+    public void validate() {
+        // If the function is not remote, report a diagnostic.
+        if (!isRemoteFunction(context, functionDefinitionNode)) {
+            context.reportDiagnostic(getDiagnostic(CONTENT_METHOD_MUST_BE_REMOTE,
+                    DiagnosticSeverity.ERROR, functionDefinitionNode.location(), ON_ERROR_FUNC));
+            return;
+        }
+
+        SeparatedNodeList<ParameterNode> parameters = functionDefinitionNode.functionSignature().parameters();
+        int paramCount = parameters.size();
+        // If the function has no parameters, report a diagnostic.
+        if (paramCount == 0) {
+            context.reportDiagnostic(getDiagnostic(INVALID_ON_ERROR_FIRST_PARAMETER,
+                    DiagnosticSeverity.ERROR, functionDefinitionNode.location()));
+            return;
+        }
+        // If the function has more than 2 parameters, report a diagnostic.
+        if (paramCount > 2) {
+            context.reportDiagnostic(getDiagnostic(TOO_MANY_PARAMETERS_ON_ERROR,
+                    DiagnosticSeverity.ERROR, functionDefinitionNode.location()));
+            return;
+        }
+
+        validateErrorParameter(parameters.get(0));
+
+        // If the function has two parameters, validate the Caller parameter.
+        if (paramCount == 2) {
+            // If the Caller parameter is not valid, report a diagnostic.
+            ParameterNode secondParamNode = parameters.get(1);
+            if (!PluginUtils.validateCallerParameter(secondParamNode, context)) {
+                context.reportDiagnostic(getDiagnostic(INVALID_ON_ERROR_SECOND_PARAMETER,
+                        DiagnosticSeverity.ERROR, secondParamNode.location()));
+            }
+        }
+
+        PluginUtils.validateReturnTypeErrorOrNil(functionDefinitionNode, context);
+    }
+
+    private void validateErrorParameter(ParameterNode parameterNode) {
+        Optional<TypeSymbol> paramType = PluginUtils.getParameterTypeSymbol(parameterNode, context);
+        // If the parameter type is not present, report a diagnostic.
+        if (paramType.isEmpty()) {
+            context.reportDiagnostic(getDiagnostic(INVALID_ON_ERROR_FIRST_PARAMETER,
+                    DiagnosticSeverity.ERROR, parameterNode.location()));
+            return;
+        }
+        SemanticModel semanticModel = context.semanticModel();
+        TypeSymbol normalizedParamType = unwrapTypeReference(paramType.get());
+        boolean isError = normalizedParamType.subtypeOf(semanticModel.types().ERROR)
+                && semanticModel.types().ERROR.subtypeOf(normalizedParamType);
+        boolean isModuleErrorSubtype = findModuleErrorTypeSymbol(semanticModel)
+                .map(this::unwrapTypeReference)
+                .map(normalizedParamType::subtypeOf)
+                .orElse(false);
+        // If the parameter type is not an error or a module error subtype, report a diagnostic.
+        if (!isError && !isModuleErrorSubtype) {
+            context.reportDiagnostic(getDiagnostic(INVALID_ON_ERROR_FIRST_PARAMETER,
+                    DiagnosticSeverity.ERROR, parameterNode.location()));
+        }
+    }
+
+    private Optional<TypeSymbol> findModuleErrorTypeSymbol(SemanticModel semanticModel) {
+        Optional<Symbol> errorSymbol = semanticModel.types()
+                .getTypeByName(PACKAGE_ORG, PACKAGE_PREFIX, "", ERROR_TYPE);
+        // If the error symbol is not present, return empty.
+        if (errorSymbol.isEmpty()) {
+            return Optional.empty();
+        }
+        Symbol symbol = errorSymbol.get();
+        // If the symbol is a type definition symbol, return the type descriptor.
+        if (symbol instanceof TypeDefinitionSymbol typeDefinitionSymbol) {
+            return Optional.of(typeDefinitionSymbol.typeDescriptor());
+        }
+        // If the symbol is a type symbol, return the type symbol.
+        if (symbol instanceof TypeSymbol typeSymbol) {
+            return Optional.of(typeSymbol);
+        }
+        return Optional.empty();
+    }
+
+    private TypeSymbol unwrapTypeReference(TypeSymbol typeSymbol) {
+        TypeSymbol resolved = typeSymbol;
+        while (resolved.typeKind() == TypeDescKind.TYPE_REFERENCE
+                && resolved instanceof TypeReferenceTypeSymbol typeReferenceTypeSymbol) {
+            resolved = typeReferenceTypeSymbol.typeDescriptor();
+        }
+        return resolved;
+    }
+}

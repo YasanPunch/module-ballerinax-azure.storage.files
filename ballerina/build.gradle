@@ -29,6 +29,8 @@ def packageOrg = "ballerinax"
 def tomlVersion = stripBallerinaExtensionVersion("${project.version}")
 def ballerinaTomlFilePlaceHolder = new File("${project.rootDir}/build-config/resources/Ballerina.toml")
 def ballerinaTomlFile = new File("$project.projectDir/Ballerina.toml")
+def compilerPluginTomlFilePlaceHolder = new File("${project.rootDir}/build-config/resources/CompilerPlugin.toml")
+def compilerPluginTomlFile = new File("$project.projectDir/CompilerPlugin.toml")
 
 def stripBallerinaExtensionVersion(String extVersion) {
     if (extVersion.matches(project.ext.timestampedVersionRegex)) {
@@ -49,8 +51,23 @@ ballerina {
     module = packageName
     langVersion = project.ballerinaLangVersion
     testCoverageParam = "--code-coverage --coverage-format=xml --excludes=\"modules/**/**\""
-    isConnector = true
     platform = "java21"
+}
+
+configurations {
+    externalJars
+}
+
+dependencies {
+    externalJars(group: 'io.ballerina.lib', name: 'data.jsondata-native', version: "${stdlibDataJsonDataVersion}") {
+        transitive = false
+    }
+    externalJars(group: 'io.ballerina.lib', name: 'data.xmldata-native', version: "${stdlibDataXmlDataVersion}") {
+        transitive = false
+    }
+    externalJars(group: 'io.ballerina.lib', name: 'data.csv-native', version: "${stdlibDataCsvVersion}") {
+        transitive = false
+    }
 }
 
 task updateTomlFiles {
@@ -71,12 +88,19 @@ task updateTomlFiles {
             .replace("@azure.xml.version@", project.azureXmlVersion)
             .replace("@jackson.version@", project.jacksonVersion)
             .replace("@slf4j.version@", project.slf4jVersion)
+            .replace("@data.jsondata.version@", project.stdlibDataJsonDataVersion)
+            .replace("@data.xmldata.version@", project.stdlibDataXmlDataVersion)
+            .replace("@data.csv.version@", project.stdlibDataCsvVersion)
             .replace("@reactor.core.version@", project.reactorCoreVersion)
             .replace("@reactive.streams.version@", project.reactiveStreamsVersion)
             .replace("@reactor.netty.version@", project.reactorNettyVersion)
             .replace("@netty.version@", project.nettyVersion)
             .replace("@netty.tcnative.version@", project.nettyTcnativeVersion)
         ballerinaTomlFile.text = newBallerinaToml
+
+        def newCompilerPluginToml = compilerPluginTomlFilePlaceHolder.text
+            .replace("@project.version@", project.version)
+        compilerPluginTomlFile.text = newCompilerPluginToml
     }
 }
 
@@ -85,9 +109,9 @@ task commitTomlFiles {
         project.exec {
             ignoreExitValue true
             if (Os.isFamily(Os.FAMILY_WINDOWS)) {
-                commandLine 'cmd', '/c', "git commit -m \"[Automated] Update the toml files\" Ballerina.toml Dependencies.toml"
+                commandLine 'cmd', '/c', "git commit -m \"[Automated] Update the toml files\" Ballerina.toml Dependencies.toml CompilerPlugin.toml"
             } else {
-                commandLine 'sh', '-c', "git commit -m '[Automated] Update the toml files' Ballerina.toml Dependencies.toml"
+                commandLine 'sh', '-c', "git commit -m '[Automated] Update the toml files' Ballerina.toml Dependencies.toml CompilerPlugin.toml"
             }
         }
     }
@@ -102,3 +126,15 @@ clean {
 // native module built first (test would otherwise run before the jar exists after a clean).
 build.dependsOn ":azure.storage.files-native:build"
 test.dependsOn ":azure.storage.files-native:build"
+
+// The package loads the listener compiler plugin through CompilerPlugin.toml, so each needs
+// the plugin jar built first (compile-time service validation runs during the package build).
+build.dependsOn ":azure.storage.files-compiler-plugin:build"
+test.dependsOn ":azure.storage.files-compiler-plugin:build"
+
+// bal and the standard libraries the connector needs come from the unpacked distribution, so
+// unpack it and copy the declared ballerinaStdLibs into it before build and test run bal.
+unpackStdLibs.dependsOn unpackJballerinaTools
+copyStdlibs.dependsOn unpackStdLibs
+build.dependsOn copyStdlibs
+test.dependsOn copyStdlibs

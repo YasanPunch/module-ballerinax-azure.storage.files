@@ -34,7 +34,7 @@ configurable string liveAccountKey = os:getEnv("LIVE_ACCOUNT_KEY");
 // key). The identity must hold the Storage File Data Privileged Contributor role on the
 // account. The default-chain test enables itself when the standard Azure environment
 // variables are present, which the default credential chain consumes identically
-// wherever the tests run (host shell, container, CI).
+// wherever the tests run.
 configurable string liveEntraTenantId = os:getEnv("LIVE_ENTRA_TENANT_ID");
 configurable string liveEntraClientId = os:getEnv("LIVE_ENTRA_CLIENT_ID");
 configurable string liveEntraClientSecret = os:getEnv("LIVE_ENTRA_CLIENT_SECRET");
@@ -95,16 +95,11 @@ function releaseShare(string share) {
         Client|Error shareClient = newShareClient(share);
         if shareClient is Client {
             int|Error broken = shareClient->breakShareLease();
-            Error? closed = shareClient.close();
             Error? retried = admin->deleteShare(share, {deleteSnapshots: INCLUDE});
-            if broken is Error || closed is Error || retried is Error {
+            if broken is Error || retried is Error {
                 // Left for the AfterSuite sweep.
             }
         }
-    }
-    Error? adminClosed = admin.close();
-    if adminClosed is Error {
-        // Nothing further to do.
     }
 }
 
@@ -117,6 +112,17 @@ isolated function newAdmin() returns AdminClient|Error => liveRun
 isolated function newShareClient(string share) returns Client|Error => liveRun
     ? new (share, auth = {accountName: liveAccountName, accountKey: liveAccountKey})
     : newMockShareClient(share);
+
+// Listener factory for the current backend. A short polling interval keeps the dual-mode
+// listener tests quick; the watched path and handlers come from the attached service.
+isolated function newListener(string share, decimal pollingInterval = 1) returns Listener|Error => liveRun
+    ? new (share, auth = {accountName: liveAccountName, accountKey: liveAccountKey},
+        pollingInterval = pollingInterval)
+    : new (share, auth = {
+        accountName: "mockaccount",
+        accountKey: MOCK_KEY,
+        serviceUrl: string `http://localhost:${MOCK_PORT}`
+    }, pollingInterval = pollingInterval);
 
 // Explicit mock factories, for the tests that are pinned to the mock because the
 // condition they exercise cannot be produced on a real account.
@@ -131,6 +137,23 @@ isolated function newMockShareClient(string share) returns Client|Error => new (
     accountKey: MOCK_KEY,
     serviceUrl: string `http://localhost:${MOCK_PORT}`
 });
+
+isolated function newMockListener(string share, decimal pollingInterval = 1) returns Listener|Error
+    => new (share, auth = {
+        accountName: "mockaccount",
+        accountKey: MOCK_KEY,
+        serviceUrl: string `http://localhost:${MOCK_PORT}`
+    }, pollingInterval = pollingInterval);
+
+// The shared-key auth record for the current backend, for tests that construct a Listener
+// inline to pass extra configuration (binding options and the like).
+isolated function testAuth() returns SharedKeyConfig => liveRun
+    ? {accountName: liveAccountName, accountKey: liveAccountKey}
+    : {
+        accountName: "mockaccount",
+        accountKey: MOCK_KEY,
+        serviceUrl: string `http://localhost:${MOCK_PORT}`
+    };
 
 // Entra-authenticated admin client, for the user-delegation tests in live runs.
 isolated function newEntraAdmin() returns AdminClient|Error => new (auth = {
@@ -174,9 +197,7 @@ function isPremiumAccount() returns boolean|error {
         Client probeClient = check newShareClient(probe);
         ShareProperties props = check probeClient->getShareProperties();
         premium = props.provisionedIops is int || props.accessTier == PREMIUM;
-        check probeClient.close();
         check admin->deleteShare(probe);
-        check admin.close();
     }
     premiumAccountCache = premium;
     return premium;
@@ -223,9 +244,5 @@ function cleanupTestShares() {
         foreach ShareInfo shareInfo in leftovers {
             releaseShare(shareInfo.name);
         }
-    }
-    Error? adminClosed = admin.close();
-    if adminClosed is Error {
-        // Nothing further to do.
     }
 }

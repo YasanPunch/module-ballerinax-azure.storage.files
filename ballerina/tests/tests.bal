@@ -81,21 +81,17 @@ function testInitAcceptsConnectionString() {
 function testInitEntraIdModes() returns error? {
     // Every Entra credential kind builds locally; tokens are requested only on first use.
     Client defaultChain = check new ("share", auth = {kind: "default", accountName: "acct"});
-    check defaultChain.close();
 
     Client managed = check new ("share",
             auth = {kind: "managed-identity", accountName: "acct", clientId: "mi-client"});
-    check managed.close();
 
     Client secret = check new ("share",
             auth = {accountName: "acct", tenantId: "tenant", clientId: "client", clientSecret: "s3cret"});
-    check secret.close();
 
     string tokenFile = "target/mock-workload-token.txt";
     check io:fileWriteString(tokenFile, "federated-token");
     Client workload = check new ("share",
             auth = {accountName: "acct", tenantId: "tenant", clientId: "client", tokenFilePath: tokenFile});
-    check workload.close();
 
     string certificateFile = "target/mock-entra-cert.pem";
     check io:fileWriteString(certificateFile,
@@ -106,7 +102,6 @@ function testInitEntraIdModes() returns error? {
         clientId: "client",
         certificatePath: certificateFile
     });
-    check certificate.close();
 }
 
 @test:Config {}
@@ -150,7 +145,6 @@ function testRetryAndTransportConfig() returns error? {
     });
     check retryClient->uploadContent("with retry", "/retry.txt");
     test:assertEquals(check readAll(retryClient, "/retry.txt"), "with retry".toBytes());
-    check retryClient.close();
 
     // A custom transport (connection pool + timeouts) still round-trips content.
     Client pooledClient = check new (share, auth = {
@@ -167,7 +161,6 @@ function testRetryAndTransportConfig() returns error? {
     });
     check pooledClient->uploadContent("pooled", "/pooled.txt");
     test:assertEquals(check readAll(pooledClient, "/pooled.txt"), "pooled".toBytes());
-    check pooledClient.close();
 
     // A proxy is honored: pointing at a dead port fails the request, not the init.
     Client proxied = check new (share, auth = {
@@ -178,7 +171,6 @@ function testRetryAndTransportConfig() returns error? {
     Error? throughDeadProxy = proxied->uploadContent("x", "/proxied.txt");
     test:assertTrue(throughDeadProxy is ProcessingError,
             "expected a request through an unreachable proxy to fail");
-    check proxied.close();
 }
 
 @test:Config {}
@@ -186,14 +178,12 @@ function testTransportTlsConfig() returns error? {
     // Trust material as a PEM file.
     Client pemTrust = check new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {secureSocket: {cert: "tests/resources/cert.pem"}});
-    check pemTrust.close();
 
     // Trust material as a PKCS12 store.
     Client storeTrust = check new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {
                 secureSocket: {cert: {path: "tests/resources/trust.p12", password: "ballerina"}}
             });
-    check storeTrust.close();
 
     // Client identity from a certificate and key pair, plus version and cipher pinning,
     // hostname-verification and session flags, and timeouts.
@@ -211,14 +201,12 @@ function testTransportTlsConfig() returns error? {
                     sessionTimeoutSeconds: 600
                 }
             });
-    check mutualTls.close();
 
     // Revocation checking builds against PEM trust material.
     Client revocation = check new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {
                 secureSocket: {cert: "tests/resources/cert.pem", validateRevocation: true}
             });
-    check revocation.close();
 
     // Broken TLS input fails at init with a clear error.
     Client|Error missingCert = new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
@@ -236,14 +224,6 @@ function testTransportTlsConfig() returns error? {
             transportConfig = {secureSocket: {validateRevocation: true}});
     test:assertTrue(validationWithoutTrust is ProcessingError,
             "expected validateRevocation without trust material to fail");
-}
-
-@test:Config {}
-function testClosedClientFails() returns error? {
-    Client fileClient = check newShareClient("closed-share");
-    check fileClient.close();
-    boolean|Error result = fileClient->hasFile("/a.txt");
-    test:assertTrue(result is ProcessingError, "expected an op on a closed client to fail");
 }
 
 // ---------------------------------------------------------------------------
@@ -281,7 +261,6 @@ function testShareLifecycle() returns error? {
         // The premium test account runs without share soft delete (a soft-deleted premium
         // share keeps holding its provisioned IOPS against the account limit), so the
         // undelete tail is exercised on standard accounts and the mock.
-        check admin.close();
         return;
     }
 
@@ -309,7 +288,6 @@ function testShareLifecycle() returns error? {
         boolean|Error present = admin->hasShare(share);
         return present;
     });
-    check admin.close();
 }
 
 @test:Config {}
@@ -1174,7 +1152,6 @@ function testServicePropertiesRoundtrip() returns error? {
         check admin->setServiceProperties(echo);
         ServiceProperties reread = check admin->getServiceProperties();
         test:assertEquals(reread.cors, current.cors);
-        check admin.close();
         return;
     }
 
@@ -1239,7 +1216,6 @@ function testGetUserDelegationKey() returns error? {
     test:assertEquals(key.signedStart, keyStart);
     test:assertEquals(key.signedExpiry, keyExpiry);
     test:assertEquals(key.signedService, "f");
-    check admin.close();
 }
 
 // ---------------------------------------------------------------------------
@@ -1313,8 +1289,6 @@ function testGenerateUserDelegationSas() returns error? {
     map<string> fileParams = sasParams(fileToken);
     test:assertEquals(fileParams["sp"], "rd");
     test:assertEquals(fileParams["sktid"], key.signedTenantId);
-    check keyAdmin.close();
-    check admin.close();
 }
 
 @test:Config {}
@@ -1501,14 +1475,6 @@ function testConnectionStringClientOps() returns error? {
     test:assertEquals(check readAll(fileClient, "/cs.txt"), "via connection string".toBytes());
 }
 
-@test:Config {}
-function testClosedAdminClientFails() returns error? {
-    AdminClient admin = check newAdmin();
-    check admin.close();
-    boolean|Error result = admin->hasShare("any-share");
-    test:assertTrue(result is ProcessingError, "expected an op on a closed admin client to fail");
-}
-
 // ---------------------------------------------------------------------------
 // SAS round-trip and open handles
 // ---------------------------------------------------------------------------
@@ -1530,7 +1496,6 @@ function testSasRoundtrip() returns error? {
     // wiring runs in both modes.
     Client sasUrlClient = check new (share, auth = {sasUrl: string `${sasBaseUrl()}?${token}`});
     test:assertEquals(check readAll(sasUrlClient, "/sas-probe.txt"), "sas readable".toBytes());
-    check sasUrlClient.close();
 
     if liveRun {
         // SasConfig derives its endpoint from the account name, so it can only target
@@ -1538,10 +1503,7 @@ function testSasRoundtrip() returns error? {
         Client sasClient = check new (share,
                 auth = {accountName: liveAccountName, sasToken: token});
         check sasClient->deleteFile("/sas-probe.txt");
-        check sasClient.close();
     }
-    check keyClient.close();
-    check admin.close();
 }
 
 @test:Config {}
@@ -1580,7 +1542,6 @@ function testLiveEntraAuth() returns error? {
     } else if result !is NotFoundError {
         test:assertFail("Entra call failed before an authorized NotFound: " + result.message());
     }
-    check entraClient.close();
 }
 
 @test:Config {enable: liveEntraDefaultChainEnabled}
@@ -1595,7 +1556,6 @@ function testLiveEntraDefaultChainAuth() returns error? {
     } else if result !is NotFoundError {
         test:assertFail("Entra call failed before an authorized NotFound: " + result.message());
     }
-    check entraClient.close();
 }
 
 // ---------------------------------------------------------------------------
@@ -1649,4 +1609,125 @@ isolated function sasParams(string token) returns map<string> {
         }
     }
     return params;
+}
+
+// ---------------------------------------------------------------------------
+// Typed content reads and CSV upload
+// ---------------------------------------------------------------------------
+
+type TypedReadMetric record {|
+    string quarter;
+    int revenue;
+|};
+
+type TypedReadRow record {|
+    string name;
+    int qty;
+|};
+
+type TypedReadNote record {|
+    string to;
+    string body;
+|};
+
+@test:Config {}
+function testGetFileText() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("typed-text");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+    check fileClient->uploadContent("hello typed text", "/hello.txt");
+    string full = check fileClient->getFileText("/hello.txt");
+    test:assertEquals(full, "hello typed text");
+
+    check fileClient->uploadContent("0123456789", "/digits.txt");
+    string ranged = check fileClient->getFileText("/digits.txt", {range: {startByte: 2, endByte: 5}});
+    test:assertEquals(ranged, "2345");
+}
+
+@test:Config {}
+function testGetFileJson() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("typed-json");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+
+    check fileClient->uploadContent({quarter: "q1", revenue: 1250000}, "/metrics.json");
+    json asJson = check fileClient->getFileJson("/metrics.json");
+    test:assertEquals(asJson, {quarter: "q1", revenue: 1250000});
+    TypedReadMetric asRecord = check fileClient->getFileJson("/metrics.json");
+    test:assertEquals(asRecord, {quarter: "q1", revenue: 1250000});
+
+    check fileClient->uploadContent("[{\"name\":\"a\",\"qty\":1},{\"name\":\"b\",\"qty\":2}]",
+            "/rows.json");
+    TypedReadRow[] asArray = check fileClient->getFileJson("/rows.json");
+    test:assertEquals(asArray, [{name: "a", qty: 1}, {name: "b", qty: 2}]);
+
+    check fileClient->uploadContent("{not json", "/broken.json");
+    json|Error broken = fileClient->getFileJson("/broken.json");
+    test:assertTrue(broken is ProcessingError, "malformed JSON must fail the typed read");
+    if broken is ProcessingError {
+        test:assertTrue(broken.message().startsWith("the file content does not bind"),
+                "the binding error must state the content does not bind");
+    }
+}
+
+@test:Config {}
+function testGetFileXml() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("typed-xml");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+
+    xml note = xml `<note><to>ops</to><body>rotate the key</body></note>`;
+    check fileClient->uploadContent(note, "/note.xml");
+    xml asXml = check fileClient->getFileXml("/note.xml");
+    test:assertEquals(asXml.toString(), note.toString());
+    TypedReadNote asRecord = check fileClient->getFileXml("/note.xml");
+    test:assertEquals(asRecord, {to: "ops", body: "rotate the key"});
+
+    check fileClient->uploadContent("<open", "/broken.xml");
+    xml|Error broken = fileClient->getFileXml("/broken.xml");
+    test:assertTrue(broken is ProcessingError, "malformed XML must fail the typed read");
+}
+
+@test:Config {}
+function testGetFileCsv() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("typed-csv");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+
+    check fileClient->uploadContent("name,qty\na,1\nb,2", "/items.csv");
+    string[][] asRows = check fileClient->getFileCsv("/items.csv");
+    test:assertEquals(asRows, [["name", "qty"], ["a", "1"], ["b", "2"]]);
+    TypedReadRow[] asRecords = check fileClient->getFileCsv("/items.csv");
+    test:assertEquals(asRecords, [{name: "a", qty: 1}, {name: "b", qty: 2}]);
+
+    check fileClient->uploadContent("name,qty\na,notanint", "/broken.csv");
+    TypedReadRow[]|Error broken = fileClient->getFileCsv("/broken.csv");
+    test:assertTrue(broken is ProcessingError, "a CSV row that cannot bind must fail the typed read");
+}
+
+@test:Config {}
+function testUploadContentCsvRoundTrip() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("csv-write");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+
+    string[][] rows = [
+        ["name", "note"],
+        ["alpha", "a,b"],
+        ["beta", "say \"hi\""],
+        ["gamma", "line1\nline2"],
+        ["delta", "back\\slash"]
+    ];
+    check fileClient->uploadContent(rows, "/tricky.csv");
+    string[][] roundTripped = check fileClient->getFileCsv("/tricky.csv");
+    test:assertEquals(roundTripped, rows);
+
+    string[][] empty = [];
+    check fileClient->uploadContent(empty, "/empty.csv");
+    test:assertEquals(check readAll(fileClient, "/empty.csv"), <byte[]>[]);
 }

@@ -22,5 +22,5 @@ function init() {
 }
 
 isolated function setModule() = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.ModuleUtils"
+    'class: "io.ballerina.lib.azure.storage.files.util.ModuleUtils"
 } external;
