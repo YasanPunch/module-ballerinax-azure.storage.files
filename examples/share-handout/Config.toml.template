@@ -1,4 +1,0 @@
-accountName = "<storage account name>"
-accountKey = "<storage account key>"
-# optional, defaults to "handout-example"
-# shareName = "my-report-share"

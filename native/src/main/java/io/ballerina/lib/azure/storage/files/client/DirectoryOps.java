@@ -24,9 +24,9 @@ import com.azure.storage.file.share.models.ShareFilePermission;
 import com.azure.storage.file.share.options.ShareDirectoryCreateOptions;
 import com.azure.storage.file.share.options.ShareDirectorySetPropertiesOptions;
 import com.azure.storage.file.share.options.ShareFileRenameOptions;
-import io.ballerina.lib.azure.storage.files.util.Ops;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
+import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
@@ -43,7 +43,7 @@ public final class DirectoryOps {
 
     /** Creates a directory with the given options. */
     public static Object createDirectory(Environment env, BObject self, BString directoryPath, Object options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             ShareDirectoryCreateOptions sdkOptions = new ShareDirectoryCreateOptions();
             if (options != null) {
                 @SuppressWarnings("unchecked")
@@ -60,7 +60,7 @@ public final class DirectoryOps {
 
     /** Deletes an empty directory. */
     public static Object deleteDirectory(Environment env, BObject self, BString directoryPath) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             directoryClient(self, directoryPath).delete();
             return null;
         });
@@ -69,7 +69,7 @@ public final class DirectoryOps {
     /** Updates a directory's SMB and POSIX properties. */
     public static Object setDirectoryProperties(Environment env, BObject self, BString directoryPath,
             BMap<BString, Object> options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             ShareDirectorySetPropertiesOptions sdkOptions = new ShareDirectorySetPropertiesOptions()
                     .setSmbProperties(OptionsReader.smbProperties(options.get(OptionsReader.SMB_PROPERTIES)))
                     .setPosixProperties(OptionsReader.posixProperties(options.get(OptionsReader.POSIX_PROPERTIES)));
@@ -84,20 +84,20 @@ public final class DirectoryOps {
 
     /** Checks whether the directory exists; {@code false} only on a confirmed 404. */
     public static Object hasDirectory(Environment env, BObject self, BString directoryPath) {
-        return Ops.invoke(env, () ->
+        return SdkInvoker.invoke(env, () ->
                 Boolean.TRUE.equals(directoryClient(self, directoryPath).exists()));
     }
 
     /** Fetches a directory's properties as a {@code DirectoryProperties} record. */
     public static Object getDirectoryProperties(Environment env, BObject self, BString directoryPath) {
-        return Ops.invoke(env, () ->
+        return SdkInvoker.invoke(env, () ->
                 RecordMapper.directoryProperties(directoryClient(self, directoryPath).getProperties()));
     }
 
     /** Replaces a directory's user-defined metadata. */
     public static Object setDirectoryMetadata(Environment env, BObject self, BString directoryPath,
                                               BMap<BString, BString> metadata) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             directoryClient(self, directoryPath).setMetadata(ValueUtils.toStringMap(metadata));
             return null;
         });
@@ -106,10 +106,10 @@ public final class DirectoryOps {
     /** Renames or moves a directory within the share. */
     public static Object renameDirectory(Environment env, BObject self, BString sourcePath,
                                          BString destinationPath, Object options) {
-        return Ops.invoke(env, () -> {
-            String source = Ops.filePath(sourcePath);
-            String destination = Ops.filePath(destinationPath);
-            ShareDirectoryClient client = Ops.shareClient(self).getDirectoryClient(source);
+        return SdkInvoker.invoke(env, () -> {
+            String source = SdkInvoker.filePath(sourcePath);
+            String destination = SdkInvoker.filePath(destinationPath);
+            ShareDirectoryClient client = SdkInvoker.shareClient(self).getDirectoryClient(source);
             client.renameWithResponse(renameOptions(destination, options), null, null);
             return null;
         });
@@ -131,9 +131,9 @@ public final class DirectoryOps {
 
     /** Returns the SDK directory client for a path; the empty path addresses the share root. */
     static ShareDirectoryClient directoryClient(BObject self, BString directoryPath) {
-        String path = Ops.directoryPath(directoryPath);
+        String path = SdkInvoker.directoryPath(directoryPath);
         return path.isEmpty()
-                ? Ops.shareClient(self).getRootDirectoryClient()
-                : Ops.shareClient(self).getDirectoryClient(path);
+                ? SdkInvoker.shareClient(self).getRootDirectoryClient()
+                : SdkInvoker.shareClient(self).getDirectoryClient(path);
     }
 }

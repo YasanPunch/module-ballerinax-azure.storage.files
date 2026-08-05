@@ -14,17 +14,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-# The context object passed to a listener service's handlers, exposing a curated, share-scoped
-# subset of `Client` to act on the event's file. It cannot be instantiated by user code.
-# Handlers name the event's file explicitly, for example `caller->deleteFile(file.path)`.
+import ballerina/jballerina.java;
+
+# The context object passed to a listener service's handlers, exposing a share-scoped
+# subset of `Client` to act on the event's file. 
+# It cannot be instantiated by user code.
 public isolated client class Caller {
 
     private final Client 'client;
-    private final string shareName;
 
-    isolated function init(Client 'client, string shareName) {
+    isolated function init(Client 'client) {
         self.'client = 'client;
-        self.shareName = shareName;
     }
 
     # Downloads a file to a local path. An existing local file at `destinationPath` fails the
@@ -49,6 +49,55 @@ public isolated client class Caller {
         return self.'client->getFileContent(path, options);
     }
 
+    # Reads a file's full content as UTF-8 text.
+    #
+    # + path - The source share-relative path
+    # + options - Optional download options (range, snapshot)
+    # + return - The file content as a string, or an `Error`
+    isolated remote function getFileText(string path, DownloadOptions? options = ())
+            returns string|Error {
+        return self.'client->getFileText(path, options);
+    }
+
+    # Reads a file's full content and binds it as JSON to the target type. Binding is strict:
+    # the content must match the target type exactly.
+    #
+    # + path - The source share-relative path
+    # + options - Optional download options (range, snapshot)
+    # + targetType - The type to bind the content to, a `json` form or a record
+    # + return - The bound value, or an `Error`
+    isolated remote function getFileJson(string path, DownloadOptions? options = (),
+            typedesc<json|record {}> targetType = <>) returns targetType|Error = @java:Method {
+        name: "callerGetFileJson",
+        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
+    } external;
+
+    # Reads a file's full content and binds it as XML: to an `xml` value, or to a record
+    # projected from the document. Binding is strict.
+    #
+    # + path - The source share-relative path
+    # + options - Optional download options (range, snapshot)
+    # + targetType - The type to bind the content to, `xml` or a record
+    # + return - The bound value, or an `Error`
+    isolated remote function getFileXml(string path, DownloadOptions? options = (),
+            typedesc<xml|record {}> targetType = <>) returns targetType|Error = @java:Method {
+        name: "callerGetFileXml",
+        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
+    } external;
+
+    # Reads a file's full content and binds it as CSV: to `string[][]` rows, or to a record
+    # array whose field names are taken from the header row. Binding is strict.
+    #
+    # + path - The source share-relative path
+    # + options - Optional download options (range, snapshot)
+    # + targetType - The type to bind the content to, `string[][]` or a record array
+    # + return - The bound value, or an `Error`
+    isolated remote function getFileCsv(string path, DownloadOptions? options = (),
+            typedesc<string[][]|record {}[]> targetType = <>) returns targetType|Error = @java:Method {
+        name: "callerGetFileCsv",
+        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
+    } external;
+
     # Uploads a local file to the watched share.
     #
     # + sourcePath - The path of the local file to upload, including the file name
@@ -61,14 +110,15 @@ public isolated client class Caller {
     }
 
     # Uploads in-memory content to the watched share. Dispatch is by the value's runtime type:
-    # `byte[]` is written as-is, a `string` as raw text, `xml` as its textual form, and a
-    # `map<json>` (including compatible records) as a JSON document.
+    # `byte[]` is written as-is, a `string` as raw text, `xml` as its textual form, a
+    # `map<json>` (including compatible records) as a JSON document, and a `string[][]` as
+    # CSV rows.
     #
     # + content - The content to upload
     # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, permission, SMB properties)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadContent(byte[]|string|xml|map<json> content,
+    isolated remote function uploadContent(byte[]|string|xml|map<json>|string[][] content,
             string destinationPath, UploadOptions? options = ()) returns Error? {
         return self.'client->uploadContent(content, destinationPath, options);
     }
@@ -149,12 +199,5 @@ public isolated client class Caller {
     isolated remote function list(string directoryPath, ListOptions? options = ())
             returns stream<Entry, Error?>|Error {
         return self.'client->list(directoryPath, options);
-    }
-
-    # Returns the name of the share this caller is bound to.
-    #
-    # + return - The watched share name
-    public isolated function getShareName() returns string {
-        return self.shareName;
     }
 }

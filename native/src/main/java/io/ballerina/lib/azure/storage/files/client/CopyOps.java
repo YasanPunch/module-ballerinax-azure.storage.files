@@ -25,9 +25,9 @@ import com.azure.storage.file.share.models.ShareFileCopyInfo;
 import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.options.ShareFileCopyOptions;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
-import io.ballerina.lib.azure.storage.files.util.Ops;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
+import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
@@ -53,8 +53,8 @@ public final class CopyOps {
     /** Starts a server-side copy from another file in the same share. */
     public static Object copyFile(Environment env, BObject self, BString sourcePath,
                                   BString destinationPath, Object options) {
-        return Ops.invoke(env, () -> {
-            String sourceUrl = Ops.shareClient(self).getFileClient(Ops.filePath(sourcePath)).getFileUrl();
+        return SdkInvoker.invoke(env, () -> {
+            String sourceUrl = SdkInvoker.shareClient(self).getFileClient(SdkInvoker.filePath(sourcePath)).getFileUrl();
             return startCopy(self, sourceUrl, destinationPath, options);
         });
     }
@@ -62,18 +62,18 @@ public final class CopyOps {
     /** Starts a server-side copy from any accessible source URL. */
     public static Object copyFileFromUrl(Environment env, BObject self, BString sourceUrl,
                                          BString destinationPath, Object options) {
-        return Ops.invoke(env, () -> startCopy(self, sourceUrl.getValue(), destinationPath, options));
+        return SdkInvoker.invoke(env, () -> startCopy(self, sourceUrl.getValue(), destinationPath, options));
     }
 
     /** Reports the progress of a copy targeting the given file; {@code null} when none exists. */
     public static Object checkCopyStatus(Environment env, BObject self, BString path) {
-        return Ops.invoke(env, () ->
+        return SdkInvoker.invoke(env, () ->
                 RecordMapper.copyStatusInfo(FileOps.fileClient(self, path).getProperties()));
     }
 
     /** Aborts an in-progress copy identified by its copy id. */
     public static Object abortCopy(Environment env, BObject self, BString path, BString copyId) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             FileOps.fileClient(self, path).abortCopy(copyId.getValue());
             return null;
         });

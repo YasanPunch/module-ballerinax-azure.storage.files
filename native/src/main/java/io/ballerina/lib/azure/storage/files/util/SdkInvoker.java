@@ -42,16 +42,15 @@ import java.util.function.Supplier;
  * scheduler via {@link Environment#yieldAndRun}, converts every failure to a typed Ballerina
  * error, and fetches the SDK clients stored on the Ballerina client objects.
  */
-public final class Ops {
+public final class SdkInvoker {
 
-    // Keys under which client-lifecycle state is stored on client objects.
+    // Keys under which the SDK clients are stored on client objects.
     public static final String NATIVE_SERVICE_CLIENT = "serviceClient";
     public static final String NATIVE_SHARE_CLIENT = "shareClient";
-    public static final String NATIVE_CLOSED = "closed";
     // The query parameter that addresses a share snapshot on the wire.
     private static final String SHARE_SNAPSHOT_PARAM = "sharesnapshot";
 
-    private Ops() {
+    private SdkInvoker() {
     }
 
     /**
@@ -87,7 +86,6 @@ public final class Ops {
      * @return the SDK service client
      */
     public static ShareServiceClient serviceClient(BObject self) {
-        ensureOpen(self);
         return (ShareServiceClient) self.getNativeData(NATIVE_SERVICE_CLIENT);
     }
 
@@ -98,7 +96,6 @@ public final class Ops {
      * @return the SDK share client
      */
     public static ShareClient shareClient(BObject self) {
-        ensureOpen(self);
         return (ShareClient) self.getNativeData(NATIVE_SHARE_CLIENT);
     }
 
@@ -152,12 +149,6 @@ public final class Ops {
                 .shareName(base.getShareName())
                 .snapshot(snapshotId)
                 .buildClient();
-    }
-
-    private static void ensureOpen(BObject self) {
-        if (Boolean.TRUE.equals(self.getNativeData(NATIVE_CLOSED))) {
-            throw FilesErrorCreator.processingError("the client is closed", null);
-        }
     }
 
     /**

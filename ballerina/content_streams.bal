@@ -127,11 +127,11 @@ isolated function closeRowStreamQuietly(stream<record {}|anydata[], error?> rowS
 
 isolated function externByteStreamNext(ContentByteStream iterator)
         returns record {|byte[] value;|}|error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.server.ContentStreamOps",
-    name: "next"
+    'class: "io.ballerina.lib.azure.storage.files.server.ContentStreams",
+    name: "byteStreamNext"
 } external;
 
 isolated function externByteStreamClose(ContentByteStream iterator) returns error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.server.ContentStreamOps",
+    'class: "io.ballerina.lib.azure.storage.files.server.ContentStreams",
     name: "close"
 } external;

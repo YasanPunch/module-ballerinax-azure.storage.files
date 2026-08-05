@@ -43,8 +43,8 @@ service /incoming on dropListener {
     // "/failed" so it does not stay in the watched folder and re-fire on every poll.
     @files:FunctionConfig {afterProcess: files:DELETE, afterError: {moveTo: "/failed"}}
     remote function onFileJson(map<json> content, files:FileInfo file, files:Caller caller) returns error? {
-        log:printInfo(string `Processed JSON ${file.name} (${file.sizeBytes} bytes): ${content.toJsonString()}`);
-    }
+        log:printInfo(string `Processed JSON ${file.name} (${file.sizeBytes} bytes): ${content.toJsonString()}`); //use key and value pair instead
+    } // use a simpler record like a person
 
     // Handle every other file as raw bytes, then move each into "/processed" once it is processed.
     @files:FunctionConfig {afterProcess: {moveTo: "/processed"}}

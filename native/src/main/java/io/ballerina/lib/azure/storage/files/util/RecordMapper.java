@@ -90,6 +90,7 @@ public final class RecordMapper {
     // distinct record schema, so it keeps its own field constants even where a spelling
     // coincides with another record's field.
     public static final String RECORD_FILE_INFO = "FileInfo";
+    public static final BString FILE_INFO_SHARE_NAME = StringUtils.fromString("shareName");
     public static final BString FILE_INFO_PATH = StringUtils.fromString("path");
     public static final BString FILE_INFO_NAME = StringUtils.fromString("name");
     public static final BString FILE_INFO_SIZE_BYTES = StringUtils.fromString("sizeBytes");
@@ -368,11 +369,13 @@ public final class RecordMapper {
      * @param item       the SDK item, which must be a file
      * @param parentPath the share-relative path of the directory that contains the file, without a
      *                   trailing slash; empty for the share root
+     * @param shareName  the name of the share the file lives on
      * @return the `FileInfo` record
      */
-    public static BMap<BString, Object> fileInfo(ShareFileItem item, String parentPath) {
+    public static BMap<BString, Object> fileInfo(ShareFileItem item, String parentPath, String shareName) {
         BMap<BString, Object> record = newRecord(RECORD_FILE_INFO);
         String path = parentPath.isEmpty() ? "/" + item.getName() : "/" + parentPath + "/" + item.getName();
+        record.put(FILE_INFO_SHARE_NAME, StringUtils.fromString(shareName));
         record.put(FILE_INFO_PATH, StringUtils.fromString(path));
         record.put(FILE_INFO_NAME, StringUtils.fromString(item.getName()));
         Long sizeBytes = item.getFileSize();

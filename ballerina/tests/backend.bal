@@ -95,16 +95,11 @@ function releaseShare(string share) {
         Client|Error shareClient = newShareClient(share);
         if shareClient is Client {
             int|Error broken = shareClient->breakShareLease();
-            Error? closed = shareClient.close();
             Error? retried = admin->deleteShare(share, {deleteSnapshots: INCLUDE});
-            if broken is Error || closed is Error || retried is Error {
+            if broken is Error || retried is Error {
                 // Left for the AfterSuite sweep.
             }
         }
-    }
-    Error? adminClosed = admin.close();
-    if adminClosed is Error {
-        // Nothing further to do.
     }
 }
 
@@ -202,9 +197,7 @@ function isPremiumAccount() returns boolean|error {
         Client probeClient = check newShareClient(probe);
         ShareProperties props = check probeClient->getShareProperties();
         premium = props.provisionedIops is int || props.accessTier == PREMIUM;
-        check probeClient.close();
         check admin->deleteShare(probe);
-        check admin.close();
     }
     premiumAccountCache = premium;
     return premium;
@@ -251,9 +244,5 @@ function cleanupTestShares() {
         foreach ShareInfo shareInfo in leftovers {
             releaseShare(shareInfo.name);
         }
-    }
-    Error? adminClosed = admin.close();
-    if adminClosed is Error {
-        // Nothing further to do.
     }
 }

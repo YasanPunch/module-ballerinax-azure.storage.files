@@ -38,8 +38,7 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.validateMo
 
 /**
  * Runs on every service declaration. It skips services whose package already has compilation
- * errors and services not attached to the connector's {@code Listener}, then delegates the
- * handler-set validation to {@link ServiceValidator}.
+ * errors and services not attached to the connector's {@code Listener}.
  * 
  * Checks the service is attached to our Listener (otherwise it stays silent — it must not
  * fire on http/ftp services in the same file)
@@ -52,11 +51,13 @@ public class ServiceAnalysisTask implements AnalysisTask<SyntaxNodeAnalysisConte
      * Constructs a new ServiceAnalysisTask.
      */
     public ServiceAnalysisTask() {
+        // Delegate the handler-set validation to ServiceValidator.
         this.serviceValidator = new ServiceValidator();
     }
 
     /**
-     * Performs the analysis task.
+     * Performs the analysis task. It skips services whose package already has compilation
+     * errors and services not attached to the listener.
      * 
      * @param context the syntax node analysis context
      */

@@ -25,9 +25,9 @@ import com.azure.storage.file.share.models.ShareFilePermission;
 import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.options.ShareFileCreateOptions;
 import com.azure.storage.file.share.options.ShareFileSetPropertiesOptions;
-import io.ballerina.lib.azure.storage.files.util.Ops;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
+import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.utils.StringUtils;
@@ -51,7 +51,7 @@ public final class FileOps {
 
     /** Creates an empty file pre-allocated to the given size. */
     public static Object createFile(Environment env, BObject self, BString path, long sizeInBytes, Object options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             fileClient(self, path).createWithResponse(createOptions(sizeInBytes, options), null, null);
             return null;
         });
@@ -59,7 +59,7 @@ public final class FileOps {
 
     /** Deletes a file. */
     public static Object deleteFile(Environment env, BObject self, BString path) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             fileClient(self, path).delete();
             return null;
         });
@@ -67,18 +67,18 @@ public final class FileOps {
 
     /** Checks whether the file exists; {@code false} only on a confirmed 404. */
     public static Object hasFile(Environment env, BObject self, BString path) {
-        return Ops.invoke(env, () -> Boolean.TRUE.equals(fileClient(self, path).exists()));
+        return SdkInvoker.invoke(env, () -> Boolean.TRUE.equals(fileClient(self, path).exists()));
     }
 
     /** Fetches a file's properties as a {@code FileProperties} record. */
     public static Object getFileProperties(Environment env, BObject self, BString path) {
-        return Ops.invoke(env, () -> RecordMapper.fileProperties(fileClient(self, path).getProperties()));
+        return SdkInvoker.invoke(env, () -> RecordMapper.fileProperties(fileClient(self, path).getProperties()));
     }
 
     /** Updates a file's size, content headers, SMB, and POSIX properties. */
     public static Object setFileProperties(Environment env, BObject self, BString path,
             BMap<BString, Object> options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             ShareFileClient client = fileClient(self, path);
             Object newSize = options.get(NEW_FILE_SIZE_BYTES);
             Object headers = options.get(OptionsReader.CONTENT_HEADERS);
@@ -112,7 +112,7 @@ public final class FileOps {
     /** Replaces a file's user-defined metadata. */
     public static Object setFileMetadata(Environment env, BObject self, BString path,
                                          BMap<BString, BString> metadata) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             fileClient(self, path).setMetadata(ValueUtils.toStringMap(metadata));
             return null;
         });
@@ -121,7 +121,7 @@ public final class FileOps {
     /** Replaces a file's HTTP content headers, keeping its current size. */
     public static Object setContentHeaders(Environment env, BObject self, BString path,
                                            BMap<BString, Object> headers) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             ShareFileClient client = fileClient(self, path);
             long currentSize = client.getProperties().getContentLength();
             ShareFileHttpHeaders sdkHeaders = OptionsReader.contentHeaders(headers);
@@ -133,10 +133,10 @@ public final class FileOps {
     /** Renames or moves a file within the share. */
     public static Object renameFile(Environment env, BObject self, BString sourcePath,
                                     BString destinationPath, Object options) {
-        return Ops.invoke(env, () -> {
-            String source = Ops.filePath(sourcePath);
-            String destination = Ops.filePath(destinationPath);
-            Ops.shareClient(self).getFileClient(source)
+        return SdkInvoker.invoke(env, () -> {
+            String source = SdkInvoker.filePath(sourcePath);
+            String destination = SdkInvoker.filePath(destinationPath);
+            SdkInvoker.shareClient(self).getFileClient(source)
                     .renameWithResponse(DirectoryOps.renameOptions(destination, options), null, null);
             return null;
         });
@@ -159,10 +159,10 @@ public final class FileOps {
 
     /** Creates an NFS hard link to an existing file. */
     public static Object createHardLink(Environment env, BObject self, BString path, BString targetPath) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             // The SDK sends the target verbatim in the x-ms-file-target-file header, which is
             // the share-relative path of the existing file, not including the share name.
-            String target = Ops.filePath(targetPath);
+            String target = SdkInvoker.filePath(targetPath);
             fileClient(self, path).createHardLink(target);
             return null;
         });
@@ -170,7 +170,7 @@ public final class FileOps {
 
     /** Creates an NFS symbolic link pointing at the given target. */
     public static Object createSymbolicLink(Environment env, BObject self, BString path, BString linkTarget) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             fileClient(self, path).createSymbolicLink(linkTarget.getValue());
             return null;
         });
@@ -180,7 +180,7 @@ public final class FileOps {
     public static Object getSymbolicLink(Environment env, BObject self, BString path) {
         // The service returns the link text percent-encoded. URLDecoder alone would also turn a
         // literal + into a space (form semantics), so pluses are escaped first to preserve them.
-        return Ops.invoke(env, () -> StringUtils.fromString(
+        return SdkInvoker.invoke(env, () -> StringUtils.fromString(
                 URLDecoder.decode(
                         fileClient(self, path).getSymbolicLink().getLinkText().replace("+", "%2B"),
                         StandardCharsets.UTF_8)));
@@ -188,11 +188,11 @@ public final class FileOps {
 
     /** Returns the SDK file client for a combined share-relative path. */
     static ShareFileClient fileClient(BObject self, BString path) {
-        return Ops.shareClient(self).getFileClient(Ops.filePath(path));
+        return SdkInvoker.shareClient(self).getFileClient(SdkInvoker.filePath(path));
     }
 
     /** Returns the SDK file client for a path, bound to a share snapshot when an id is given. */
     static ShareFileClient fileClient(BObject self, BString path, String snapshotId) {
-        return Ops.shareClient(self, snapshotId).getFileClient(Ops.filePath(path));
+        return SdkInvoker.shareClient(self, snapshotId).getFileClient(SdkInvoker.filePath(path));
     }
 }

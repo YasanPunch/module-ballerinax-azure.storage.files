@@ -25,6 +25,7 @@ import ballerina/file;
 import ballerina/io;
 import ballerina/lang.runtime;
 import ballerina/test;
+import ballerina/time;
 
 // Records handler dispatches so a test can await and assert them across the listener's dispatch
 // threads. Isolated: the map state is only touched under the object lock.
@@ -67,7 +68,6 @@ function setupWatchedShare(string base) returns [Client, string]|error {
     if !shareExists {
         check admin->createShare(share);
     }
-    check admin.close();
     Client shareClient = check newShareClient(share);
     boolean dirExists = check shareClient->hasDirectory("/incoming");
     if !dirExists {
@@ -98,7 +98,6 @@ function testListenerOnFileDispatch() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.payload("onfile"), "payload-onfile");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -140,7 +139,6 @@ function testStartTwiceRejected() returns error? {
     }
     check lsn.gracefulStop();
     check lsn.detach(svc);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -192,7 +190,6 @@ function testTypedJsonRouting() returns error? {
 
     test:assertEquals(recorder.count("fallback"), 0, "a .json file must route to onFileJson, not onFile");
     test:assertTrue(recorder.payload("json").includes("widget"), recorder.payload("json"));
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -222,7 +219,6 @@ function testUnmappedExtensionFallsBackToOnFile() returns error? {
 
     test:assertEquals(recorder.count("json"), 0, "an unmapped extension must not reach a typed handler");
     test:assertEquals(recorder.payload("onfile"), "raw-bytes");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -258,7 +254,6 @@ function testMalformedJsonTriggersAfterError() returns error? {
 
     test:assertEquals(recorder.count("json"), 0, "malformed content must not invoke the typed handler body");
     test:assertEquals(recorder.count("fallback"), 0, "a content-binding error must not fall through to onFile");
-    check shareClient.close();
 }
 
 // A closed record that an onFileJson handler can bind directly from an object-root JSON file.
@@ -290,7 +285,6 @@ function testOnFileJsonRecordBinding() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.payload("record"), "A1:5");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -326,7 +320,6 @@ function testOnFileJsonArrayRootBindingError() returns error? {
 
     test:assertEquals(recorder.count("json"), 0, "an array-root JSON must not invoke the map<json> handler body");
     test:assertEquals(recorder.count("fallback"), 0, "a content-binding error must not fall through to onFile");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -355,7 +348,6 @@ function testOnFileJsonMapArrayBinding() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.payload("maparr"), "A1,B2");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -385,7 +377,6 @@ function testOnFileJsonRecordArrayBinding() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.payload("recarr"), "A1:2,B2:7");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -417,7 +408,6 @@ function testOnFileJsonArrayTargetObjectRootBindingError() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.count("maparr"), 0, "an object-root JSON must not invoke an array-typed handler body");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -444,7 +434,6 @@ function testFunctionConfigDeleteConsumes() returns error? {
     });
     check lsn.gracefulStop();
     check lsn.detach(svc);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -474,7 +463,6 @@ function testFunctionConfigMoveConsumes() returns error? {
     });
     check lsn.gracefulStop();
     check lsn.detach(svc);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -488,7 +476,7 @@ function testCallerOperations() returns error? {
     Listener lsn = check newListener(share);
     Service svc = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
-            recorder.put("shareName", caller.getShareName());
+            recorder.put("shareName", info.shareName);
 
             check caller->createDirectory("/work");
             check caller->uploadContent("alpha", "/work/a.txt");
@@ -541,7 +529,6 @@ function testCallerOperations() returns error? {
     test:assertTrue(recorder.count("copy-status-seen") >= 1);
     test:assertTrue(recorder.count("abort-rejected") >= 1, "abortCopy on a completed copy must fail");
     test:assertTrue(recorder.count("done") >= 1);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -578,7 +565,6 @@ function testCallerFileTransfer() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.payload("roundtrip"), "beta");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -603,7 +589,6 @@ function testTypedTextRouting() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.payload("text"), "hello text");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -628,7 +613,6 @@ function testTypedXmlRouting() returns error? {
     check lsn.detach(svc);
 
     test:assertTrue(recorder.payload("xml").includes("<v>7</v>"), recorder.payload("xml"));
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -657,7 +641,6 @@ function testTypedCsvRouting() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.payload("csv"), "a,b;c,d");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -684,7 +667,6 @@ function testMinFileAgeSkipsYoungFiles() returns error? {
     test:assertEquals(recorder.count("dispatched"), 0, "a file younger than minFileAgeSeconds must not dispatch");
     boolean youngPresent = check shareClient->hasFile("/incoming/young.dat");
     test:assertTrue(youngPresent);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -714,7 +696,6 @@ function testNonRecursiveIgnoresSubdirectories() returns error? {
     test:assertEquals(recorder.count("nested.dat"), 0, "recursive=false must not watch subdirectories");
     boolean nestedPresent = check shareClient->hasFile("/incoming/sub/nested.dat");
     test:assertTrue(nestedPresent);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -743,7 +724,6 @@ function testServiceFileNamePatternFilters() returns error? {
     test:assertEquals(recorder.count("skip.dat"), 0, "a non-matching file name must never dispatch");
     boolean skipPresent = check shareClient->hasFile("/incoming/skip.dat");
     test:assertTrue(skipPresent);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -776,7 +756,6 @@ function testFunctionConfigPatternOverridesExtension() returns error? {
 
     test:assertEquals(recorder.payload("text"), "routed-by-pattern");
     test:assertEquals(recorder.count("fallback"), 0, "a pattern-routed file must not reach onFile");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -826,7 +805,6 @@ function testMoveOntoExistingFileFails() returns error? {
     });
     test:assertEquals(check string:fromBytes(gathered), "occupied",
             "the pre-existing destination file must be untouched");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -857,7 +835,6 @@ function testMovePreserveSubDirsFalseFlattens() returns error? {
 
     boolean preserved = check shareClient->hasDirectory("/flat/sub");
     test:assertFalse(preserved, "preserveSubDirs=false must not recreate the sub-path under moveTo");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -885,7 +862,6 @@ function testUnmappedFileSkippedWithoutOnFile() returns error? {
     test:assertEquals(recorder.count("json"), 0, "a .txt file must not reach onFileJson");
     boolean notePresent = check shareClient->hasFile("/incoming/note.txt");
     test:assertTrue(notePresent);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -918,7 +894,6 @@ function testUnconsumedFileRedelivers() returns error? {
 
     test:assertTrue(recorder.count("attempt") >= 2,
             "an unconsumed file must be redelivered on a later poll");
-    check shareClient.close();
 }
 
 // ===== Poll-failure surfacing =====
@@ -935,7 +910,6 @@ function setupMockWatchedShare(string base) returns [Client, string]|error {
     if !shareExists {
         check admin->createShare(share);
     }
-    check admin.close();
     Client shareClient = check newMockShareClient(share);
     boolean dirExists = check shareClient->hasDirectory("/incoming");
     if !dirExists {
@@ -964,7 +938,6 @@ function testPollFailureSurfacesTypedError() returns error? {
     test:assertTrue(result is AuthorizationError,
             "a 403 AuthenticationFailed listing must surface from poll() as an AuthorizationError");
     check lsn.detach(svc);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1016,7 +989,6 @@ function testPollFailureRecoversOnNextPoll() returns error? {
     test:assertTrue(recovered is (), "the poll after the fault clears must succeed");
     check await(() => recorder.count("dispatch") >= 1);
     check lsn.detach(svc);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1051,7 +1023,6 @@ function testPollFailureSurfacesEveryPoll() returns error? {
     test:assertTrue(recorder.count("onerror") >= 2,
             "each failing poll must notify a declared onError");
     check lsn.detach(svc);
-    check shareClient.close();
 }
 
 // ===== onError =====
@@ -1088,7 +1059,6 @@ function testOnErrorFiresOnPollFailure() returns error? {
     test:assertEquals(recorder.count("onerror-other"), 0,
             "onError must receive the mapped typed error for a poll failure");
     check lsn.detach(svc);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1120,7 +1090,6 @@ function testOnErrorFiresOnBindingFailure() returns error? {
     test:assertEquals(recorder.count("json"), 0, "malformed content must not reach the typed handler");
     test:assertTrue(recorder.count("onerror") >= 1,
             "a content-binding failure must notify onError with a ProcessingError");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1136,7 +1105,8 @@ function testOnErrorReceivesCaller() returns error? {
         }
 
         remote function onError(Error err, Caller caller) returns error? {
-            recorder.put("onerror-share", caller.getShareName());
+            check caller->uploadContent("probe", "/onerror-probe.txt");
+            recorder.hit("onerror-caller");
         }
     };
     check lsn.attach(svc, "/incoming");
@@ -1146,11 +1116,11 @@ function testOnErrorReceivesCaller() returns error? {
     mockListFaultCode = ();
     test:assertTrue(result is Error);
 
-    check await(() => recorder.count("onerror-share") >= 1);
-    test:assertEquals(recorder.payload("onerror-share"), share,
-            "the two-parameter onError must receive a usable Caller");
+    check await(() => recorder.count("onerror-caller") >= 1);
+    boolean probeLanded = check shareClient->hasFile("/onerror-probe.txt");
+    test:assertTrue(probeLanded,
+            "the two-parameter onError must receive a usable Caller bound to the watched share");
     check lsn.detach(svc);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1183,7 +1153,6 @@ function testOnErrorNotFiredOnHandlerError() returns error? {
 
     test:assertEquals(recorder.count("onerror"), 0,
             "an error returned by a content handler must not notify onError");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1220,7 +1189,6 @@ function testBindingFailureAfterErrorInteraction() returns error? {
     boolean stillPresent = check shareClient->hasFile("/incoming/broken.json");
     test:assertFalse(stillPresent,
             "afterError must still consume the file when onError is declared");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1256,7 +1224,6 @@ function testOnErrorErrorReturnIsSwallowed() returns error? {
     check await(() => recorder.count("onfile") >= 1);
     check lsn.gracefulStop();
     check lsn.detach(svc);
-    check shareClient.close();
 }
 
 // ===== laxDataBinding and record binding =====
@@ -1317,7 +1284,6 @@ function testJsonRecordStrictBindingRejectsAbsentField() returns error? {
 
     test:assertEquals(recorder.count("json"), 0,
             "with the default strict binding, JSON missing a required field must not bind");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1343,7 +1309,6 @@ function testJsonRecordLaxBindingProjects() returns error? {
 
     test:assertEquals(recorder.payload("json"), "2:<nil>",
             "lax binding must project an absent JSON member onto the nilable field");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1369,7 +1334,6 @@ function testXmlRecordBinding() returns error? {
 
     test:assertEquals(recorder.payload("xml"), "7",
             "well formed XML must bind to the declared record");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1395,7 +1359,6 @@ function testXmlRecordLaxBinding() returns error? {
 
     test:assertEquals(recorder.payload("xml"), "9",
             "lax binding must project away an XML element the record does not declare");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1425,7 +1388,6 @@ function testCsvRecordArrayBindingUsesHeaderRow() returns error? {
 
     test:assertEquals(recorder.payload("csv"), "alice=30;bob=25",
             "CSV record binding must use the first row as the header");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1455,7 +1417,6 @@ function testCsvLaxBindingRecordArray() returns error? {
 
     test:assertEquals(recorder.payload("csv"), "cara=-1",
             "lax binding must project an absent CSV column onto the nilable field");
-    check shareClient.close();
 }
 
 // ===== csvFailSafe =====
@@ -1510,7 +1471,6 @@ function testCsvFailSafeSkipsMalformedRows() returns error? {
     test:assertEquals(recorder.count("onerror"), 0,
             "fail safe mode must not treat a skipped row as a binding failure");
     cleanupErrorLog("people");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1541,7 +1501,6 @@ function testCsvFailSafeQuarantinesMetadata() returns error? {
     test:assertFalse(logContent.includes("dana,notanint"),
             "with the default METADATA content type, the raw row must not be logged");
     cleanupErrorLog("meta");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1571,7 +1530,6 @@ function testCsvFailSafeQuarantinesRaw() returns error? {
     test:assertTrue(logContent.includes("dana,notanint"),
             "with the RAW content type, the raw offending row must be logged");
     cleanupErrorLog("raw");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1603,7 +1561,6 @@ function testCsvFailSafeQuarantinesRawAndMetadata() returns error? {
     test:assertTrue(logContent.includes("location"),
             "with RAW_AND_METADATA, the metadata must be logged too");
     cleanupErrorLog("both");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1633,7 +1590,6 @@ function testCsvFailSafeNotAppliedWithoutConfig() returns error? {
 
     test:assertEquals(recorder.count("csv"), 0,
             "without csvFailSafe, a malformed CSV row must fail the whole binding");
-    check shareClient.close();
 }
 
 // ===== Streaming content handlers =====
@@ -1678,7 +1634,6 @@ function testOnFileByteStreamDeliversContent() returns error? {
 
     test:assertEquals(recorder.payload("stream"), "stream-payload",
             "a drained byte stream must deliver the file's full content");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1723,7 +1678,6 @@ function testOnFileByteStreamLargeFileChunks() returns error? {
     test:assertEquals(totalBytes, 20000, "the chunks must add up to the file size");
     test:assertTrue(chunkCount >= 2,
             "a payload larger than one chunk must arrive as multiple stream entries");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1754,7 +1708,6 @@ function testStreamHandlerAfterProcessOnReturn() returns error? {
 
     boolean stillPresent = check shareClient->hasFile("/incoming/done.bin");
     test:assertFalse(stillPresent, "afterProcess must consume the file when the handler returns");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1791,7 +1744,6 @@ function testStreamPartialDrainThenClose() returns error? {
     boolean stillPresent = check shareClient->hasFile("/incoming/partial.bin");
     test:assertFalse(stillPresent,
             "afterProcess must still run when the handler closes the stream early and returns");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1826,7 +1778,6 @@ function testCsvStreamStringArrays() returns error? {
 
     test:assertEquals(recorder.payload("csv"), "a,b;c,d",
             "the string array stream must yield every row of the file");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1861,7 +1812,6 @@ function testCsvStreamRecords() returns error? {
 
     test:assertEquals(recorder.payload("csv"), "alice=30;bob=25",
             "the record stream must map each row through the header row");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1896,7 +1846,6 @@ function testCsvStreamLaxBinding() returns error? {
 
     test:assertEquals(recorder.payload("csv"), "cara=-1",
             "lax binding must apply to the CSV record stream");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1937,7 +1886,6 @@ function testCsvStreamBindingErrorMidStream() returns error? {
             "a malformed row must surface as a typed error from next() after the valid rows");
     test:assertEquals(recorder.count("onerror"), 0,
             "a lazy stream binding failure belongs to the handler, not onError");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -1970,7 +1918,6 @@ function testCsvStreamFailSafeNotApplied() returns error? {
 
     test:assertEquals(recorder.payload("failsafe"), "error-after-1",
             "csvFailSafe must not alter the stream forms: the malformed row still errors");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -2008,7 +1955,6 @@ function testStreamHandlerErrorTriggersAfterError() returns error? {
             "an error returned by a stream handler must not notify onError");
     boolean stillPresent = check shareClient->hasFile("/incoming/herr.bin");
     test:assertFalse(stillPresent, "afterError must consume the file the stream handler failed on");
-    check shareClient.close();
 }
 
 // Creates a directory when it does not exist yet, for tests needing a second watched path.
@@ -2058,7 +2004,6 @@ function testDetachThenReattachUsesNewServiceConfig() returns error? {
     boolean firstPresent = check shareClient->hasFile("/incoming/first.dat");
     test:assertTrue(firstPresent,
             "a file under the detached service's path must not be dispatched");
-    check shareClient.close();
 }
 
 // ===== Watched path from the service attach point =====
@@ -2086,7 +2031,6 @@ function testAttachPointPathWatches() returns error? {
 
     test:assertEquals(recorder.payload("file"), "by attach point",
             "a string attach point must be the watched path, with no annotation involved");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -2112,7 +2056,6 @@ function testAttachPointResourcePathForm() returns error? {
 
     test:assertTrue(recorder.count("file") >= 1,
             "a resource path attach point must join its segments into the watched path");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -2139,7 +2082,6 @@ function testAttachPointNormalization() returns error? {
 
     test:assertTrue(recorder.count("file") >= 1,
             "the attach point must normalize the leading and trailing slashes");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -2150,7 +2092,6 @@ function testAbsentPathDefaultsToShareRoot() returns error? {
     if !shareExists {
         check admin->createShare(share);
     }
-    check admin.close();
     Client shareClient = check newShareClient(share);
     check shareClient->uploadContent("at the root", "/root.dat");
 
@@ -2170,7 +2111,6 @@ function testAbsentPathDefaultsToShareRoot() returns error? {
 
     test:assertEquals(recorder.payload("file"), "at the root",
             "a service without an attach point must watch the share root");
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -2181,7 +2121,6 @@ function testEmptyAttachPointDefaultsToShareRoot() returns error? {
     if !shareExists {
         check admin->createShare(share);
     }
-    check admin.close();
     Client shareClient = check newShareClient(share);
     check shareClient->uploadContent("empty means root", "/empty.dat");
 
@@ -2201,7 +2140,6 @@ function testEmptyAttachPointDefaultsToShareRoot() returns error? {
 
     test:assertTrue(recorder.count("file") >= 1,
             "an empty attach point must watch the share root");
-    check shareClient.close();
 }
 
 // Pinned to the mock: uses the listing-fault hook. A root-defaulted watch under a credential
@@ -2226,7 +2164,6 @@ function testRootDefaultSurfacesAuthorizationError() returns error? {
     test:assertTrue(result is AuthorizationError,
             "an unauthorized listing under the root default must surface as an AuthorizationError");
     check lsn.detach(svc);
-    check shareClient.close();
 }
 
 @test:Config {}
@@ -2255,5 +2192,119 @@ function testAnnotationFiltersApplyWithAttachPoint() returns error? {
             "annotation filters must apply to the attach point's watched path");
     boolean skipped = check shareClient->hasFile("/incoming/skip.two");
     test:assertTrue(skipped, "a non-matching file must not be dispatched");
-    check shareClient.close();
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch concurrency
+// ---------------------------------------------------------------------------
+
+// Tracks how many handlers run at once and the maximum observed, for the concurrency tests.
+isolated class Gauge {
+    private int current = 0;
+    private int maxSeen = 0;
+
+    isolated function enter() {
+        lock {
+            self.current += 1;
+            if self.current > self.maxSeen {
+                self.maxSeen = self.current;
+            }
+        }
+    }
+
+    isolated function exit() {
+        lock {
+            self.current -= 1;
+        }
+    }
+
+    isolated function max() returns int {
+        lock {
+            return self.maxSeen;
+        }
+    }
+}
+
+@test:Config {}
+function testDispatchRunsHandlersConcurrently() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-concurrent");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("one", "/incoming/c1.dat");
+    check shareClient->uploadContent("two", "/incoming/c2.dat");
+
+    final Recorder recorder = new;
+    final Gauge gauge = new;
+    Listener lsn = check newListener(share);
+    Service svc = isolated service object {
+        isolated remote function onFile(byte[] content, FileInfo info) returns error? {
+            gauge.enter();
+            runtime:sleep(1.5);
+            gauge.exit();
+            recorder.hit(info.name);
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("c1.dat") >= 1 && recorder.count("c2.dat") >= 1);
+    check lsn.immediateStop();
+    test:assertTrue(gauge.max() >= 2,
+            "two files present in one poll must be dispatched to concurrently running handlers");
+}
+
+@test:Config {}
+function testImmediateStopDuringScanIsPrompt() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-stopscan");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    foreach int i in 0 ..< 24 {
+        check shareClient->uploadContent(string `payload-${i}`, string `/incoming/s${i}.dat`);
+    }
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = isolated service object {
+        isolated remote function onFile(byte[] content, FileInfo info) returns error? {
+            recorder.hit("dispatched");
+            runtime:sleep(5);
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("dispatched") >= 1, intervalSeconds = 0.2);
+    time:Utc before = time:utcNow();
+    check lsn.immediateStop();
+    decimal elapsed = time:utcDiffSeconds(time:utcNow(), before);
+    test:assertTrue(elapsed < 4.0d,
+            "immediateStop must not wait out in-flight handlers or a full scan");
+    // Dispatches already in flight at the stop run to completion; once they drain, no new
+    // dispatches may occur because no further poll runs.
+    runtime:sleep(7);
+    int afterDrain = recorder.count("dispatched");
+    runtime:sleep(3);
+    test:assertEquals(recorder.count("dispatched"), afterDrain,
+            "no new dispatches may occur after immediateStop once in-flight handlers drain");
+}
+
+@test:Config {}
+function testCallerTypedRead() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-typedread");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent({kind: "probe", value: 7}, "/incoming/data.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            json bound = check caller->getFileJson(info.path);
+            recorder.put("typed", bound.toJsonString());
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("typed") >= 1);
+    check lsn.immediateStop();
+    json bound = check recorder.payload("typed").fromJsonString();
+    test:assertEquals(bound, {kind: "probe", value: 7});
 }

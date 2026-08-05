@@ -65,7 +65,7 @@ import javax.net.ssl.TrustManagerFactory;
  * session flags and timeouts, and certificate revocation checking through the JDK's PKIX
  * checker.
  */
-public final class TransportSupport {
+public final class TransportConfigMapper {
 
     // Ballerina RetryPolicyType and ProxyType enum values matched against the config.
     private static final String RETRY_POLICY_FIXED = "fixed";
@@ -109,7 +109,7 @@ public final class TransportSupport {
     private static final BString KEY_FILE = StringUtils.fromString("keyFile");
     private static final BString KEY_PASSWORD = StringUtils.fromString("keyPassword");
 
-    private TransportSupport() {
+    private TransportConfigMapper() {
     }
 
     public static RequestRetryOptions retryOptions(BMap<BString, Object> retry) {
@@ -218,7 +218,7 @@ public final class TransportSupport {
             });
         } catch (GeneralSecurityException | IOException e) {
             throw FilesErrorCreator.processingError(
-                    "invalid secureSocket configuration: " + Ops.describe(e), e);
+                    "invalid secureSocket configuration: " + SdkInvoker.describe(e), e);
         }
     }
 
@@ -293,7 +293,7 @@ public final class TransportSupport {
     }
 
     private static KeyStore loadKeyStore(String path, String password)
-            throws GeneralSecurityException, IOException {
+            throws GeneralSecurityException, IOException { 
         requireFile(path, "store path");
         for (String type : new String[] {"PKCS12", "JKS"}) {
             KeyStore store = KeyStore.getInstance(type);

@@ -26,7 +26,7 @@ import com.azure.storage.file.share.options.ShareBreakLeaseOptions;
 import com.azure.storage.file.share.specialized.ShareLeaseClient;
 import com.azure.storage.file.share.specialized.ShareLeaseClientBuilder;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
-import io.ballerina.lib.azure.storage.files.util.Ops;
+import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BObject;
@@ -48,12 +48,12 @@ public final class LeaseOps {
     private static final int INFINITE_LEASE = -1;
 
     private static ShareLeaseClient shareLease(BObject self, String leaseId) {
-        return new ShareLeaseClientBuilder().shareClient(Ops.shareClient(self)).leaseId(leaseId).buildClient();
+        return new ShareLeaseClientBuilder().shareClient(SdkInvoker.shareClient(self)).leaseId(leaseId).buildClient();
     }
 
     private static ShareLeaseClient fileLease(BObject self, BString path, String leaseId) {
         return new ShareLeaseClientBuilder()
-                .fileClient(Ops.shareClient(self).getFileClient(Ops.filePath(path)))
+                .fileClient(SdkInvoker.shareClient(self).getFileClient(SdkInvoker.filePath(path)))
                 .leaseId(leaseId)
                 .buildClient();
     }
@@ -65,7 +65,7 @@ public final class LeaseOps {
     /** Acquires a lease on the bound share and returns the lease id. */
     public static Object acquireShareLease(Environment env, BObject self, long leaseDurationSeconds,
             Object proposedLeaseId) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             if (leaseDurationSeconds != INFINITE_LEASE && (leaseDurationSeconds < 15 || leaseDurationSeconds > 60)) {
                 throw FilesErrorCreator.processingError(
                         "the lease duration must be 15 to 60 seconds, or -1 for an infinite lease", null);
@@ -80,7 +80,7 @@ public final class LeaseOps {
 
     /** Renews a share lease. */
     public static Object renewShareLease(Environment env, BObject self, BString leaseId) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             shareLease(self, leaseId.getValue()).renewLease();
             return null;
         });
@@ -88,7 +88,7 @@ public final class LeaseOps {
 
     /** Releases a share lease. */
     public static Object releaseShareLease(Environment env, BObject self, BString leaseId) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             shareLease(self, leaseId.getValue()).releaseLease();
             return null;
         });
@@ -96,7 +96,7 @@ public final class LeaseOps {
 
     /** Breaks the share's lease and returns the remaining break period in seconds. */
     public static Object breakShareLease(Environment env, BObject self, Object breakPeriodSeconds) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             ShareBreakLeaseOptions options = new ShareBreakLeaseOptions();
             if (breakPeriodSeconds != null) {
                 options.setBreakPeriod(Duration.ofSeconds((Long) breakPeriodSeconds));
@@ -110,7 +110,7 @@ public final class LeaseOps {
 
     /** Changes a share lease to the proposed id and returns the new lease id. */
     public static Object changeShareLease(Environment env, BObject self, BString leaseId, BString proposedLeaseId) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             String changed = shareLease(self, leaseId.getValue()).changeLease(proposedLeaseId.getValue());
             return StringUtils.fromString(changed);
         });
@@ -118,7 +118,7 @@ public final class LeaseOps {
 
     /** Acquires an infinite lease on a file and returns the lease id. */
     public static Object acquireLease(Environment env, BObject self, BString path, Object proposedLeaseId) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             String id = fileLease(self, path, proposedId(proposedLeaseId))
                     .acquireLeaseWithResponse(new ShareAcquireLeaseOptions()
                             .setDuration(INFINITE_LEASE), null, Context.NONE)
@@ -129,7 +129,7 @@ public final class LeaseOps {
 
     /** Releases a file lease. */
     public static Object releaseLease(Environment env, BObject self, BString path, BString leaseId) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             fileLease(self, path, leaseId.getValue()).releaseLease();
             return null;
         });
@@ -137,7 +137,7 @@ public final class LeaseOps {
 
     /** Breaks a file's lease regardless of who holds it. */
     public static Object breakLease(Environment env, BObject self, BString path) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             fileLease(self, path, null).breakLease();
             return null;
         });
@@ -146,7 +146,7 @@ public final class LeaseOps {
     /** Changes a file lease to the proposed id and returns the new lease id. */
     public static Object changeLease(Environment env, BObject self, BString path, BString leaseId,
             BString proposedLeaseId) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             String changed = fileLease(self, path, leaseId.getValue()).changeLease(proposedLeaseId.getValue());
             return StringUtils.fromString(changed);
         });

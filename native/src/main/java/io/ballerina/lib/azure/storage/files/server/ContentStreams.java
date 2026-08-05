@@ -20,7 +20,7 @@ package io.ballerina.lib.azure.storage.files.server;
 
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.ModuleUtils;
-import io.ballerina.lib.azure.storage.files.util.Ops;
+import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.runtime.api.Runtime;
 import io.ballerina.runtime.api.concurrent.StrandMetadata;
 import io.ballerina.runtime.api.creators.TypeCreator;
@@ -46,7 +46,7 @@ import java.util.Arrays;
  * {@code ContentCsvStream} class. The source input stream closes at the end of the file, on an
  * explicit {@code close()}, or when the CSV layer finishes.
  */
-public final class ContentStreamOps {
+public final class ContentStreams {
 
     private static final String NATIVE_INPUT_STREAM = "inputStream";
     private static final String CONTENT_BYTE_STREAM_OBJECT = "ContentByteStream";
@@ -57,7 +57,7 @@ public final class ContentStreamOps {
     // One service read per next() call.
     private static final int CHUNK_SIZE = 8192;
 
-    private ContentStreamOps() {
+    private ContentStreams() {
     }
 
     /**
@@ -109,7 +109,7 @@ public final class ContentStreamOps {
      * @param iterator the Ballerina iterator object
      * @return the next chunk entry, {@code null} at the end of the file, or an error
      */
-    public static Object next(BObject iterator) {
+    public static Object byteStreamNext(BObject iterator) {
         InputStream inputStream = (InputStream) iterator.getNativeData(NATIVE_INPUT_STREAM);
         try {
             byte[] buffer = new byte[CHUNK_SIZE];
@@ -126,7 +126,7 @@ public final class ContentStreamOps {
             return entry;
         } catch (IOException e) {
             return FilesErrorCreator.processingError("failed to read the file content stream: "
-                    + Ops.describe(e), e);
+                    + SdkInvoker.describe(e), e);
         }
     }
 
@@ -143,7 +143,7 @@ public final class ContentStreamOps {
                 ((InputStream) inputStream).close();
             } catch (IOException e) {
                 return FilesErrorCreator.processingError("failed to close the file content stream: "
-                        + Ops.describe(e), e);
+                        + SdkInvoker.describe(e), e);
             }
         }
         return null;

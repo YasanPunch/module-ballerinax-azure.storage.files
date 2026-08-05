@@ -118,12 +118,4 @@ public isolated client class AdminClient {
             returns string|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.SasOps"
     } external;
-
-    # Closes the client and releases any connector-owned resources. Subsequent operations on
-    # a closed client fail.
-    #
-    # + return - An `Error` if the client could not be closed, otherwise `()`
-    public isolated function close() returns Error? {
-        return closeClient(self);
-    }
 }

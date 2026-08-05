@@ -18,8 +18,7 @@ import ballerina/jballerina.java;
 import ballerina/log;
 import ballerina/task;
 
-# Configuration for an `azure.storage.files` `Listener`: the credentials and polling cadence.
-# What to watch is declared per service through the `@ServiceConfig` annotation.
+# Configuration for an `azure.storage.files` `Listener`
 public type ListenerConfiguration record {|
     # The authentication configuration (see `AuthConfig`)
     AuthConfig auth;
@@ -33,8 +32,7 @@ public type ListenerConfiguration record {|
     # treat a null value as an optional field and an absent field as a nilable field
     boolean laxDataBinding = false;
     # Fail safe CSV processing: a malformed CSV record is skipped and appended to an error
-    # log file named after the source file in the current directory, instead of failing the
-    # whole binding. Applies to the materialized CSV handler forms, not the stream forms
+    # log file, instead of failing the whole binding.
     FailSafeOptions csvFailSafe?;
 |};
 
@@ -86,8 +84,7 @@ public type Move record {|
 # The per-handler configuration, supplied through the `@files:FunctionConfig` annotation. It
 # routes files to a handler by name pattern and auto-consumes a file after the handler runs.
 public type FunctionConfiguration record {|
-    # A regular expression matched against the file name that routes matching files to this
-    # handler, overriding the extension-based routing
+    # A regular expression matched against the file name that routes matching files to this handler
     string fileNamePattern?;
     # The action applied after the handler returns normally: delete the file, or move it
     DELETE|Move afterProcess?;
@@ -96,23 +93,18 @@ public type FunctionConfiguration record {|
     DELETE|Move afterError?;
 |};
 
-# Declares the routing and auto-consume configuration of a listener handler.
+# Declares the configuration of a listener handler.
 public annotation FunctionConfiguration FunctionConfig on object function;
 
-# The service type attached to a `Listener`. Declare at least one content handler (`onFile` or a
-# typed `onFileText`/`onFileJson`/`onFileXml`/`onFileCsv` variant), and optionally an `onError`
-# handler (`remote function onError(files:Error err, files:Caller caller?) returns error?`) that
-# is notified when a poll fails or a typed handler's content binding fails.
+# The service type attached to a `Listener`.
 public type Service distinct service object {
 };
 
-# A polling watcher for a single Azure Files share path. It dispatches each present file to the
-# attached service's matching content handler, redelivering an unconsumed file on later polls
-# until a handler consumes it (deletes or moves it out of the watched path).
+# A polling watcher for a single Azure Files share path.
 public isolated class Listener {
-
     private final string shareName;
     private final task:Listener taskListener;
+    private task:Service? pollService = ();
     private boolean running = false;
 
     # Initializes the listener for a share.
@@ -122,29 +114,50 @@ public isolated class Listener {
     # + return - An `Error` if the listener could not be initialized, otherwise `()`
     public isolated function init(string shareName, *ListenerConfiguration config) returns Error? {
         self.shareName = shareName;
-        // The waiting policy is pinned so scan pacing cannot shift with a future change to the
-        // task module's default.
-        task:Listener|task:Error taskListener = new (trigger = {
-            interval: config.pollingInterval,
-            taskPolicy: {waitingPolicy: task:WAIT}
-        });
+        task:Listener|task:Error taskListener = new (trigger = {interval: config.pollingInterval});
         if taskListener is task:Error {
             return error ProcessingError("failed to initialize the polling scheduler", taskListener,
                     errorCode = "ProcessingError");
         }
         self.taskListener = taskListener;
-        return externInit(self, shareName, config);
+
+        ClientConfiguration clientConfig = {auth: config.auth};
+        RetryConfig? retryConfig = config?.retryConfig;
+        if retryConfig is RetryConfig {
+            clientConfig.retryConfig = retryConfig;
+        }
+        TransportConfig? transportConfig = config?.transportConfig;
+        if transportConfig is TransportConfig {
+            clientConfig.transportConfig = transportConfig;
+        }
+
+        // One connection stack per listener: the Caller's Client also backs the poller.
+        Client fileClient = check new (shareName, clientConfig);
+        Caller caller = new (fileClient);
+        return externInit(self, shareName, config, caller);
     }
 
     # Attaches a service to the listener. One service attaches per listener; a second attach
-    # fails. The `name` argument carries the service's attach point, which is the watched
-    # share-relative path; when absent, the service watches the share root.
+    # fails.
     #
     # + serviceRef - The service to attach
-    # + name - The watched path, from the service's attach point
+    # + name - The watched path, from the service's attach point. When absent, the service watches the share root.
     # + return - An `error` if the service could not be attached, otherwise `()`
     public isolated function attach(Service serviceRef, string[]|string? name = ()) returns error? {
-        return externAttach(self, serviceRef, name);
+        check externAttach(self, serviceRef, name);
+        error? attached = ();
+        lock {
+            task:Service pollService = createPollService(self);
+            error? result = self.taskListener.attach(pollService);
+            if result is () {
+                self.pollService = pollService;
+            }
+            attached = result;
+        }
+        if attached is error {
+            check externDetach(self, serviceRef);
+            return attached;
+        }
     }
 
     # Detaches a service from the listener.
@@ -152,7 +165,14 @@ public isolated class Listener {
     # + serviceRef - The service to detach
     # + return - An `error` if the service could not be detached, otherwise `()`
     public isolated function detach(Service serviceRef) returns error? {
-        return externDetach(self, serviceRef);
+        check externDetach(self, serviceRef);
+        lock {
+            task:Service? pollService = self.pollService;
+            if pollService is task:Service {
+                check self.taskListener.detach(pollService);
+                self.pollService = ();
+            }
+        }
     }
 
     # Starts polling and dispatching to the attached service.
@@ -163,20 +183,19 @@ public isolated class Listener {
             if self.running {
                 return error("the listener is already running");
             }
-            check self.taskListener.attach(createPollService(self));
             check self.taskListener.'start();
             self.running = true;
         }
     }
 
-    # Stops polling, letting any in-flight handler invocation finish.
+    # Stops polling. In-flight handler invocations run to completion.
     #
     # + return - An `error` if the listener could not stop, otherwise `()`
     public isolated function gracefulStop() returns error? {
         return self.stopPolling(true);
     }
 
-    # Stops polling immediately.
+    # Stops polling immediately. In-flight handler invocations run to completion.
     #
     # + return - An `error` if the listener could not stop, otherwise `()`
     public isolated function immediateStop() returns error? {
@@ -186,16 +205,26 @@ public isolated class Listener {
     private isolated function stopPolling(boolean graceful) returns error? {
         lock {
             if self.running {
-                check self.taskListener.gracefulStop();
+                if graceful {
+                    check self.taskListener.gracefulStop();
+                } else {
+                    check self.taskListener.immediateStop();
+                }
+                // Stopping the task scheduler deregisters the poll job, so a later detach
+                // must not try to detach it again.
+                self.pollService = ();
                 self.running = false;
             }
         }
-        return externStop(self, graceful);
+        return externStop(self);
     }
 }
 
-# Creates the task service whose `execute` drives one poll of the listener. It is attached to the
-# listener's task scheduler by `Listener.start`; stopping the scheduler deregisters it.
+# Creates the task service whose `execute` drives one poll of the listener. It is attached to
+# the listener's task scheduler by `Listener.attach`; detaching or stopping deregisters it.
+#
+# + l - The listener
+# + return - The task service
 isolated function createPollService(Listener l) returns task:Service {
     return isolated service object {
         isolated function execute() returns error? {
@@ -207,8 +236,8 @@ isolated function createPollService(Listener l) returns task:Service {
     };
 }
 
-isolated function externInit(Listener listenerObj, string shareName, ListenerConfiguration config)
-        returns Error? = @java:Method {
+isolated function externInit(Listener listenerObj, string shareName, ListenerConfiguration config,
+        Caller caller) returns Error? = @java:Method {
     name: "initListener",
     'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
 } external;
@@ -224,7 +253,7 @@ isolated function externDetach(Listener listenerObj, Service serviceRef) returns
     'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
 } external;
 
-isolated function externStop(Listener listenerObj, boolean graceful) returns error? = @java:Method {
+isolated function externStop(Listener listenerObj) returns error? = @java:Method {
     name: "stopListener",
     'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
 } external;

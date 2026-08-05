@@ -22,12 +22,15 @@ import com.azure.storage.file.share.ShareFileClient;
 import com.azure.storage.file.share.StorageFileInputStream;
 import com.azure.storage.file.share.models.ShareFileUploadRangeOptions;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
-import io.ballerina.lib.azure.storage.files.util.Ops;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
+import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.creators.ValueCreator;
+import io.ballerina.runtime.api.types.ArrayType;
+import io.ballerina.runtime.api.types.Type;
 import io.ballerina.runtime.api.utils.StringUtils;
+import io.ballerina.runtime.api.utils.TypeUtils;
 import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
@@ -64,7 +67,7 @@ public final class TransferOps {
     /** Uploads a local file to the share, creating the destination at the source's size. */
     public static Object uploadFile(Environment env, BObject self, BString sourcePath,
                                     BString destinationPath, Object options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             Path localPath = Path.of(sourcePath.getValue());
             long size;
             try {
@@ -73,7 +76,7 @@ public final class TransferOps {
                 throw FilesErrorCreator.processingError(
                         "local file not found: " + sourcePath.getValue(), e);
             } catch (IOException e) {
-                throw FilesErrorCreator.processingError(Ops.describe(e), e);
+                throw FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
             }
             ShareFileClient client = FileOps.fileClient(self, destinationPath);
             client.createWithResponse(FileOps.createOptions(size, options), null, null);
@@ -85,7 +88,7 @@ public final class TransferOps {
     /** Uploads in-memory content (bytes, string, XML, or JSON) as a new file. */
     public static Object uploadContent(Environment env, BObject self, Object content,
                                        BString destinationPath, Object options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             byte[] bytes = contentBytes(content);
             ShareFileClient client = FileOps.fileClient(self, destinationPath);
             client.createWithResponse(FileOps.createOptions(bytes.length, options), null, null);
@@ -99,7 +102,7 @@ public final class TransferOps {
     /** Creates the pre-allocated destination file for a stream upload. */
     public static Object prepareStreamUpload(Environment env, BObject self, BString destinationPath,
                                              long contentLength, Object options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             FileOps.fileClient(self, destinationPath)
                     .createWithResponse(FileOps.createOptions(contentLength, options), null, null);
             return null;
@@ -109,7 +112,7 @@ public final class TransferOps {
     /** Writes one stream chunk at the given offset, splitting it into service-compliant ranges. */
     public static Object writeStreamChunk(Environment env, BObject self, BString destinationPath,
                                           long offset, BArray chunk) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             byte[] bytes = chunk.getBytes();
             ShareFileClient client = FileOps.fileClient(self, destinationPath);
             long position = offset;
@@ -130,7 +133,7 @@ public final class TransferOps {
     /** Downloads a share file (or a range of it) to a local file. */
     public static Object downloadFile(Environment env, BObject self, BString sourcePath,
                                       BString destinationPath, Object options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             Object range = null;
             String snapshotId = null;
             if (options != null) {
@@ -149,7 +152,8 @@ public final class TransferOps {
                 }
             } catch (UncheckedIOException e) {
                 throw FilesErrorCreator.processingError(
-                        "cannot write local file " + destinationPath.getValue() + ": " + Ops.describe(e.getCause()),
+                        "cannot write local file " + destinationPath.getValue() + ": "
+                                + SdkInvoker.describe(e.getCause()),
                         e);
             }
             return null;
@@ -159,7 +163,7 @@ public final class TransferOps {
     /** Opens the file's content stream and stores it on the Ballerina stream generator object. */
     public static Object openContentStream(Environment env, BObject self, BObject generator,
                                            BString path, Object options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             Object range = null;
             String snapshotId = null;
             if (options != null) {
@@ -179,7 +183,7 @@ public final class TransferOps {
 
     /** Reads the next chunk from an open content stream; {@code null} signals the end. */
     public static Object nextContentChunk(Environment env, BObject generator) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             StorageFileInputStream stream =
                     (StorageFileInputStream) generator.getNativeData(NATIVE_INPUT_STREAM);
             if (stream == null) {
@@ -196,7 +200,7 @@ public final class TransferOps {
                 return ValueCreator.createArrayValue(chunk);
             } catch (IOException e) {
                 closeQuietly(generator);
-                throw FilesErrorCreator.processingError(Ops.describe(e), e);
+                throw FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
             }
         });
     }
@@ -218,6 +222,13 @@ public final class TransferOps {
 
     private static byte[] contentBytes(Object content) {
         if (content instanceof BArray array) {
+            // Of the union's array members, only string[][] has an array element type; an empty
+            // literal lands on either branch, and both produce a zero-byte file.
+            Type elementType = TypeUtils.getReferredType(((ArrayType) TypeUtils.getReferredType(
+                    array.getType())).getElementType());
+            if (elementType instanceof ArrayType) {
+                return csvBytes(array);
+            }
             return array.getBytes();
         }
         if (content instanceof BString string) {
@@ -227,5 +238,37 @@ public final class TransferOps {
             return xml.toString().getBytes(StandardCharsets.UTF_8);
         }
         return StringUtils.getJsonString(content).getBytes(StandardCharsets.UTF_8);
+    }
+
+    // Serializes string[][] rows as CSV text (the data.csv module parses only, it does not
+    // serialize), in the dialect data.csv reads by default: a field is quoted when it contains
+    // a comma, quote, backslash, or line break, and embedded quotes and backslashes are
+    // backslash-escaped (data.csv's escapeChar default, not RFC 4180 quote doubling). Fields
+    // join with commas and rows with a newline, with no trailing newline, so an empty outer
+    // array yields a zero-byte file.
+    private static byte[] csvBytes(BArray rows) {
+        StringBuilder csv = new StringBuilder();
+        for (int i = 0; i < rows.size(); i++) {
+            if (i > 0) {
+                csv.append('\n');
+            }
+            BArray row = (BArray) rows.get(i);
+            for (int j = 0; j < row.size(); j++) {
+                if (j > 0) {
+                    csv.append(',');
+                }
+                appendCsvField(csv, ((BString) row.get(j)).getValue());
+            }
+        }
+        return csv.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static void appendCsvField(StringBuilder csv, String field) {
+        if (field.indexOf(',') < 0 && field.indexOf('"') < 0 && field.indexOf('\\') < 0
+                && field.indexOf('\n') < 0 && field.indexOf('\r') < 0) {
+            csv.append(field);
+            return;
+        }
+        csv.append('"').append(field.replace("\\", "\\\\").replace("\"", "\\\"")).append('"');
     }
 }

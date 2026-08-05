@@ -82,12 +82,12 @@ public final class ClientInit {
      */
     public static Object initAdminClient(BObject self, BMap<BString, Object> config) {
         try {
-            self.addNativeData(Ops.NATIVE_SERVICE_CLIENT, buildServiceClient(config));
+            self.addNativeData(SdkInvoker.NATIVE_SERVICE_CLIENT, buildServiceClient(config));
             return null;
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.processingError(Ops.describe(e), e);
+            return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
         }
     }
 
@@ -106,25 +106,14 @@ public final class ClientInit {
                 return FilesErrorCreator.processingError("shareName must not be empty", null);
             }
             ShareServiceClient serviceClient = buildServiceClient(config);
-            self.addNativeData(Ops.NATIVE_SERVICE_CLIENT, serviceClient);
-            self.addNativeData(Ops.NATIVE_SHARE_CLIENT, serviceClient.getShareClient(share));
+            self.addNativeData(SdkInvoker.NATIVE_SERVICE_CLIENT, serviceClient);
+            self.addNativeData(SdkInvoker.NATIVE_SHARE_CLIENT, serviceClient.getShareClient(share));
             return null;
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.processingError(Ops.describe(e), e);
+            return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
         }
-    }
-
-    /**
-     * Marks a client object closed; subsequent operations on it fail.
-     *
-     * @param self the Ballerina client object
-     * @return {@code null}
-     */
-    public static Object closeClient(BObject self) {
-        self.addNativeData(Ops.NATIVE_CLOSED, Boolean.TRUE);
-        return null;
     }
 
     /**
@@ -140,11 +129,11 @@ public final class ClientInit {
         ShareServiceClientBuilder builder = new ShareServiceClientBuilder();
         Object retryConfig = config.get(RETRY_CONFIG);
         if (retryConfig != null) {
-            builder.retryOptions(TransportSupport.retryOptions((BMap<BString, Object>) retryConfig));
+            builder.retryOptions(TransportConfigMapper.retryOptions((BMap<BString, Object>) retryConfig));
         }
         Object transportConfig = config.get(TRANSPORT_CONFIG);
         if (transportConfig != null) {
-            builder.httpClient(TransportSupport.httpClient((BMap<BString, Object>) transportConfig));
+            builder.httpClient(TransportConfigMapper.httpClient((BMap<BString, Object>) transportConfig));
         }
         if (auth.containsKey(ACCOUNT_KEY)) {
             configureSharedKey(builder, auth);
@@ -160,7 +149,7 @@ public final class ClientInit {
         try {
             return builder.buildClient();
         } catch (IllegalArgumentException | IllegalStateException e) {
-            throw FilesErrorCreator.processingError("invalid client configuration: " + Ops.describe(e), e);
+            throw FilesErrorCreator.processingError("invalid client configuration: " + SdkInvoker.describe(e), e);
         }
     }
 
@@ -291,7 +280,7 @@ public final class ClientInit {
         try {
             builder.connectionString(connectionString);
         } catch (IllegalArgumentException e) {
-            throw FilesErrorCreator.processingError("invalid connection string: " + Ops.describe(e), e);
+            throw FilesErrorCreator.processingError("invalid connection string: " + SdkInvoker.describe(e), e);
         }
         for (String pair : connectionString.split(";")) {
             if (pair.startsWith("FileEndpoint=")) {

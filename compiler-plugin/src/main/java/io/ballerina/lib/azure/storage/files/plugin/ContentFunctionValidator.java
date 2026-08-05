@@ -55,12 +55,18 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.isRemoteFu
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.reportErrorDiagnostic;
 
 /**
- * Validates one content handler's signature: it must be {@code remote}, its first parameter must
- * carry the handler's content type (onFile: {@code byte[]} or a byte stream; onFileText:
- * {@code string}; onFileJson: a {@code map<json>}, a record, or an array of them; onFileXml:
- * {@code xml} or a record; onFileCsv: {@code string[][]}, a record array, or a stream of
- * {@code string[]} or records), an optional second parameter must be {@code FileInfo}, an
- * optional third must be {@code Caller}, and the return type must be {@code error?}.
+ * Validates one content handler's signature: it must be {@code remote}, 
+ * 
+ * its first parameter must carry the handler's content type;
+ * onFile: {@code byte[]} or a byte stream; 
+ * onFileText: {@code string}; 
+ * onFileJson: a {@code map<json>}, a record, or an array of them; 
+ * onFileXml: {@code xml} or a record; 
+ * onFileCsv: {@code string[][]}, a record array, or a stream of {@code string[]} or records), 
+ * 
+ * an optional second parameter must be {@code FileInfo}, 
+ * an optional third must be {@code Caller}, 
+ * and the return type must be {@code error?}.
  *
  *  checks each handler's exact signature (remote, correct content type for param 1,
  *  optional FileInfo/Caller params, error? return).
@@ -79,48 +85,61 @@ public class ContentFunctionValidator {
     }
 
     public void validate() {
+        // If the function is not remote, report a diagnostic.
         if (!isRemoteFunction(context, funcDefinitionNode)) {
             reportErrorDiagnostic(context, CONTENT_METHOD_MUST_BE_REMOTE, funcDefinitionNode.location(),
                     contentMethodName);
         }
+        // Validate the parameters.
         validateParameters(funcDefinitionNode.functionSignature().parameters());
+        // Validate the return type.
         PluginUtils.validateReturnTypeErrorOrNil(funcDefinitionNode, context);
     }
 
     private void validateParameters(SeparatedNodeList<ParameterNode> parameters) {
+        // If the function has no parameters, report a diagnostic.
         if (parameters.isEmpty()) {
             reportErrorDiagnostic(context, MANDATORY_PARAMETER_NOT_FOUND, funcDefinitionNode.location(),
                     contentMethodName, expectedContentType());
             return;
         }
+        // If the function has more than 3 parameters, report a diagnostic.
         if (parameters.size() > 3) {
             reportErrorDiagnostic(context, TOO_MANY_PARAMETERS, funcDefinitionNode.location(), contentMethodName);
             return;
         }
+        // Get the first parameter.
         ParameterNode firstParameter = parameters.get(0);
+        // If the first parameter is not a valid content parameter, report a diagnostic.
         if (!validateContentParameter(firstParameter)) {
             reportErrorDiagnostic(context, INVALID_CONTENT_PARAMETER_TYPE, firstParameter.location(),
                     contentMethodName, expectedContentType(),
                     PluginUtils.getParameterTypeSignature(firstParameter, context));
         }
+        // If the function has only one parameter, return.
         if (parameters.size() == 1) {
             return;
         }
+        // If the function has two parameters, validate the FileInfo parameter.
         if (parameters.size() == 2) {
+            // If the FileInfo parameter is valid, return.
             if (PluginUtils.validateFileInfoParameter(parameters.get(1), context)) {
                 return;
             }
+            // If the Caller parameter is not valid, report a diagnostic.
             if (!PluginUtils.validateCallerParameter(parameters.get(1), context)) {
                 reportErrorDiagnostic(context, INVALID_FILEINFO_PARAMETER, parameters.get(1).location(),
                         contentMethodName);
             }
             return;
         }
+        // If the function has three parameters, validate the FileInfo and Caller parameters.
         if (!PluginUtils.validateFileInfoParameter(parameters.get(1), context)) {
             reportErrorDiagnostic(context, INVALID_FILEINFO_PARAMETER, parameters.get(1).location(),
                     contentMethodName);
             return;
         }
+        // If the Caller parameter is not valid, report a diagnostic.
         if (!PluginUtils.validateCallerParameter(parameters.get(2), context)) {
             reportErrorDiagnostic(context, INVALID_CALLER_PARAMETER, parameters.get(2).location(),
                     contentMethodName);
@@ -139,6 +158,7 @@ public class ContentFunctionValidator {
      */
     private boolean validateContentParameter(ParameterNode parameterNode) {
         Optional<TypeSymbol> typeSymbolOpt = PluginUtils.getParameterTypeSymbol(parameterNode, context);
+        // If the type symbol is not present, return false.
         if (typeSymbolOpt.isEmpty()) {
             return false;
         }

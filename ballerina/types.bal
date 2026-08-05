@@ -160,6 +160,8 @@ public type Entry record {|
 # an event is about. It carries what a directory listing provides; for full properties
 # (content type, metadata, headers), construct a `Client` and call `getFileProperties`.
 public type FileInfo record {|
+    # The name of the share the file lives on
+    string shareName;
     # The share-relative path of the file, e.g. `/dir1/dir2/file.ext`
     string path;
     # The file name only, without the directory component

@@ -30,9 +30,9 @@ import com.azure.storage.file.share.models.ShareSnapshotsDeleteOptionType;
 import com.azure.storage.file.share.models.UserDelegationKey;
 import com.azure.storage.file.share.options.ShareCreateOptions;
 import com.azure.storage.file.share.options.ShareDeleteOptions;
-import io.ballerina.lib.azure.storage.files.util.Ops;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
+import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BArray;
@@ -53,13 +53,13 @@ public final class AdminOps {
 
     /** Checks whether the named share exists; {@code false} only on a confirmed 404. */
     public static Object hasShare(Environment env, BObject self, BString shareName) {
-        return Ops.invoke(env, () ->
-                Boolean.TRUE.equals(Ops.serviceClient(self).getShareClient(shareName.getValue()).exists()));
+        return SdkInvoker.invoke(env, () ->
+                Boolean.TRUE.equals(SdkInvoker.serviceClient(self).getShareClient(shareName.getValue()).exists()));
     }
 
     /** Lists the shares in the storage account as an array of {@code ShareInfo} records. */
     public static Object listShares(Environment env, BObject self, Object options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             ListSharesOptions sdkOptions = new ListSharesOptions();
             if (options != null) {
                 @SuppressWarnings("unchecked")
@@ -70,7 +70,7 @@ public final class AdminOps {
                         .setIncludeDeleted(record.getBooleanValue(OptionsReader.INCLUDE_DELETED));
             }
             BArray result = RecordMapper.recordArray(RecordMapper.RECORD_SHARE_INFO);
-            for (ShareItem item : Ops.serviceClient(self).listShares(sdkOptions, null, null)) {
+            for (ShareItem item : SdkInvoker.serviceClient(self).listShares(sdkOptions, null, null)) {
                 result.append(RecordMapper.shareInfo(item));
             }
             return result;
@@ -79,7 +79,7 @@ public final class AdminOps {
 
     /** Creates a new share with the given options. */
     public static Object createShare(Environment env, BObject self, BString shareName, Object options) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             ShareCreateOptions sdkOptions = new ShareCreateOptions();
             if (options != null) {
                 @SuppressWarnings("unchecked")
@@ -112,15 +112,15 @@ public final class AdminOps {
                     sdkOptions.setRootSquash(ShareRootSquash.fromString(rootSquash));
                 }
             }
-            Ops.serviceClient(self).createShareWithResponse(shareName.getValue(), sdkOptions, null, null);
+            SdkInvoker.serviceClient(self).createShareWithResponse(shareName.getValue(), sdkOptions, null, null);
             return null;
         });
     }
 
     /** Deletes a share, one of its snapshots, or the share together with its snapshots. */
     public static Object deleteShare(Environment env, BObject self, BString shareName, Object options) {
-        return Ops.invoke(env, () -> {
-            ShareServiceClient serviceClient = Ops.serviceClient(self);
+        return SdkInvoker.invoke(env, () -> {
+            ShareServiceClient serviceClient = SdkInvoker.serviceClient(self);
             if (options == null) {
                 serviceClient.deleteShare(shareName.getValue());
                 return null;
@@ -150,31 +150,31 @@ public final class AdminOps {
 
     /** Restores a soft-deleted share identified by its name and delete version. */
     public static Object undeleteShare(Environment env, BObject self, BString shareName, BString version) {
-        return Ops.invoke(env, () -> {
-            Ops.serviceClient(self).undeleteShare(shareName.getValue(), version.getValue());
+        return SdkInvoker.invoke(env, () -> {
+            SdkInvoker.serviceClient(self).undeleteShare(shareName.getValue(), version.getValue());
             return null;
         });
     }
 
     /** Fetches the account's file-service properties as a {@code ServiceProperties} record. */
     public static Object getServiceProperties(Environment env, BObject self) {
-        return Ops.invoke(env, () ->
-                RecordMapper.serviceProperties(Ops.serviceClient(self).getProperties()));
+        return SdkInvoker.invoke(env, () ->
+                RecordMapper.serviceProperties(SdkInvoker.serviceClient(self).getProperties()));
     }
 
     /** Replaces the account's file-service properties. */
     public static Object setServiceProperties(Environment env, BObject self, BMap<BString, Object> properties) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             ShareServiceProperties sdkProperties = OptionsReader.serviceProperties(properties);
-            Ops.serviceClient(self).setProperties(sdkProperties);
+            SdkInvoker.serviceClient(self).setProperties(sdkProperties);
             return null;
         });
     }
 
     /** Requests a user-delegation key valid for the given time window. */
     public static Object getUserDelegationKey(Environment env, BObject self, BArray startTime, BArray expiryTime) {
-        return Ops.invoke(env, () -> {
-            UserDelegationKey key = Ops.serviceClient(self)
+        return SdkInvoker.invoke(env, () -> {
+            UserDelegationKey key = SdkInvoker.serviceClient(self)
                     .getUserDelegationKey(ValueUtils.fromUtc(startTime), ValueUtils.fromUtc(expiryTime));
             return RecordMapper.userDelegationKey(key);
         });

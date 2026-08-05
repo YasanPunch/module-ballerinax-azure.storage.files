@@ -33,7 +33,7 @@ Pointed at a **premium (FileStorage)** account instead, the suite adapts its tie
 
 ### Configure and run
 
-Copy `ballerina/tests/Config.toml.template` to `ballerina/tests/Config.toml` (gitignored; never commit it) and fill in the values:
+Create `ballerina/tests/Config.toml` (gitignored; never commit it) with the following values:
 
 ```toml
 liveAccountName = "<storage account name>"

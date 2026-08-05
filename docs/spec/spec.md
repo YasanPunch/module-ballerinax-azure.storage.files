@@ -32,7 +32,6 @@ The official implementation aligns with this specification. Any deviation qualif
    * 3.2 [Share Management Operations](#32-share-management-operations)
    * 3.3 [Service Configuration Operations](#33-service-configuration-operations)
    * 3.4 [User Delegation Key and Account SAS](#34-user-delegation-key-and-account-sas)
-   * 3.5 [Closing the AdminClient](#35-closing-the-adminclient)
 4. [Client](#4-client)
    * 4.1 [Initializing the Client](#41-initializing-the-client)
    * 4.2 [Share Operations](#42-share-operations)
@@ -49,7 +48,6 @@ The official implementation aligns with this specification. Any deviation qualif
    * 4.13 [Permission Operations](#413-permission-operations)
    * 4.14 [SAS Generation](#414-sas-generation)
    * 4.15 [NFS Link Operations](#415-nfs-link-operations)
-   * 4.16 [Closing the Client](#416-closing-the-client)
 5. [The Listener and Caller](#5-the-listener-and-caller)
 6. [Error Types](#6-error-types)
 7. [Samples](#7-samples)
@@ -67,7 +65,7 @@ The public surface is four types:
 
 Directory and file operations take a single slash-delimited, share-relative path (for example `/reports/2026/q4.pdf`). Where two paths co-occur, they are named `sourcePath` and `destinationPath`, in source-first order. Every entry returned by a listing carries its full share-relative path, so listing results feed directly into the path-taking operations.
 
-`AdminClient`, `Client`, and `Caller` are isolated client classes holding only immutable configuration, and the `Listener` is an isolated class, so a single instance of any of them can be used safely from concurrent strands. Every operation that calls the service is a remote method, invoked with `->`. Methods that make no service call are ordinary methods, invoked with `.`: each client's `close`, the `Caller`'s `getShareName`, the `Listener`'s lifecycle methods, and the SAS generation methods, which sign tokens locally with the credential the client already holds.
+`AdminClient`, `Client`, and `Caller` are isolated client classes holding only immutable configuration, and the `Listener` is an isolated class, so a single instance of any of them can be used safely from concurrent strands. Every operation that calls the service is a remote method, invoked with `->`. Methods that make no service call are ordinary methods, invoked with `.`: the `Listener`'s lifecycle methods and the SAS generation methods, which sign tokens locally with the credential the client already holds. The clients hold no releasable resources, so there is no close method; a client that is no longer needed is simply discarded.
 
 For brevity, the `isolated` qualifier is omitted from the signatures in this specification.
 
@@ -343,14 +341,6 @@ function generateAccountSas(AccountSasSignatureValues values) returns string|Err
 
 `getUserDelegationKey` requires a client authenticated with Microsoft Entra ID whose identity holds the `Storage File Delegator` role; the key is valid at most 7 days and signs user-delegation SAS tokens (section 4.14). `generateAccountSas` is an ordinary method, invoked with `.`: it signs the token locally with the account key and makes no service call. It requires a client authenticated with `SharedKeyConfig` (or a connection string carrying an account key). Rotating the account key revokes every SAS minted from it.
 
-### 3.5 Closing the AdminClient
-
-```ballerina
-public function close() returns Error?;
-```
-
-`close` is an ordinary method, invoked with `.`. It releases connector-owned resources and makes no service call. Subsequent operations on a closed client fail.
-
 ## 4. Client
 
 The `Client` is bound to a single share at initialization and operates on that share and the directories and files within it.
@@ -426,16 +416,26 @@ remote function renameFile(string sourcePath, string destinationPath, RenameOpti
 ```ballerina
 remote function uploadFile(string sourcePath, string destinationPath, UploadOptions? options = ()) returns Error?;
 
-remote function uploadContent(byte[]|string|xml|map<json> content, string destinationPath, UploadOptions? options = ()) returns Error?;
+remote function uploadContent(byte[]|string|xml|map<json>|string[][] content, string destinationPath, UploadOptions? options = ()) returns Error?;
 
 remote function uploadFromStream(stream<byte[], error?> content, int contentLength, string destinationPath, UploadOptions? options = ()) returns Error?;
 
 remote function downloadFile(string sourcePath, string destinationPath, DownloadOptions? options = ()) returns Error?;
 
 remote function getFileContent(string path, DownloadOptions? options = ()) returns stream<byte[], Error?>|Error;
+
+remote function getFileText(string path, DownloadOptions? options = ()) returns string|Error;
+
+remote function getFileJson(string path, DownloadOptions? options = (), typedesc<json|record {}> targetType = <>) returns targetType|Error;
+
+remote function getFileXml(string path, DownloadOptions? options = (), typedesc<xml|record {}> targetType = <>) returns targetType|Error;
+
+remote function getFileCsv(string path, DownloadOptions? options = (), typedesc<string[][]|record {}[]> targetType = <>) returns targetType|Error;
 ```
 
-`uploadFile` and `downloadFile` move a local file on disk; both parameters are full paths including the file name, in source-first order. `uploadContent` takes in-memory content: `byte[]` and `string` are written as-is, `xml` in its textual form, and `map<json>` as a JSON document. `uploadFromStream` requires `contentLength` because Azure Files pre-allocates the file at a fixed size before content is written into its ranges; a source-stream failure, or a stream whose length does not match `contentLength`, surfaces as a `ProcessingError`. The transfer methods chunk internally, and `getFileContent` reads lazily, so memory stays bounded for any file size. `downloadFile` fails with a `ProcessingError` when a local file already exists at `destinationPath`. `DownloadOptions` offers a byte `range` and a `snapshotId` to read from a share snapshot.
+`uploadFile` and `downloadFile` move a local file on disk; both parameters are full paths including the file name, in source-first order. `uploadContent` takes in-memory content: `byte[]` and `string` are written as-is, `xml` in its textual form, `map<json>` as a JSON document, and `string[][]` as CSV rows (fields containing a comma, quote, backslash, or line break are quoted, matching the dialect `getFileCsv` reads back). `uploadFromStream` requires `contentLength` because Azure Files pre-allocates the file at a fixed size before content is written into its ranges; a source-stream failure, or a stream whose length does not match `contentLength`, surfaces as a `ProcessingError`. The transfer methods chunk internally, and `getFileContent` reads lazily, so memory stays bounded for any file size. `downloadFile` fails with a `ProcessingError` when a local file already exists at `destinationPath`. `DownloadOptions` offers a byte `range` and a `snapshotId` to read from a share snapshot.
+
+The typed reads materialize the file's full content and bind it to the caller-directed target type: `getFileText` decodes UTF-8 text, `getFileJson` binds a JSON document to a `json` form or a record, `getFileXml` binds to an `xml` value or a record projected from the document, and `getFileCsv` binds to `string[][]` rows or to a record array whose field names are taken from the file's header row (the string-matrix form keeps every row, including the first). Binding is strict: content that does not match the target type fails with a `ProcessingError`. The listener's `laxDataBinding` setting applies only to listener handlers, not to these reads.
 
 ### 4.6 Copy Operations
 
@@ -581,17 +581,9 @@ remote function getSymbolicLink(string path) returns string|Error;
 
 These operate on NFS shares only. A hard link makes both paths refer to the same underlying file, and the file's `PosixProperties.linkCount` grows by one. A symbolic link stores its target as a path, resolved by the NFS client at access time; the target need not exist.
 
-### 4.16 Closing the Client
-
-```ballerina
-public function close() returns Error?;
-```
-
-`close` is an ordinary method, invoked with `.`. It releases connector-owned resources and makes no service call. Subsequent operations on a closed client fail.
-
 ## 5. The Listener and Caller
 
-Azure Files is not exposed as an Event Grid source, so the listener polls. It uses **stateless dispatch**: each polling tick lists the watched path and reads each present file, invoking the content handler that matches it. No per-file state is kept, so the contract is that handlers consume files by processing them and then deleting or moving them out of the watched path; an unprocessed file fires again on a later poll. This mode is trivially restart-safe. Delivery is at-least-once. Polling runs on the platform task scheduler at a fixed `pollingInterval`, with the scheduler's waiting policy pinned so a tick that fires during a still-running scan waits for it; dispatched handlers run concurrently beyond the scan. An in-progress guard keyed on the file's path and entity tag keeps one version of a file from being dispatched twice at once, so an unchanged file re-fires only after its previous handling has finished and it is still present; a file overwritten while its previous version is still being handled counts as a new version and can be dispatched alongside it. Handlers should be idempotent, or claim a file by renaming it out of the watched path before processing.
+Azure Files is not exposed as an Event Grid source, so the listener polls. It uses **stateless dispatch**: each polling tick lists the watched path and reads each present file, invoking the content handler that matches it. No per-file state is kept, so the contract is that handlers consume files by processing them and then deleting or moving them out of the watched path; an unprocessed file fires again on a later poll. This mode is trivially restart-safe. Delivery is at-least-once. Polling runs on the platform task scheduler at a fixed `pollingInterval`, whose waiting policy makes a tick that fires during a still-running scan wait for it; each matching file is dispatched to its handler on its own thread, so handlers run concurrently beyond the scan. An in-progress guard keyed on the file's path and entity tag keeps one version of a file from being dispatched twice at once, so an unchanged file re-fires only after its previous handling has finished and it is still present; a file overwritten while its previous version is still being handled counts as a new version and can be dispatched alongside it. Handlers should be idempotent, or claim a file by renaming it out of the watched path before processing.
 
 One listener watches exactly one service and one path. The listener configuration carries the share-level concerns (credentials, polling cadence, transport). What to watch is the service's attach point: `service /invoices on lsn` (a resource path, whose segments join with `/`) or `service "/dir one/reports" on lsn` (a string, for names a resource path cannot express). The path normalizes by trimming whitespace, collapsing repeated slashes, ensuring a leading slash, and stripping a trailing one. A service with no attach point watches the share root. The optional `@ServiceConfig` annotation configures recursion and file-name filtering; no annotation is needed for a service to work.
 
@@ -634,7 +626,7 @@ public type ServiceConfiguration record {|
 public annotation ServiceConfiguration ServiceConfig on service;
 ```
 
-A listener already bound to a service rejects a second `attach` at runtime, so to watch several paths, run several independent listeners. Overlap can still arise across separate listeners (a file under a path watched by two of them reaches each), so handling races there are the user's responsibility (idempotent handlers, or claim a file by renaming it out of the watched path). The `attach` `name` argument carries the service's attach point, which is the watched path. Attaching a service with an invalid `fileNamePattern` fails. A credential that cannot list the watched path does not fail `attach`; the first poll surfaces the authorization error instead. Calling `start` on a listener that is already running fails, and `detach` of a service that is not attached fails.
+A listener already bound to a service rejects a second `attach` at runtime, so to watch several paths, run several independent listeners. Overlap can still arise across separate listeners (a file under a path watched by two of them reaches each), so handling races there are the user's responsibility (idempotent handlers, or claim a file by renaming it out of the watched path). The `attach` `name` argument carries the service's attach point, which is the watched path. Attaching a service with an invalid `fileNamePattern` fails. A credential that cannot list the watched path does not fail `attach`; the first poll surfaces the authorization error instead. Calling `start` on a listener that is already running fails, and `detach` of a service that is not attached fails. `gracefulStop` stops the polling schedule and returns without waiting; `immediateStop` stops it immediately. In both cases handler invocations already running complete on their own threads. `init` performs a one-time XML parser setup for the XML content handlers; if that setup fails, `init` returns an error and the initialization can simply be retried.
 
 ```ballerina
 public isolated class Listener {
@@ -657,6 +649,8 @@ public type Service distinct service object {
 
 # Carries what a directory listing provides, the Listener's data source.
 public type FileInfo record {|
+    # The name of the share the file lives on
+    string shareName;
     # Share-relative path, e.g. "/dir1/dir2/file.ext"
     string path;
     # File name only
@@ -704,7 +698,7 @@ public annotation FunctionConfiguration FunctionConfig on object function;
 
 `afterProcess` runs when the handler returns normally, and `afterError` when it errors or content-binding fails; when neither is set the file stays and re-fires. A `Move` onto an existing same-named file fails.
 
-A `Caller` is passed to each handler so it can act on the event's file without constructing a separate client. It forwards a curated share-scoped subset of `Client` (`downloadFile`, `getFileContent`, `uploadFile`, `uploadContent`, `deleteFile`, `copyFile`, `checkCopyStatus`, `abortCopy`, `renameFile`, `createDirectory`, `deleteDirectory`, `list`) plus a non-remote `getShareName()`. Handlers pass the event's path explicitly, e.g. `caller->deleteFile(file.path)`.
+A `Caller` is passed to each handler so it can act on the event's file without constructing a separate client. The listener's own polling uses the same share-scoped client that backs the `Caller`, so one listener holds exactly one connection stack. The `Caller` forwards a curated share-scoped subset of `Client` (`downloadFile`, `getFileContent`, `getFileText`, `getFileJson`, `getFileXml`, `getFileCsv`, `uploadFile`, `uploadContent`, `deleteFile`, `copyFile`, `checkCopyStatus`, `abortCopy`, `renameFile`, `createDirectory`, `deleteDirectory`, `list`). Handlers pass the event's path explicitly, e.g. `caller->deleteFile(file.path)`, and read the share's name from `FileInfo.shareName`.
 
 A failed poll surfaces its error: the listener logs it on every poll, and a declared `onError` receives it. Polling keeps its configured interval, so the next scheduled poll scans again.
 
@@ -769,8 +763,6 @@ public function main() returns error? {
     });
 
     check fileShare->downloadFile("/2026/07/invoice.pdf", "./copies/invoice.pdf");
-
-    check fileShare.close();
 }
 ```
 
@@ -782,8 +774,6 @@ files:AdminClient admin = check new (auth = {accountName: "myacct", accountKey: 
 if !(check admin->hasShare("invoices")) {
     check admin->createShare("invoices", {quotaInGb: 100});
 }
-
-check admin.close();
 ```
 
 Minting a read-only, one-hour SAS token for a single file (a local signing operation, invoked with `.`):

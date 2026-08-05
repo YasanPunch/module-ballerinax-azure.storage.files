@@ -226,7 +226,8 @@ public isolated client class Client {
     } external;
 
     # Uploads in-memory content to the bound share. A `byte[]` is written as-is, a `string`
-    # as raw text, an `xml` value as its textual form, and a `map<json>` as a JSON document.
+    # as raw text, an `xml` value as its textual form, a `map<json>` as a JSON document, and
+    # a `string[][]` as CSV rows.
     #
     # ```ballerina
     # check fileClient->uploadContent({revenue: 1250000, growth: 0.12}, "/2026/q1/metrics.json");
@@ -236,7 +237,7 @@ public isolated client class Client {
     # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, permission, SMB properties)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadContent(byte[]|string|xml|map<json> content,
+    isolated remote function uploadContent(byte[]|string|xml|map<json>|string[][] content,
             string destinationPath, UploadOptions? options = ()) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
@@ -318,6 +319,58 @@ public isolated client class Client {
         }
         return new stream<byte[], Error?>(generator);
     }
+
+    # Reads a file's full content as UTF-8 text.
+    #
+    # + path - The source share-relative path
+    # + options - Optional download options (range, snapshot)
+    # + return - The file content as a string, or an `Error`
+    isolated remote function getFileText(string path, DownloadOptions? options = ())
+            returns string|Error {
+        byte[] bytes = check readFileBytes(self, path, options);
+        string|error text = string:fromBytes(bytes);
+        if text is error {
+            return error ProcessingError("the file content is not valid UTF-8 text: "
+                    + text.message(), text, errorCode = "ProcessingError");
+        }
+        return text;
+    }
+
+    # Reads a file's full content and binds it as JSON to the target type. Binding is strict:
+    # the content must match the target type exactly.
+    #
+    # + path - The source share-relative path
+    # + options - Optional download options (range, snapshot)
+    # + targetType - The type to bind the content to, a `json` form or a record
+    # + return - The bound value, or an `Error`
+    isolated remote function getFileJson(string path, DownloadOptions? options = (),
+            typedesc<json|record {}> targetType = <>) returns targetType|Error = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
+    } external;
+
+    # Reads a file's full content and binds it as XML: to an `xml` value, or to a record
+    # projected from the document. Binding is strict.
+    #
+    # + path - The source share-relative path
+    # + options - Optional download options (range, snapshot)
+    # + targetType - The type to bind the content to, `xml` or a record
+    # + return - The bound value, or an `Error`
+    isolated remote function getFileXml(string path, DownloadOptions? options = (),
+            typedesc<xml|record {}> targetType = <>) returns targetType|Error = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
+    } external;
+
+    # Reads a file's full content and binds it as CSV: to `string[][]` rows, or to a record
+    # array whose field names are taken from the header row. Binding is strict.
+    #
+    # + path - The source share-relative path
+    # + options - Optional download options (range, snapshot)
+    # + targetType - The type to bind the content to, `string[][]` or a record array
+    # + return - The bound value, or an `Error`
+    isolated remote function getFileCsv(string path, DownloadOptions? options = (),
+            typedesc<string[][]|record {}[]> targetType = <>) returns targetType|Error = @java:Method {
+        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
+    } external;
 
     // -----------------------------------------------------------------------
     // File copy
@@ -723,12 +776,4 @@ public isolated client class Client {
     isolated remote function getSymbolicLink(string path) returns string|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.FileOps"
     } external;
-
-    # Closes the client and releases any connector-owned resources. Subsequent operations on
-    # a closed client fail.
-    #
-    # + return - An `Error` if the client could not be closed, otherwise `()`
-    public isolated function close() returns Error? {
-        return closeClient(self);
-    }
 }

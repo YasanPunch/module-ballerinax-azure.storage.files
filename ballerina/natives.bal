@@ -30,8 +30,9 @@ isolated function initClient(Client fileClient, string shareName, ClientConfigur
     'class: "io.ballerina.lib.azure.storage.files.util.ClientInit"
 } external;
 
-isolated function closeClient(Client|AdminClient anyClient) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.util.ClientInit"
+isolated function readFileBytes(Client fileClient, string path, DownloadOptions? options)
+        returns byte[]|Error = @java:Method {
+    'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
 } external;
 
 // ---------------------------------------------------------------------------

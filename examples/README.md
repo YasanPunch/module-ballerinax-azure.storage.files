@@ -8,7 +8,7 @@ The `ballerinax/azure.storage.files` connector provides practical examples illus
 
 ## Prerequisites
 
-Each example needs an Azure storage account and its access key; the walkthrough inside each example describes the setup, and each example carries a `Config.toml.template` to copy to `Config.toml` and fill in.
+Each example needs an Azure storage account and its access key; the walkthrough inside each example describes the setup and documents the `Config.toml` to create in the example directory.
 
 ## Running an example
 

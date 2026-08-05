@@ -23,8 +23,8 @@ import com.azure.storage.file.share.ShareDirectoryClient;
 import com.azure.storage.file.share.ShareFileClient;
 import com.azure.storage.file.share.models.CloseHandlesInfo;
 import com.azure.storage.file.share.models.HandleItem;
-import io.ballerina.lib.azure.storage.files.util.Ops;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
+import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BObject;
@@ -40,7 +40,7 @@ public final class HandleOps {
 
     /** Lists the open SMB handles on a file as {@code HandleInfo} records. */
     public static Object listFileHandles(Environment env, BObject self, BString path) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             BArray result = RecordMapper.recordArray(RecordMapper.RECORD_HANDLE_INFO);
             for (HandleItem item : FileOps.fileClient(self, path).listHandles()) {
                 result.append(RecordMapper.handleInfo(item));
@@ -51,7 +51,7 @@ public final class HandleOps {
 
     /** Force-closes one SMB handle on a file, or all of them when no id is given. */
     public static Object forceCloseFileHandles(Environment env, BObject self, BString path, Object handleId) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             ShareFileClient client = FileOps.fileClient(self, path);
             CloseHandlesInfo info = handleId == null
                     ? client.forceCloseAllHandles(null, Context.NONE)
@@ -62,7 +62,7 @@ public final class HandleOps {
 
     /** Lists the open SMB handles on a directory as {@code HandleInfo} records. */
     public static Object listDirectoryHandles(Environment env, BObject self, BString directoryPath) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             BArray result = RecordMapper.recordArray(RecordMapper.RECORD_HANDLE_INFO);
             for (HandleItem item : DirectoryOps.directoryClient(self, directoryPath)
                     .listHandles(null, false, null, Context.NONE)) {
@@ -75,7 +75,7 @@ public final class HandleOps {
     /** Force-closes one SMB handle on a directory, or all of them when no id is given. */
     public static Object forceCloseDirectoryHandles(Environment env, BObject self, BString directoryPath,
             Object handleId, boolean recursive) {
-        return Ops.invoke(env, () -> {
+        return SdkInvoker.invoke(env, () -> {
             ShareDirectoryClient client = DirectoryOps.directoryClient(self, directoryPath);
             CloseHandlesInfo info = handleId == null
                     ? client.forceCloseAllHandles(recursive, null, Context.NONE)
