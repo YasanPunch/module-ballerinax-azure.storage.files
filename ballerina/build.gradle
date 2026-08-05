@@ -138,3 +138,28 @@ unpackStdLibs.dependsOn unpackJballerinaTools
 copyStdlibs.dependsOn unpackStdLibs
 build.dependsOn copyStdlibs
 test.dependsOn copyStdlibs
+
+// The push-to-main build publishes a timestamped snapshot of the package archive to GitHub
+// Packages (the createArtifactZip task comes from the io.ballerina.plugin plugin).
+publishing {
+    publications {
+        maven(MavenPublication) {
+            artifact source: createArtifactZip, extension: 'zip'
+        }
+    }
+
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/ballerina-platform/module-${packageOrg}-${packageName}")
+            credentials {
+                username = System.getenv("publishUser")
+                password = System.getenv("publishPAT")
+            }
+        }
+    }
+}
+
+build.dependsOn "generatePomFileForMavenPublication"
+publishToMavenLocal.dependsOn build
+publish.dependsOn build

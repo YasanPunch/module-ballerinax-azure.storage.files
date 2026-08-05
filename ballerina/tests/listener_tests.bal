@@ -1619,7 +1619,7 @@ function testOnFileByteStreamDeliversContent() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = service object {
+    Service svc = isolated service object {
         remote function onFile(stream<byte[], error?> content, FileInfo info, Caller caller) returns error? {
             byte[] all = check drainByteStream(content);
             recorder.put("stream", check string:fromBytes(all));
@@ -1649,7 +1649,7 @@ function testOnFileByteStreamLargeFileChunks() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = service object {
+    Service svc = isolated service object {
         remote function onFile(stream<byte[], error?> content, FileInfo info, Caller caller) returns error? {
             int chunks = 0;
             int total = 0;
@@ -1689,7 +1689,7 @@ function testStreamHandlerAfterProcessOnReturn() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = service object {
+    Service svc = isolated service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFile(stream<byte[], error?> content) returns error? {
             byte[] all = check drainByteStream(content);
@@ -1719,7 +1719,7 @@ function testStreamPartialDrainThenClose() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = service object {
+    Service svc = isolated service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFile(stream<byte[], error?> content) returns error? {
             record {|byte[] value;|}|error? first = content.next();
@@ -1755,7 +1755,7 @@ function testCsvStreamStringArrays() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = service object {
+    Service svc = isolated service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(stream<string[], error?> rows) returns error? {
             string[] collected = [];
@@ -1789,7 +1789,7 @@ function testCsvStreamRecords() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = service object {
+    Service svc = isolated service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(stream<CsvPerson, error?> rows) returns error? {
             string[] collected = [];
@@ -1823,7 +1823,7 @@ function testCsvStreamLaxBinding() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
-    Service svc = service object {
+    Service svc = isolated service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(stream<CsvSparse, error?> rows) returns error? {
             string[] collected = [];
@@ -1858,7 +1858,7 @@ function testCsvStreamBindingErrorMidStream() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = service object {
+    Service svc = isolated service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(stream<CsvPerson, error?> rows) returns error? {
             int good = 0;
@@ -1898,7 +1898,7 @@ function testCsvStreamFailSafeNotApplied() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, csvFailSafe = {});
-    Service svc = service object {
+    Service svc = isolated service object {
         @FunctionConfig {afterProcess: DELETE}
         remote function onFileCsv(stream<CsvPerson, error?> rows) returns error? {
             int good = 0;
@@ -1929,7 +1929,7 @@ function testStreamHandlerErrorTriggersAfterError() returns error? {
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
-    Service svc = service object {
+    Service svc = isolated service object {
         @FunctionConfig {afterError: DELETE}
         remote function onFile(stream<byte[], error?> content) returns error? {
             recorder.hit("attempt");
