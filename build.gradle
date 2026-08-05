@@ -24,6 +24,8 @@ allprojects {
     group = project.group
     version = project.version
 
+    apply plugin: 'maven-publish'
+
     repositories {
         mavenLocal()
         maven {
