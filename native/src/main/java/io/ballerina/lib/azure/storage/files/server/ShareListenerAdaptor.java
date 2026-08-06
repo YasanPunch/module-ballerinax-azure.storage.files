@@ -372,14 +372,13 @@ public final class ShareListenerAdaptor {
                 return;
             }
         }
-        String eTag = (item.getProperties() == null || item.getProperties().getETag() == null)
-                ? "" : item.getProperties().getETag();
-        // The in-progress guard: a file whose dispatch is still running is not dispatched again.
-        String key = path + "|" + eTag;
-        if (ctx.stopped || !ctx.inProgress.add(key)) {
+        // The in-progress guard: a path whose dispatch is still running is not dispatched
+        // again, even when an overwrite has given it a new ETag; the new version arrives on
+        // a later poll once the current handling finishes.
+        if (ctx.stopped || !ctx.inProgress.add(path)) {
             return;
         }
-        Thread.startVirtualThread(() -> dispatch(listenerObj, ctx, serviceContext, item, path, key));
+        Thread.startVirtualThread(() -> dispatch(listenerObj, ctx, serviceContext, item, path));
     }
 
     /**
@@ -392,10 +391,9 @@ public final class ShareListenerAdaptor {
      * @param serviceContext the attached service's watch configuration and handler set
      * @param item           the file item
      * @param path           the file path
-     * @param key            the deduplication key
      */
     private static void dispatch(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext,
-                                 ShareFileItem item, String path, String key) {
+                                 ShareFileItem item, String path) {
         try {
             // Snapshot the service so a concurrent detach cannot null it mid-dispatch; if it is
             // already gone, leave the file unconsumed for a later poll.
@@ -466,7 +464,7 @@ public final class ShareListenerAdaptor {
         } catch (Throwable e) {
             LOG.error("azure.storage.files listener: unexpected dispatch failure for {}", path, e);
         } finally {
-            ctx.inProgress.remove(key);
+            ctx.inProgress.remove(path);
         }
     }
 
@@ -774,7 +772,8 @@ public final class ShareListenerAdaptor {
         private final boolean laxDataBinding;
         private final BMap<BString, Object> csvFailSafe;
 
-        // Files whose dispatch is still running, keyed by path and ETag.
+        // Files whose dispatch is still running, keyed by path: one file, one invocation at
+        // a time, regardless of version changes while handling runs.
         private final Set<String> inProgress = ConcurrentHashMap.newKeySet();
 
         // The Ballerina runtime, captured from the polling strand on each poll.

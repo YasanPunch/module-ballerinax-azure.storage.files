@@ -56,8 +56,7 @@ class ContentCsvStream {
     private stream<record {}|anydata[], error?> csvStream;
 
     public isolated function init(typedesc<record {}|anydata[]> targetType,
-            stream<byte[], error?> byteStream, boolean laxDataBinding) returns error? {
-        csv:ParseOptions options = csvParseOptions(laxDataBinding);
+            stream<byte[], error?> byteStream, csv:ParseOptions options) returns error? {
         if targetType is typedesc<record {}> {
             // A record target maps its fields through the header row (the file's first row),
             // which the data.csv default already consumes.
@@ -108,7 +107,7 @@ class ContentCsvStream {
 // constructing the object on a plain dispatch thread.
 isolated function newContentCsvStream(typedesc<record {}|anydata[]> targetType,
         stream<byte[], error?> byteStream, boolean laxDataBinding) returns ContentCsvStream|error {
-    return new (targetType, byteStream, laxDataBinding);
+    return new (targetType, byteStream, csvParseOptions(laxDataBinding));
 }
 
 isolated function closeByteStreamQuietly(stream<byte[], error?> byteStream) {

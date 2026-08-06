@@ -962,6 +962,19 @@ function testPollFailureMapsClientSideError() returns error? {
 }
 
 @test:Config {}
+function testListenerRejectsNonPositivePollingInterval() returns error? {
+    Listener|Error zero = new ("interval-check", auth = testAuth(), pollingInterval = 0);
+    test:assertTrue(zero is Error && zero !is ServiceError,
+            "a pollingInterval of zero must fail listener initialization");
+    if zero is Error {
+        test:assertEquals(zero.message(), "pollingInterval must be greater than zero");
+    }
+    Listener|Error negative = new ("interval-check", auth = testAuth(), pollingInterval = -1);
+    test:assertTrue(negative is Error,
+            "a negative pollingInterval must fail listener initialization");
+}
+
+@test:Config {}
 function testPollFailureRecoversOnNextPoll() returns error? {
     [Client, string] setup = check setupMockWatchedShare("lsn-recover");
     Client shareClient = setup[0];
@@ -1920,6 +1933,42 @@ function testCsvStreamFailSafeNotApplied() returns error? {
             "csvFailSafe must not alter the stream forms: the malformed row still errors");
 }
 
+// A byte source that records whether its close() ran, for asserting stream cleanup.
+class RecordingByteSource {
+    private boolean closed = false;
+
+    public isolated function next() returns record {|byte[] value;|}|error? {
+        return ();
+    }
+
+    public isolated function close() returns error? {
+        lock {
+            self.closed = true;
+        }
+        return ();
+    }
+
+    public isolated function isClosed() returns boolean {
+        lock {
+            return self.closed;
+        }
+    }
+}
+
+@test:Config {}
+function testCsvStreamCreationFailure() returns error? {
+    RecordingByteSource src = new;
+    stream<byte[], error?> bytes = new (src);
+    ContentCsvStream|error created = new (CsvPerson, bytes, {encoding: "no-such-charset"});
+    test:assertTrue(created is Error && created !is ServiceError,
+            "a CSV row stream that cannot be created must fail as a client-side error");
+    if created is error {
+        test:assertTrue(created.message().startsWith("CSV stream binding could not be created"),
+                "the error must state the CSV stream binding could not be created");
+    }
+    test:assertTrue(src.isClosed(), "the byte stream must be closed when creation fails");
+}
+
 @test:Config {}
 function testStreamHandlerErrorTriggersAfterError() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-stream-herr");
@@ -2250,6 +2299,44 @@ function testDispatchRunsHandlersConcurrently() returns error? {
     check lsn.immediateStop();
     test:assertTrue(gauge.max() >= 2,
             "two files present in one poll must be dispatched to concurrently running handlers");
+}
+
+@test:Config {}
+function testOverwriteDuringHandlingSerializesPerPath() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-pathguard");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("version one", "/incoming/hot.dat");
+
+    final Recorder recorder = new;
+    final Gauge gauge = new;
+    Listener lsn = check newListener(share);
+    Service svc = isolated service object {
+        isolated remote function onFile(byte[] content, FileInfo info) returns error? {
+            gauge.enter();
+            recorder.hit("dispatch");
+            if recorder.count("dispatch") == 1 {
+                recorder.put("firstETag", info.eTag);
+                recorder.put("lastETag", info.eTag);
+                runtime:sleep(3);
+            } else {
+                recorder.put("lastETag", info.eTag);
+            }
+            gauge.exit();
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("dispatch") >= 1, intervalSeconds = 0.2);
+    // Overwrite while the first dispatch is still handling the old version: the new version
+    // must wait for that handling to finish, then arrive on a later poll.
+    check shareClient->uploadContent("version two", "/incoming/hot.dat");
+    check await(() => recorder.payload("lastETag") != ""
+            && recorder.payload("lastETag") != recorder.payload("firstETag"));
+    check lsn.immediateStop();
+
+    test:assertEquals(gauge.max(), 1,
+            "one file must never be dispatched to two handlers at once, even across versions");
 }
 
 @test:Config {}

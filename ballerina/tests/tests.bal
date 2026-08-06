@@ -1680,6 +1680,23 @@ function testGetFileText() returns error? {
 }
 
 @test:Config {}
+function testGetFileTextRejectsInvalidUtf8() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("typed-text-utf8");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+    byte[] invalid = [0xC3, 0x28, 0xFF, 0xFE, 0x80];
+    check fileClient->uploadContent(invalid, "/binary.bin");
+    string|Error text = fileClient->getFileText("/binary.bin");
+    test:assertTrue(text is Error && text !is ServiceError,
+            "content that is not UTF-8 must fail the text read client-side");
+    if text is Error {
+        test:assertTrue(text.message().startsWith("the file content is not valid UTF-8 text"),
+                "the error must state the content is not valid UTF-8 text");
+    }
+}
+
+@test:Config {}
 function testGetFileJson() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("typed-json");

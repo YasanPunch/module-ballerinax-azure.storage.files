@@ -13,6 +13,8 @@ az storage share create --name drop-folder-example --account-name <storage accou
 az storage directory create --share-name drop-folder-example --name incoming --account-name <storage account name> --account-key <storage account key>
 ```
 
+Creating a share from Ballerina code is shown in the [file backup](../file-backup) example, which provisions its own share with the connector's `AdminClient`.
+
 ## Configuration
 
 Create `Config.toml` in the example directory with the following values:

@@ -109,6 +109,7 @@ The `azure.storage.files` connector provides practical examples illustrating usa
 1. [File backup](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples/file-backup) - Back up a local folder to a file share and restore a file from it.
 2. [Share handout](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples/share-handout) - Upload a report and generate a time-limited, read-only SAS URL to share with a third party.
 3. [Drop folder processor](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples/drop-folder-processor) - Watch a folder on a share with the listener and process each dropped file, deleting JSON files and moving the rest into a processed folder.
+4. [Change tracker](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/tree/main/examples/change-tracker) - Derive created, modified, and deleted events from a watched share with an application-kept eTag snapshot.
 
 ## Issues and projects
 

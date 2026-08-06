@@ -22,7 +22,7 @@ import ballerina/task;
 public type ListenerConfiguration record {|
     # The authentication configuration (see `AuthConfig`)
     AuthConfig auth;
-    # How often the watched path is polled, in seconds
+    # How often the watched path is polled, in seconds. Must be greater than zero
     decimal pollingInterval = 60;
     # Retry behaviour for service requests; omit for the service defaults
     RetryConfig retryConfig?;
@@ -117,6 +117,9 @@ public isolated class Listener {
     # + return - An `Error` if the listener could not be initialized, otherwise `()`
     public isolated function init(string shareName, *ListenerConfiguration config) returns Error? {
         self.shareName = shareName;
+        if config.pollingInterval <= 0d {
+            return error Error("pollingInterval must be greater than zero");
+        }
         task:Listener|task:Error taskListener = new (trigger = {interval: config.pollingInterval});
         if taskListener is task:Error {
             return error Error("failed to initialize the polling scheduler", taskListener);
