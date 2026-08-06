@@ -1881,7 +1881,8 @@ function testCsvStreamBindingErrorMidStream() returns error? {
                 entry = rows.next();
             }
             if entry is error {
-                recorder.put("midstream", string `${good}:${entry is Error ? "typed" : "untyped"}`);
+                recorder.put("midstream",
+                        string `${good}:${entry is Error && entry !is ServiceError ? "typed" : "untyped"}`);
             }
         }
 

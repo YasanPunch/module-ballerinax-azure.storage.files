@@ -35,39 +35,44 @@ import ballerina/time;
 @test:Config {}
 function testInitRejectsBadBase64Key() {
     Client|Error result = new ("share", auth = {accountName: "acct", accountKey: "not base64!!!"});
-    test:assertTrue(result is Error, "expected a client-side error for a non-base64 key");
+    test:assertTrue(result is Error && result !is ServiceError,
+            "expected a client-side error for a non-base64 key");
 }
 
 @test:Config {}
 function testInitRejectsEmptyAccountName() {
     Client|Error result = new ("share", auth = {accountName: "  ", accountKey: MOCK_KEY});
-    test:assertTrue(result is Error, "expected a client-side error for an empty account name");
+    test:assertTrue(result is Error && result !is ServiceError,
+            "expected a client-side error for an empty account name");
 }
 
 @test:Config {}
 function testInitRejectsBadServiceUrl() {
     Client|Error result = new ("share",
             auth = {accountName: "acct", accountKey: MOCK_KEY, serviceUrl: "ftp://example.com"});
-    test:assertTrue(result is Error, "expected a client-side error for a non-http serviceUrl");
+    test:assertTrue(result is Error && result !is ServiceError,
+            "expected a client-side error for a non-http serviceUrl");
 }
 
 @test:Config {}
 function testInitRejectsEmptyShareName() {
     Client|Error result = new ("", auth = {accountName: "acct", accountKey: MOCK_KEY});
-    test:assertTrue(result is Error, "expected a client-side error for an empty share name");
+    test:assertTrue(result is Error && result !is ServiceError,
+            "expected a client-side error for an empty share name");
 }
 
 @test:Config {}
 function testInitRejectsSasUrlWithoutSignature() {
     Client|Error result = new ("share", auth = {sasUrl: "https://acct.file.core.windows.net/?sv=2024"});
-    test:assertTrue(result is Error, "expected a client-side error for a SAS URL without sig=");
+    test:assertTrue(result is Error && result !is ServiceError,
+            "expected a client-side error for a SAS URL without sig=");
 }
 
 @test:Config {}
 function testInitRejectsConnectionStringWithoutEndpoint() {
     Client|Error result = new ("share",
             auth = {connectionString: "DefaultEndpointsProtocol=https;AccountKey=" + MOCK_KEY});
-    test:assertTrue(result is Error,
+    test:assertTrue(result is Error && result !is ServiceError,
             "expected a client-side error for a connection string without FileEndpoint/AccountName");
 }
 
@@ -108,7 +113,8 @@ function testInitEntraIdModes() returns error? {
 function testInitEntraIdValidation() {
     Client|Error emptyTenant = new ("share",
             auth = {accountName: "acct", tenantId: " ", clientId: "client", clientSecret: "s3cret"});
-    test:assertTrue(emptyTenant is Error, "expected a blank tenantId to fail");
+    test:assertTrue(emptyTenant is Error && emptyTenant !is ServiceError,
+            "expected a blank tenantId to fail");
 
     Client|Error missingCertificate = new ("share", auth = {
         accountName: "acct",
@@ -116,11 +122,12 @@ function testInitEntraIdValidation() {
         clientId: "client",
         certificatePath: "target/no-such-cert.pem"
     });
-    test:assertTrue(missingCertificate is Error,
+    test:assertTrue(missingCertificate is Error && missingCertificate !is ServiceError,
             "expected a missing certificate file to fail");
 
     Client|Error emptyAccount = new ("share", auth = {kind: "default", accountName: "  "});
-    test:assertTrue(emptyAccount is Error, "expected a blank account name to fail");
+    test:assertTrue(emptyAccount is Error && emptyAccount !is ServiceError,
+            "expected a blank account name to fail");
 }
 
 // Pinned to the mock: retry and proxy behavior only manifests against an endpoint that
@@ -211,18 +218,20 @@ function testTransportTlsConfig() returns error? {
     // Broken TLS input fails at init with a clear error.
     Client|Error missingCert = new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {secureSocket: {cert: "tests/resources/absent.pem"}});
-    test:assertTrue(missingCert is Error, "expected a missing cert file to fail");
+    test:assertTrue(missingCert is Error && missingCert !is ServiceError,
+            "expected a missing cert file to fail");
 
     Client|Error wrongPassword = new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {
                 secureSocket: {cert: {path: "tests/resources/trust.p12", password: "wrong"}}
             });
-    test:assertTrue(wrongPassword is Error, "expected a wrong store password to fail");
+    test:assertTrue(wrongPassword is Error && wrongPassword !is ServiceError,
+            "expected a wrong store password to fail");
 
     Client|Error validationWithoutTrust = new ("share",
             auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {secureSocket: {validateRevocation: true}});
-    test:assertTrue(validationWithoutTrust is Error,
+    test:assertTrue(validationWithoutTrust is Error && validationWithoutTrust !is ServiceError,
             "expected validateRevocation without trust material to fail");
 }
 
@@ -741,6 +750,7 @@ function testErrorCodeMapping() returns error? {
 function testClientSideErrorsCarryNoDetail() returns error? {
     Client|Error bad = new ("share", auth = {accountName: "acct", accountKey: "not base64!!!"});
     if bad is Error {
+        test:assertTrue(bad !is ServiceError, "a client-side init failure must not be a ServiceError");
         test:assertFalse(bad.detail().hasKey("errorCode"),
                 "a client-side error must not carry a fabricated errorCode");
         test:assertFalse(bad.detail().hasKey("httpStatus"),
@@ -756,8 +766,12 @@ function testClientSideErrorsCarryNoDetail() returns error? {
     byte[][] longChunks = ["abcdef".toBytes(), "ghijkl".toBytes()];
     Error? overflow = fileClient->uploadFromStream(longChunks.toStream(), 5, "/overflow.txt");
     if overflow is Error {
+        test:assertTrue(overflow !is ServiceError,
+                "a connector-raised error must not be a ServiceError");
         test:assertFalse(overflow.detail().hasKey("errorCode"),
                 "a connector-raised error must not carry a fabricated errorCode");
+        test:assertFalse(overflow.detail().hasKey("httpStatus"),
+                "a connector-raised error must not carry an httpStatus");
     } else {
         test:assertFail("expected a stream longer than contentLength to fail");
     }
@@ -1716,7 +1730,8 @@ function testGetFileJson() returns error? {
 
     check fileClient->uploadContent("{not json", "/broken.json");
     json|Error broken = fileClient->getFileJson("/broken.json");
-    test:assertTrue(broken is Error, "malformed JSON must fail the typed read");
+    test:assertTrue(broken is Error && broken !is ServiceError,
+            "malformed JSON must fail the typed read client-side");
     if broken is Error {
         test:assertTrue(broken.message().startsWith("the file content does not bind"),
                 "the binding error must state the content does not bind");
