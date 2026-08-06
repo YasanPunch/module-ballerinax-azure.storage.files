@@ -35,6 +35,6 @@ The program polls the share and runs until you stop it with `Ctrl+C`. On the fir
 
 To see the three events, upload a file to the share (through the [Azure portal](https://portal.azure.com), the Azure CLI, or an SMB mount) and watch a "file created" log line appear within a few seconds. Overwrite the same file with different content for "file modified", and delete it for "file deleted".
 
-## What this pattern trades away
+## What this pattern trades for
 
 The snapshot lives in memory, so the guarantees are exactly what the application code makes them. A restart re-baselines: every file present is reported as created again, and deletions that happened while the tracker was down are never reported. The listener's delivery is at least once, which this pattern absorbs naturally: re-observing an unchanged file is a no-op, so duplicate dispatches cost nothing. The entity tag is the precise change signal (Azure assigns a new one on every write); the last-modified timestamp is carried alongside for display, and an application that prefers it can compare it instead. An application that needs the snapshot to survive restarts can persist it (for example to a local file, or to a file on the share itself) instead of holding it in memory.
