@@ -81,16 +81,19 @@ public type Move record {|
     boolean preserveSubDirs = true;
 |};
 
+# The `Move` action's named form, used in the post-process action unions.
+public type MOVE Move;
+
 # The per-handler configuration, supplied through the `@files:FunctionConfig` annotation. It
 # routes files to a handler by name pattern and auto-consumes a file after the handler runs.
 public type FunctionConfiguration record {|
     # A regular expression matched against the file name that routes matching files to this handler
     string fileNamePattern?;
     # The action applied after the handler returns normally: delete the file, or move it
-    DELETE|Move afterProcess?;
+    DELETE|MOVE afterProcess?;
     # The action applied after the handler returns or panics with an error (including a
     # content-binding failure for a typed handler): delete the file, or move it
-    DELETE|Move afterError?;
+    DELETE|MOVE afterError?;
 |};
 
 # Declares the configuration of a listener handler.
@@ -116,8 +119,7 @@ public isolated class Listener {
         self.shareName = shareName;
         task:Listener|task:Error taskListener = new (trigger = {interval: config.pollingInterval});
         if taskListener is task:Error {
-            return error ProcessingError("failed to initialize the polling scheduler", taskListener,
-                    errorCode = "ProcessingError");
+            return error Error("failed to initialize the polling scheduler", taskListener);
         }
         self.taskListener = taskListener;
 

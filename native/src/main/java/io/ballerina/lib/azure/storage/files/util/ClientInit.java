@@ -82,12 +82,12 @@ public final class ClientInit {
      */
     public static Object initAdminClient(BObject self, BMap<BString, Object> config) {
         try {
-            self.addNativeData(SdkInvoker.NATIVE_SERVICE_CLIENT, buildServiceClient(config));
+            self.addNativeData(AzureClientInvoker.NATIVE_SERVICE_CLIENT, buildServiceClient(config));
             return null;
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
         }
     }
 
@@ -103,16 +103,16 @@ public final class ClientInit {
         try {
             String share = shareName.getValue().strip();
             if (share.isEmpty()) {
-                return FilesErrorCreator.processingError("shareName must not be empty", null);
+                return FilesErrorCreator.clientError("shareName must not be empty", null);
             }
             ShareServiceClient serviceClient = buildServiceClient(config);
-            self.addNativeData(SdkInvoker.NATIVE_SERVICE_CLIENT, serviceClient);
-            self.addNativeData(SdkInvoker.NATIVE_SHARE_CLIENT, serviceClient.getShareClient(share));
+            self.addNativeData(AzureClientInvoker.NATIVE_SERVICE_CLIENT, serviceClient);
+            self.addNativeData(AzureClientInvoker.NATIVE_SHARE_CLIENT, serviceClient.getShareClient(share));
             return null;
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
         }
     }
 
@@ -149,7 +149,7 @@ public final class ClientInit {
         try {
             return builder.buildClient();
         } catch (IllegalArgumentException | IllegalStateException e) {
-            throw FilesErrorCreator.processingError("invalid client configuration: " + SdkInvoker.describe(e), e);
+            throw FilesErrorCreator.clientError("invalid client configuration: " + AzureClientInvoker.describe(e), e);
         }
     }
 
@@ -159,7 +159,7 @@ public final class ClientInit {
         try {
             Base64.getDecoder().decode(accountKey);
         } catch (IllegalArgumentException e) {
-            throw FilesErrorCreator.processingError("accountKey is not a valid base64 string", e);
+            throw FilesErrorCreator.clientError("accountKey is not a valid base64 string", e);
         }
         String serviceUrl = ValueUtils.optString(auth, SERVICE_URL);
         builder.endpoint(serviceUrl == null ? defaultEndpoint(accountName) : validateUrl(serviceUrl, "serviceUrl"))
@@ -207,7 +207,7 @@ public final class ClientInit {
         } else if (auth.containsKey(CERTIFICATE_PATH)) {
             String certificatePath = requireNonEmpty(auth, CERTIFICATE_PATH);
             if (!Files.isRegularFile(Path.of(certificatePath))) {
-                throw FilesErrorCreator.processingError(
+                throw FilesErrorCreator.clientError(
                         "certificatePath does not point to a readable file: " + certificatePath, null);
             }
             ClientCertificateCredentialBuilder certificateBuilder = new ClientCertificateCredentialBuilder()
@@ -256,13 +256,13 @@ public final class ClientInit {
         try {
             uri = new URI(sasUrl);
         } catch (URISyntaxException e) {
-            throw FilesErrorCreator.processingError("sasUrl is not a valid URL", e);
+            throw FilesErrorCreator.clientError("sasUrl is not a valid URL", e);
         }
         if (uri.getScheme() == null || !(uri.getScheme().equals("https") || uri.getScheme().equals("http"))) {
-            throw FilesErrorCreator.processingError("sasUrl must use the http or https scheme", null);
+            throw FilesErrorCreator.clientError("sasUrl must use the http or https scheme", null);
         }
         if (uri.getRawQuery() == null || !uri.getRawQuery().contains("sig=")) {
-            throw FilesErrorCreator.processingError(
+            throw FilesErrorCreator.clientError(
                     "sasUrl carries no SAS token (no `sig=` in its query); for a bare token use SasConfig", null);
         }
         String base = uri.getRawQuery() == null ? sasUrl : sasUrl.substring(0, sasUrl.indexOf('?'));
@@ -273,14 +273,14 @@ public final class ClientInit {
     private static void configureConnectionString(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
         String connectionString = requireNonEmpty(auth, CONNECTION_STRING);
         if (!connectionString.contains("FileEndpoint=") && !connectionString.contains("AccountName=")) {
-            throw FilesErrorCreator.processingError(
+            throw FilesErrorCreator.clientError(
                     "the connection string must include FileEndpoint= or AccountName= so the file-service "
                             + "endpoint can be derived", null);
         }
         try {
             builder.connectionString(connectionString);
         } catch (IllegalArgumentException e) {
-            throw FilesErrorCreator.processingError("invalid connection string: " + SdkInvoker.describe(e), e);
+            throw FilesErrorCreator.clientError("invalid connection string: " + AzureClientInvoker.describe(e), e);
         }
         for (String pair : connectionString.split(";")) {
             if (pair.startsWith("FileEndpoint=")) {
@@ -292,7 +292,7 @@ public final class ClientInit {
     private static String requireNonEmpty(BMap<BString, Object> record, BString field) {
         String value = ValueUtils.optString(record, field);
         if (value == null || value.strip().isEmpty()) {
-            throw FilesErrorCreator.processingError(field.getValue() + " must not be empty", null);
+            throw FilesErrorCreator.clientError(field.getValue() + " must not be empty", null);
         }
         return value.strip();
     }
@@ -305,11 +305,11 @@ public final class ClientInit {
         try {
             URI uri = new URI(url);
             if (uri.getScheme() == null || !(uri.getScheme().equals("https") || uri.getScheme().equals("http"))) {
-                throw FilesErrorCreator.processingError(fieldName + " must use the http or https scheme", null);
+                throw FilesErrorCreator.clientError(fieldName + " must use the http or https scheme", null);
             }
             return url;
         } catch (URISyntaxException e) {
-            throw FilesErrorCreator.processingError(fieldName + " is not a valid URL", e);
+            throw FilesErrorCreator.clientError(fieldName + " is not a valid URL", e);
         }
     }
 }

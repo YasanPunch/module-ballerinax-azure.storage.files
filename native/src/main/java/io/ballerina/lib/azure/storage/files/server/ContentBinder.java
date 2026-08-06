@@ -35,7 +35,7 @@ import java.nio.charset.StandardCharsets;
 /**
  * Binds typed listener content through the {@code ballerina/data.jsondata} and
  * {@code ballerina/data.xmldata} modules, honoring the listener's {@code laxDataBinding} setting.
- * A binding failure is thrown as the module's {@code ProcessingError}. CSV binding runs on a
+ * A binding failure is thrown as the module's generic {@code Error}. CSV binding runs on a
  * Ballerina strand instead (see the module-level {@code bindCsvContent} helper), because the
  * data.csv parser needs the runtime environment.
  */
@@ -84,7 +84,7 @@ final class ContentBinder {
             try {
                 return XmlUtils.parse(new String(bytes, StandardCharsets.UTF_8));
             } catch (BError e) {
-                throw FilesErrorCreator.processingError(
+                throw FilesErrorCreator.clientError(
                         "content is not valid XML for the 'onFileXml' handler", e);
             }
         }
@@ -104,7 +104,7 @@ final class ContentBinder {
     }
 
     private static BError bindingFailure(String handlerName, BError cause) {
-        return FilesErrorCreator.processingError("content does not bind to the '" + handlerName
+        return FilesErrorCreator.clientError("content does not bind to the '" + handlerName
                 + "' handler's declared type: " + cause.getErrorMessage(), cause);
     }
 }

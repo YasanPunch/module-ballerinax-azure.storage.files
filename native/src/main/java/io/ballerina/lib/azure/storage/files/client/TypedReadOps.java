@@ -19,10 +19,10 @@
 package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.storage.file.share.ShareFileClient;
+import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
 import io.ballerina.lib.azure.storage.files.util.DataBindingOptions;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.creators.ValueCreator;
@@ -45,7 +45,7 @@ import java.nio.charset.StandardCharsets;
  * Typed content reads: download a file's full content and bind it to the caller-directed target
  * type through the data.jsondata, data.xmldata, and data.csv modules. Binding is strict (the
  * listener's {@code laxDataBinding} does not apply to client reads) and always runs on the
- * extern's own strand, after the network call has returned from {@link SdkInvoker#invoke}.
+ * extern's own strand, after the network call has returned from {@link AzureClientInvoker#invoke}.
  */
 public final class TypedReadOps {
 
@@ -58,7 +58,7 @@ public final class TypedReadOps {
 
     /** Downloads a file's full content (or a range of it) into a Ballerina byte array. */
     public static Object readFileBytes(Environment env, BObject clientObj, BString path, Object options) {
-        return SdkInvoker.invoke(env, () -> {
+        return AzureClientInvoker.invoke(env, () -> {
             Object range = null;
             String snapshotId = null;
             if (options != null) {
@@ -105,7 +105,7 @@ public final class TypedReadOps {
             try {
                 return XmlUtils.parse(new String(byteArray.getBytes(), StandardCharsets.UTF_8));
             } catch (BError e) {
-                return FilesErrorCreator.processingError(
+                return FilesErrorCreator.clientError(
                         "the file content is not valid XML: " + e.getErrorMessage(), e);
             }
         }
@@ -157,7 +157,7 @@ public final class TypedReadOps {
     }
 
     private static BError bindingFailure(String kind, BError cause) {
-        return FilesErrorCreator.processingError("the file content does not bind to the target "
+        return FilesErrorCreator.clientError("the file content does not bind to the target "
                 + kind + " type: " + cause.getErrorMessage(), cause);
     }
 }

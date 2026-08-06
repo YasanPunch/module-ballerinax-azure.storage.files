@@ -24,11 +24,11 @@ import com.azure.storage.file.share.models.ShareFileItem;
 import com.azure.storage.file.share.models.ShareStorageException;
 import com.azure.storage.file.share.options.ShareListFilesAndDirectoriesOptions;
 import com.azure.xml.XmlReader;
+import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
 import io.ballerina.lib.azure.storage.files.util.ErrorMapper;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.ModuleUtils;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.Runtime;
 import io.ballerina.runtime.api.concurrent.StrandMetadata;
@@ -146,12 +146,12 @@ public final class ShareListenerAdaptor {
             try (XmlReader ignored = XmlReader.fromString("<x/>")) {
                 // initialization only
             } catch (XMLStreamException | RuntimeException | Error e) {
-                return FilesErrorCreator.processingError("XML support could not be initialized: "
-                        + SdkInvoker.describe(e) + ". Retry initializing the listener.", e);
+                return FilesErrorCreator.clientError("XML support could not be initialized: "
+                        + AzureClientInvoker.describe(e) + ". Retry initializing the listener.", e);
             }
 
             BObject client = caller.getObjectValue(CALLER_CLIENT_FIELD);
-            listenerObj.addNativeData(SdkInvoker.NATIVE_SHARE_CLIENT, SdkInvoker.shareClient(client));
+            listenerObj.addNativeData(AzureClientInvoker.NATIVE_SHARE_CLIENT, AzureClientInvoker.shareClient(client));
 
             boolean laxDataBinding = Boolean.TRUE.equals(config.get(LAX_DATA_BINDING));
             @SuppressWarnings("unchecked")
@@ -162,7 +162,7 @@ public final class ShareListenerAdaptor {
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
         }
     }
 
@@ -179,7 +179,7 @@ public final class ShareListenerAdaptor {
     public static Object attachService(Environment env, BObject listenerObj, BObject service, Object name) {
         ListenerContext ctx = context(listenerObj);
         if (ctx.service != null) {
-            return FilesErrorCreator.processingError(
+            return FilesErrorCreator.clientError(
                     "Only one service can be attached to a files:Listener", null);
         }
         try {
@@ -189,7 +189,7 @@ public final class ShareListenerAdaptor {
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
         }
     }
 
@@ -204,7 +204,7 @@ public final class ShareListenerAdaptor {
     public static Object detachService(Environment env, BObject listenerObj, BObject service) {
         ListenerContext ctx = context(listenerObj);
         if (ctx == null || ctx.service != service) {
-            return FilesErrorCreator.processingError("the given service is not attached to this listener", null);
+            return FilesErrorCreator.clientError("the given service is not attached to this listener", null);
         }
         ctx.service = null;
         ctx.serviceContext = null;
@@ -223,7 +223,7 @@ public final class ShareListenerAdaptor {
      * @return {@code null} on success, or the mapped scan error
      */
     public static Object poll(Environment env, BObject listenerObj) {
-        return SdkInvoker.invoke(env, () -> {
+        return AzureClientInvoker.invoke(env, () -> {
             ListenerContext ctx = context(listenerObj);
             if (ctx == null || ctx.stopped) {
                 return null;
@@ -241,7 +241,7 @@ public final class ShareListenerAdaptor {
     }
 
     // Maps a scan failure to the module's typed error: Azure service failures go through the
-    // code-keyed mapper, and anything else becomes a ProcessingError.
+    // code-keyed mapper, and anything else becomes the generic client-side Error.
     private static BError mapScanFailure(Throwable e) {
         if (e instanceof ShareStorageException storageException) {
             return ErrorMapper.toBError(storageException);
@@ -249,7 +249,7 @@ public final class ShareListenerAdaptor {
         if (e instanceof BError bError) {
             return bError;
         }
-        return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+        return FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
     }
 
     /**
@@ -318,7 +318,7 @@ public final class ShareListenerAdaptor {
      * @param serviceContext the attached service's watch configuration
      */
     private static void scan(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext) {
-        ShareClient share = SdkInvoker.shareClient(listenerObj);
+        ShareClient share = AzureClientInvoker.shareClient(listenerObj);
         Deque<String> pending = new ArrayDeque<>();
         pending.push(serviceContext.watchedPath());
         while (!pending.isEmpty()) {
@@ -417,7 +417,7 @@ public final class ShareListenerAdaptor {
                 // A stream handler skips the eager download: the file is read chunk by chunk.
                 InputStream inputStream;
                 try {
-                    inputStream = SdkInvoker.shareClient(listenerObj).getFileClient(path).openInputStream();
+                    inputStream = AzureClientInvoker.shareClient(listenerObj).getFileClient(path).openInputStream();
                 } catch (RuntimeException e) {
                     LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
                     return;
@@ -476,7 +476,7 @@ public final class ShareListenerAdaptor {
                                              ServiceContext serviceContext, HandlerConfig handler,
                                              String path, RuntimeException e) {
         BError bindingError = e instanceof BError bError
-                ? bError : FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+                ? bError : FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
         if (serviceContext.onErrorArity() == 0) {
             bindingError.printStackTrace();
         }
@@ -535,7 +535,7 @@ public final class ShareListenerAdaptor {
                 ctx.csvFailSafe,
                 StringUtils.fromString(prefix));
         if (result instanceof BError bError) {
-            throw FilesErrorCreator.processingError("content does not bind to the '" + ON_FILE_CSV
+            throw FilesErrorCreator.clientError("content does not bind to the '" + ON_FILE_CSV
                     + "' handler's declared type: " + bError.getErrorMessage(), bError);
         }
         return result;
@@ -569,12 +569,12 @@ public final class ShareListenerAdaptor {
             return;
         }
         try {
-            ShareClient share = SdkInvoker.shareClient(listenerObj);
+            ShareClient share = AzureClientInvoker.shareClient(listenerObj);
             if (action.isDelete()) {
                 share.getFileClient(path).delete();
                 return;
             }
-            String moveRoot = SdkInvoker.directoryPath(StringUtils.fromString(action.moveTo()));
+            String moveRoot = AzureClientInvoker.directoryPath(StringUtils.fromString(action.moveTo()));
             String destination = action.preserveSubDirs()
                     ? join(moveRoot, relativeTo(path, serviceContext.watchedPath()))
                     : join(moveRoot, path.substring(path.lastIndexOf('/') + 1));
@@ -609,7 +609,7 @@ public final class ShareListenerAdaptor {
 
     private static byte[] download(BObject listenerObj, String path) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        SdkInvoker.shareClient(listenerObj).getFileClient(path).download(out);
+        AzureClientInvoker.shareClient(listenerObj).getFileClient(path).download(out);
         return out.toByteArray();
     }
 
@@ -687,14 +687,14 @@ public final class ShareListenerAdaptor {
                 }
                 joined.append(segments.getBString(i).getValue());
             }
-            return SdkInvoker.directoryPath(StringUtils.fromString(joined.toString()));
+            return AzureClientInvoker.directoryPath(StringUtils.fromString(joined.toString()));
         }
         if (name instanceof BString path) {
             String collapsed = path.getValue().strip();
             while (collapsed.contains("//")) {
                 collapsed = collapsed.replace("//", "/");
             }
-            return SdkInvoker.directoryPath(StringUtils.fromString(collapsed));
+            return AzureClientInvoker.directoryPath(StringUtils.fromString(collapsed));
         }
         return "";
     }
@@ -708,7 +708,7 @@ public final class ShareListenerAdaptor {
             if (ACTION_DELETE.equals(action.getValue())) {
                 return new PostAction(true, null, false);
             }
-            throw FilesErrorCreator.processingError("unknown post-process action: " + action.getValue(), null);
+            throw FilesErrorCreator.clientError("unknown post-process action: " + action.getValue(), null);
         }
         @SuppressWarnings("unchecked")
         BMap<BString, Object> move = (BMap<BString, Object>) value;
@@ -738,7 +738,7 @@ public final class ShareListenerAdaptor {
         try {
             return Pattern.compile(pattern);
         } catch (PatternSyntaxException e) {
-            throw FilesErrorCreator.processingError("invalid regular expression: " + pattern, e);
+            throw FilesErrorCreator.clientError("invalid regular expression: " + pattern, e);
         }
     }
 
@@ -780,11 +780,8 @@ public final class ShareListenerAdaptor {
         // The Ballerina runtime, captured from the polling strand on each poll.
         private volatile Runtime runtime;
 
-        // The attached service.
         private volatile BObject service;
 
-        // The attached service's parsed watch configuration and handler set, immutable per attach:
-        // set when the service attaches and cleared when it detaches.
         private volatile ServiceContext serviceContext;
 
         // The stopped flag: set by a stop, checked by the scan and dispatch paths.

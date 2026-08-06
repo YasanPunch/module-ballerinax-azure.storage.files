@@ -14,42 +14,42 @@
 // specific language governing permissions and limitations
 // under the License.
 
-# Structured detail carried by every connector error.
-public type ErrorDetail record {|
-    # The HTTP status code returned by Azure. Absent when the failure happened without a
-    # server exchange (e.g. a `ProcessingError` raised client-side).
-    int httpStatus?;
-    # The Azure error code (e.g. `ShareNotFound`), or a connector-defined identifier for
-    # client-side failures
+# Structured detail carried by every error the Azure service raised.
+public type ServiceErrorDetail record {|
+    # The HTTP status code returned by Azure
+    int httpStatus;
+    # The Azure error code (e.g. `ShareNotFound`)
     string errorCode;
 |};
 
 # The root error type for the connector. Every error raised by an `azure.storage.files`
-# operation is a subtype of this type and carries an `ErrorDetail`.
-public type Error distinct error<ErrorDetail>;
+# operation is a subtype of this type. A client-side failure (invalid configuration, local
+# I/O, content that fails to bind, or any other failure the Azure service did not raise) is
+# this generic type and carries no detail; errors raised by the service are `ServiceError`s.
+public type Error distinct error;
+
+# An error raised by the Azure service. Carries a `ServiceErrorDetail` with the HTTP status
+# and the Azure error code of the failed request.
+public type ServiceError distinct (Error & error<ServiceErrorDetail>);
 
 # The requested share, directory, or file was not found (HTTP 404).
-public type NotFoundError distinct Error;
+public type NotFoundError distinct ServiceError;
 
 # The operation conflicts with the current state of the resource, e.g. creating a share that
 # already exists (HTTP 409).
-public type ConflictError distinct Error;
+public type ConflictError distinct ServiceError;
 
 # Authentication or authorization failed, e.g. an invalid key or insufficient SAS
 # permissions (HTTP 403).
-public type AuthorizationError distinct Error;
+public type AuthorizationError distinct ServiceError;
 
 # A precondition such as an ETag `If-Match`/`If-None-Match` condition or a lease-id
 # requirement on a file operation was not met (HTTP 412).
-public type PreconditionFailedError distinct Error;
+public type PreconditionFailedError distinct ServiceError;
 
 # The requested byte range cannot be satisfied for the target file (HTTP 416).
-public type RangeNotSatisfiableError distinct Error;
+public type RangeNotSatisfiableError distinct ServiceError;
 
 # The share is full: a write was rejected because the share's provisioned capacity is
 # exhausted (HTTP 403).
-public type QuotaExceededError distinct Error;
-
-# A client-side failure occurred while preparing the request or decoding the response
-# (no server round-trip, or a failure outside Azure's control).
-public type ProcessingError distinct Error;
+public type QuotaExceededError distinct ServiceError;

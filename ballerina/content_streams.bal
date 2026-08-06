@@ -31,7 +31,7 @@ class ContentByteStream {
     private boolean isClosed = false;
 
     public isolated function next() returns record {|byte[] value;|}|error? {
-        return externByteStreamNext(self);
+        return externStreamIterator(self);
     }
 
     public isolated function close() returns error? {
@@ -69,8 +69,8 @@ class ContentCsvStream {
             csv:parseToStream(byteStream, options, targetType);
         if parsed is csv:Error {
             closeByteStreamQuietly(byteStream);
-            return error ProcessingError("CSV stream binding could not be created: "
-                    + parsed.message(), parsed, errorCode = "ProcessingError");
+            return error Error("CSV stream binding could not be created: "
+                    + parsed.message(), parsed);
         }
         self.csvStream = parsed;
     }
@@ -88,8 +88,8 @@ class ContentCsvStream {
         if nextEntry is error {
             self.isClosed = true;
             closeRowStreamQuietly(self.csvStream);
-            return error ProcessingError("CSV content does not bind to the declared row type: "
-                    + nextEntry.message(), nextEntry, errorCode = "ProcessingError");
+            return error Error("CSV content does not bind to the declared row type: "
+                    + nextEntry.message(), nextEntry);
         }
         return nextEntry;
     }
@@ -125,10 +125,10 @@ isolated function closeRowStreamQuietly(stream<record {}|anydata[], error?> rowS
     }
 }
 
-isolated function externByteStreamNext(ContentByteStream iterator)
+isolated function externStreamIterator(ContentByteStream iterator)
         returns record {|byte[] value;|}|error? = @java:Method {
     'class: "io.ballerina.lib.azure.storage.files.server.ContentStreams",
-    name: "byteStreamNext"
+    name: "streamIterator"
 } external;
 
 isolated function externByteStreamClose(ContentByteStream iterator) returns error? = @java:Method {

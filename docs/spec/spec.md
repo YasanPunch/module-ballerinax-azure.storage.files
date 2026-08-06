@@ -433,9 +433,9 @@ remote function getFileXml(string path, DownloadOptions? options = (), typedesc<
 remote function getFileCsv(string path, DownloadOptions? options = (), typedesc<string[][]|record {}[]> targetType = <>) returns targetType|Error;
 ```
 
-`uploadFile` and `downloadFile` move a local file on disk; both parameters are full paths including the file name, in source-first order. `uploadContent` takes in-memory content: `byte[]` and `string` are written as-is, `xml` in its textual form, `map<json>` as a JSON document, and `string[][]` as CSV rows (fields containing a comma, quote, backslash, or line break are quoted, matching the dialect `getFileCsv` reads back). `uploadFromStream` requires `contentLength` because Azure Files pre-allocates the file at a fixed size before content is written into its ranges; a source-stream failure, or a stream whose length does not match `contentLength`, surfaces as a `ProcessingError`. The transfer methods chunk internally, and `getFileContent` reads lazily, so memory stays bounded for any file size. `downloadFile` fails with a `ProcessingError` when a local file already exists at `destinationPath`. `DownloadOptions` offers a byte `range` and a `snapshotId` to read from a share snapshot.
+`uploadFile` and `downloadFile` move a local file on disk; both parameters are full paths including the file name, in source-first order. `uploadContent` takes in-memory content: `byte[]` and `string` are written as-is, `xml` in its textual form, `map<json>` as a JSON document, and `string[][]` as CSV rows (fields containing a comma, quote, backslash, or line break are quoted, matching the dialect `getFileCsv` reads back). `uploadFromStream` requires `contentLength` because Azure Files pre-allocates the file at a fixed size before content is written into its ranges; a source-stream failure, or a stream whose length does not match `contentLength`, surfaces as a client-side `Error`. The transfer methods chunk internally, and `getFileContent` reads lazily, so memory stays bounded for any file size. `downloadFile` fails with a client-side `Error` when a local file already exists at `destinationPath`. `DownloadOptions` offers a byte `range` and a `snapshotId` to read from a share snapshot.
 
-The typed reads materialize the file's full content and bind it to the caller-directed target type: `getFileText` decodes UTF-8 text, `getFileJson` binds a JSON document to a `json` form or a record, `getFileXml` binds to an `xml` value or a record projected from the document, and `getFileCsv` binds to `string[][]` rows or to a record array whose field names are taken from the file's header row (the string-matrix form keeps every row, including the first). Binding is strict: content that does not match the target type fails with a `ProcessingError`. The listener's `laxDataBinding` setting applies only to listener handlers, not to these reads.
+The typed reads materialize the file's full content and bind it to the caller-directed target type: `getFileText` decodes UTF-8 text, `getFileJson` binds a JSON document to a `json` form or a record, `getFileXml` binds to an `xml` value or a record projected from the document, and `getFileCsv` binds to `string[][]` rows or to a record array whose field names are taken from the file's header row (the string-matrix form keeps every row, including the first). Binding is strict: content that does not match the target type fails with a client-side `Error`. The listener's `laxDataBinding` setting applies only to listener handlers, not to these reads.
 
 ### 4.6 Copy Operations
 
@@ -668,7 +668,7 @@ A service declares at least one content handler. `onFile` is the raw-bytes catch
 
 The stream content forms read the file from the service in chunks as the handler drains the stream, instead of downloading it up front. A stream closes its underlying source at the end of the file, and a handler that abandons a stream early should call its `close()`. A CSV stream row that fails to bind surfaces as the error entry of that `next()` call, after which the stream is closed. The consume actions run on the handler's return exactly as for materialized content, so a handler that deletes or moves the file (or declares `afterProcess`) while its stream is not fully drained loses access to the remaining content.
 
-A service may also declare an `onError` handler, `remote function onError(Error err, Caller caller?) returns error?`, which is notified when a poll fails (with the mapped typed error, for example an `AuthorizationError` when the credential lacks access) and when a typed handler's content binding fails (with a `ProcessingError`). It is not a content handler: it does not satisfy the at-least-one-handler requirement, takes no annotation, and does not change what happens to the file, so a declared `afterError` still applies to a binding failure. An error returned by `onError` itself is swallowed. Errors returned by content handlers do not notify `onError`, and neither does a CSV stream row that fails to bind lazily (that error belongs to the handler draining the stream).
+A service may also declare an `onError` handler, `remote function onError(Error err, Caller caller?) returns error?`, which is notified when a poll fails (with the mapped typed error, for example an `AuthorizationError` when the credential lacks access) and when a typed handler's content binding fails (with a client-side `Error`). It is not a content handler: it does not satisfy the at-least-one-handler requirement, takes no annotation, and does not change what happens to the file, so a declared `afterError` still applies to a binding failure. An error returned by `onError` itself is swallowed. Errors returned by content handlers do not notify `onError`, and neither does a CSV stream row that fails to bind lazily (that error belongs to the handler draining the stream).
 
 A compiler plugin validates the service at compile time: at least one content handler, each handler's parameter types and `error?` return (including the accepted parameter shapes and the `onError` signature), and no resource functions or unknown remote methods.
 
@@ -684,13 +684,15 @@ public type Move record {|
     boolean preserveSubDirs = true;
 |};
 
+public type MOVE Move;
+
 public type FunctionConfiguration record {|
     # Per-handler routing override (regex on the file name)
     string fileNamePattern?;
     # Auto-consume after the handler succeeds
-    DELETE|Move afterProcess?;
+    DELETE|MOVE afterProcess?;
     # Auto-consume after the handler errors or content-binding fails
-    DELETE|Move afterError?;
+    DELETE|MOVE afterError?;
 |};
 
 public annotation FunctionConfiguration FunctionConfig on object function;
@@ -704,42 +706,41 @@ A failed poll surfaces its error: the listener logs it on every poll, and a decl
 
 ## 6. Error Types
 
-Every error raised by an operation of this module is a subtype of the distinct `Error` type and carries an `ErrorDetail`, so callers can pattern-match on specific failures:
+Every error raised by an operation of this module is a subtype of the distinct `Error` type. The hierarchy splits by origin: an error the Azure service raised is a `ServiceError` and carries a `ServiceErrorDetail` with the HTTP status and the Azure error code of the failed request, while a client-side failure is the generic `Error` and carries no detail (no server exchange produced a status or a code, and the connector never fabricates them). Callers can pattern-match on specific failures:
 
 ```ballerina
-public type ErrorDetail record {|
-    # The HTTP status code returned by Azure. Absent when the failure happened without a
-    # server exchange (e.g. a `ProcessingError` raised client-side)
-    int httpStatus?;
-    # The Azure error code (e.g. `ShareNotFound`), or a connector-defined identifier for
-    # client-side failures
+public type ServiceErrorDetail record {|
+    # The HTTP status code returned by Azure
+    int httpStatus;
+    # The Azure error code (e.g. `ShareNotFound`)
     string errorCode;
 |};
 
-public type Error distinct error<ErrorDetail>;
+public type Error distinct error;
 
-public type NotFoundError distinct Error;
+public type ServiceError distinct (Error & error<ServiceErrorDetail>);
 
-public type ConflictError distinct Error;
+public type NotFoundError distinct ServiceError;
 
-public type AuthorizationError distinct Error;
+public type ConflictError distinct ServiceError;
 
-public type PreconditionFailedError distinct Error;
+public type AuthorizationError distinct ServiceError;
 
-public type RangeNotSatisfiableError distinct Error;
+public type PreconditionFailedError distinct ServiceError;
 
-public type QuotaExceededError distinct Error;
+public type RangeNotSatisfiableError distinct ServiceError;
 
-public type ProcessingError distinct Error;
+public type QuotaExceededError distinct ServiceError;
+
 ```
 
+* `ServiceError`: any error raised by the Azure service; a service failure whose Azure error code maps to none of the specific subtypes below stays this generic type.
 * `NotFoundError`: the requested share, directory, or file was not found (HTTP 404).
 * `ConflictError`: the operation conflicts with the current state of the resource, for example creating a share that already exists (HTTP 409).
 * `AuthorizationError`: authentication or authorization failed, for example an invalid key or insufficient SAS permissions (HTTP 403).
 * `PreconditionFailedError`: a precondition such as an ETag condition or a lease-id requirement was not met (HTTP 412).
 * `RangeNotSatisfiableError`: the requested byte range cannot be satisfied for the target file (HTTP 416).
 * `QuotaExceededError`: a write was rejected because the share's provisioned capacity is exhausted (HTTP 403).
-* `ProcessingError`: a client-side failure while preparing the request or decoding the response, with no server round-trip.
 
 Mapping keys on the Azure error code string, not the HTTP status alone: `ShareSizeLimitReached` (HTTP 403) maps to `QuotaExceededError`, distinct from auth failures (also HTTP 403) mapping to `AuthorizationError`. The human-readable description becomes the Ballerina error's `message()` rather than being duplicated into the detail record.
 

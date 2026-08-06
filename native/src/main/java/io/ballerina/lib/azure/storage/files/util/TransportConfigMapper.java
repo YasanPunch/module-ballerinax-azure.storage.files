@@ -217,8 +217,8 @@ public final class TransportConfigMapper {
                 }
             });
         } catch (GeneralSecurityException | IOException e) {
-            throw FilesErrorCreator.processingError(
-                    "invalid secureSocket configuration: " + SdkInvoker.describe(e), e);
+            throw FilesErrorCreator.clientError(
+                    "invalid secureSocket configuration: " + AzureClientInvoker.describe(e), e);
         }
     }
 
@@ -232,7 +232,7 @@ public final class TransportConfigMapper {
         Object cert = secureSocket.get(CERT);
         boolean validateRevocation = secureSocket.getBooleanValue(VALIDATE_REVOCATION);
         if (cert == null && validateRevocation) {
-            throw FilesErrorCreator.processingError(
+            throw FilesErrorCreator.clientError(
                     "validateRevocation requires trust material (`cert`) to validate against", null);
         }
         if (cert == null) {
@@ -304,7 +304,7 @@ public final class TransportConfigMapper {
                 // Wrong store format (or password); try the next type before giving up.
             }
         }
-        throw FilesErrorCreator.processingError(
+        throw FilesErrorCreator.clientError(
                 "cannot load the certificate store at " + path + " as PKCS12 or JKS (check the password)", null);
     }
 
@@ -315,7 +315,7 @@ public final class TransportConfigMapper {
         try (InputStream input = new FileInputStream(pemPath)) {
             Collection<? extends Certificate> certificates = factory.generateCertificates(input);
             if (certificates.isEmpty()) {
-                throw FilesErrorCreator.processingError("no certificates found in " + pemPath, null);
+                throw FilesErrorCreator.clientError("no certificates found in " + pemPath, null);
             }
             int index = 0;
             for (Certificate certificate : certificates) {
@@ -327,7 +327,7 @@ public final class TransportConfigMapper {
 
     private static void requireFile(String path, String fieldName) {
         if (!new File(path).isFile()) {
-            throw FilesErrorCreator.processingError(
+            throw FilesErrorCreator.clientError(
                     fieldName + " does not point to a readable file: " + path, null);
         }
     }

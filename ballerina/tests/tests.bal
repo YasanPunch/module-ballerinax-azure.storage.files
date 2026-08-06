@@ -35,40 +35,40 @@ import ballerina/time;
 @test:Config {}
 function testInitRejectsBadBase64Key() {
     Client|Error result = new ("share", auth = {accountName: "acct", accountKey: "not base64!!!"});
-    test:assertTrue(result is ProcessingError, "expected a ProcessingError for a non-base64 key");
+    test:assertTrue(result is Error, "expected a client-side error for a non-base64 key");
 }
 
 @test:Config {}
 function testInitRejectsEmptyAccountName() {
     Client|Error result = new ("share", auth = {accountName: "  ", accountKey: MOCK_KEY});
-    test:assertTrue(result is ProcessingError, "expected a ProcessingError for an empty account name");
+    test:assertTrue(result is Error, "expected a client-side error for an empty account name");
 }
 
 @test:Config {}
 function testInitRejectsBadServiceUrl() {
     Client|Error result = new ("share",
             auth = {accountName: "acct", accountKey: MOCK_KEY, serviceUrl: "ftp://example.com"});
-    test:assertTrue(result is ProcessingError, "expected a ProcessingError for a non-http serviceUrl");
+    test:assertTrue(result is Error, "expected a client-side error for a non-http serviceUrl");
 }
 
 @test:Config {}
 function testInitRejectsEmptyShareName() {
     Client|Error result = new ("", auth = {accountName: "acct", accountKey: MOCK_KEY});
-    test:assertTrue(result is ProcessingError, "expected a ProcessingError for an empty share name");
+    test:assertTrue(result is Error, "expected a client-side error for an empty share name");
 }
 
 @test:Config {}
 function testInitRejectsSasUrlWithoutSignature() {
     Client|Error result = new ("share", auth = {sasUrl: "https://acct.file.core.windows.net/?sv=2024"});
-    test:assertTrue(result is ProcessingError, "expected a ProcessingError for a SAS URL without sig=");
+    test:assertTrue(result is Error, "expected a client-side error for a SAS URL without sig=");
 }
 
 @test:Config {}
 function testInitRejectsConnectionStringWithoutEndpoint() {
     Client|Error result = new ("share",
             auth = {connectionString: "DefaultEndpointsProtocol=https;AccountKey=" + MOCK_KEY});
-    test:assertTrue(result is ProcessingError,
-            "expected a ProcessingError for a connection string without FileEndpoint/AccountName");
+    test:assertTrue(result is Error,
+            "expected a client-side error for a connection string without FileEndpoint/AccountName");
 }
 
 @test:Config {}
@@ -108,7 +108,7 @@ function testInitEntraIdModes() returns error? {
 function testInitEntraIdValidation() {
     Client|Error emptyTenant = new ("share",
             auth = {accountName: "acct", tenantId: " ", clientId: "client", clientSecret: "s3cret"});
-    test:assertTrue(emptyTenant is ProcessingError, "expected a blank tenantId to fail");
+    test:assertTrue(emptyTenant is Error, "expected a blank tenantId to fail");
 
     Client|Error missingCertificate = new ("share", auth = {
         accountName: "acct",
@@ -116,11 +116,11 @@ function testInitEntraIdValidation() {
         clientId: "client",
         certificatePath: "target/no-such-cert.pem"
     });
-    test:assertTrue(missingCertificate is ProcessingError,
+    test:assertTrue(missingCertificate is Error,
             "expected a missing certificate file to fail");
 
     Client|Error emptyAccount = new ("share", auth = {kind: "default", accountName: "  "});
-    test:assertTrue(emptyAccount is ProcessingError, "expected a blank account name to fail");
+    test:assertTrue(emptyAccount is Error, "expected a blank account name to fail");
 }
 
 // Pinned to the mock: retry and proxy behavior only manifests against an endpoint that
@@ -169,7 +169,7 @@ function testRetryAndTransportConfig() returns error? {
         serviceUrl: string `http://localhost:${MOCK_PORT}`
     }, transportConfig = {proxy: {proxyType: HTTP, host: "localhost", port: 39999}});
     Error? throughDeadProxy = proxied->uploadContent("x", "/proxied.txt");
-    test:assertTrue(throughDeadProxy is ProcessingError,
+    test:assertTrue(throughDeadProxy is Error && throughDeadProxy !is ServiceError,
             "expected a request through an unreachable proxy to fail");
 }
 
@@ -211,18 +211,18 @@ function testTransportTlsConfig() returns error? {
     // Broken TLS input fails at init with a clear error.
     Client|Error missingCert = new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {secureSocket: {cert: "tests/resources/absent.pem"}});
-    test:assertTrue(missingCert is ProcessingError, "expected a missing cert file to fail");
+    test:assertTrue(missingCert is Error, "expected a missing cert file to fail");
 
     Client|Error wrongPassword = new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {
                 secureSocket: {cert: {path: "tests/resources/trust.p12", password: "wrong"}}
             });
-    test:assertTrue(wrongPassword is ProcessingError, "expected a wrong store password to fail");
+    test:assertTrue(wrongPassword is Error, "expected a wrong store password to fail");
 
     Client|Error validationWithoutTrust = new ("share",
             auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {secureSocket: {validateRevocation: true}});
-    test:assertTrue(validationWithoutTrust is ProcessingError,
+    test:assertTrue(validationWithoutTrust is Error,
             "expected validateRevocation without trust material to fail");
 }
 
@@ -492,10 +492,10 @@ function testUploadAndDownloadLocalFile() returns error? {
 
     // The destination must not already exist (CREATE_NEW contract).
     Error? again = fileClient->downloadFile("/roundtrip.txt", localDestination);
-    test:assertTrue(again is ProcessingError, "expected an existing local file to fail the download");
+    test:assertTrue(again is Error && again !is ServiceError, "expected an existing local file to fail the download");
 
     Error? missingLocal = fileClient->uploadFile("target/does-not-exist.txt", "/x.txt");
-    test:assertTrue(missingLocal is ProcessingError, "expected a missing local file to fail the upload");
+    test:assertTrue(missingLocal is Error && missingLocal !is ServiceError, "expected a missing local file to fail the upload");
 }
 
 @test:Config {}
@@ -509,10 +509,10 @@ function testUploadFromStream() returns error? {
     check fileClient->uploadFromStream(chunks.toStream(), 9, "/streamed.txt");
     test:assertEquals(check readAll(fileClient, "/streamed.txt"), "abcdefghi".toBytes());
 
-    // A declared length that does not match the stream fails with a ProcessingError.
+    // A declared length that does not match the stream fails with a client-side error.
     byte[][] shortChunks = ["abc".toBytes()];
     Error? shortResult = fileClient->uploadFromStream(shortChunks.toStream(), 9, "/short.txt");
-    test:assertTrue(shortResult is ProcessingError, "expected a short stream to fail");
+    test:assertTrue(shortResult is Error && shortResult !is ServiceError, "expected a short stream to fail");
 }
 
 @test:Config {}
@@ -678,6 +678,12 @@ function testErrorCodeMapping() returns error? {
 
     FileProperties|Error quota = fileClient->getFileProperties("/__err-403-ShareSizeLimitReached");
     test:assertTrue(quota is QuotaExceededError, "403 ShareSizeLimitReached should map to QuotaExceededError");
+    if quota is ServiceError {
+        test:assertEquals(quota.detail().httpStatus, 403);
+        test:assertEquals(quota.detail().errorCode, "ShareSizeLimitReached");
+    } else {
+        test:assertFail("expected a mapped Azure error to be a ServiceError");
+    }
 
     FileProperties|Error smbFull = fileClient->getFileProperties("/__err-403-SmbShareFull");
     test:assertTrue(smbFull is QuotaExceededError, "403 SmbShareFull should map to QuotaExceededError");
@@ -718,14 +724,42 @@ function testErrorCodeMapping() returns error? {
     test:assertTrue(sharing is ConflictError, "409 SharingViolation should map to ConflictError");
 
     FileProperties|Error unknown = fileClient->getFileProperties("/__err-500-InternalError");
-    if unknown is Error {
+    if unknown is ServiceError {
         test:assertFalse(unknown is NotFoundError|ConflictError|AuthorizationError
-                |PreconditionFailedError|RangeNotSatisfiableError|QuotaExceededError|ProcessingError,
-                "an unmapped code should stay the generic Error type");
+                |PreconditionFailedError|RangeNotSatisfiableError|QuotaExceededError,
+                "an unmapped code should stay the generic ServiceError type");
         test:assertEquals(unknown.detail().httpStatus, 500);
         test:assertEquals(unknown.detail().errorCode, "InternalError");
     } else {
-        test:assertFail("expected an error for the forced 500");
+        test:assertFail("expected a ServiceError for the forced 500");
+    }
+}
+
+// Client-side failures carry no detail: an errorCode is never fabricated, and an HTTP
+// status exists only when Azure answered.
+@test:Config {}
+function testClientSideErrorsCarryNoDetail() returns error? {
+    Client|Error bad = new ("share", auth = {accountName: "acct", accountKey: "not base64!!!"});
+    if bad is Error {
+        test:assertFalse(bad.detail().hasKey("errorCode"),
+                "a client-side error must not carry a fabricated errorCode");
+        test:assertFalse(bad.detail().hasKey("httpStatus"),
+                "a client-side error must not carry an httpStatus");
+    } else {
+        test:assertFail("expected a client-side error for a non-base64 key");
+    }
+
+    AdminClient admin = check newAdmin();
+    string share = testShare("nodetail");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+    byte[][] longChunks = ["abcdef".toBytes(), "ghijkl".toBytes()];
+    Error? overflow = fileClient->uploadFromStream(longChunks.toStream(), 5, "/overflow.txt");
+    if overflow is Error {
+        test:assertFalse(overflow.detail().hasKey("errorCode"),
+                "a connector-raised error must not carry a fabricated errorCode");
+    } else {
+        test:assertFail("expected a stream longer than contentLength to fail");
     }
 }
 
@@ -742,9 +776,9 @@ function testShareLeaseLifecycle() returns error? {
 
     // An out-of-range duration is rejected before any request is made.
     string|Error invalid = fileClient->acquireShareLease(10);
-    test:assertTrue(invalid is ProcessingError, "expected an invalid duration to fail locally");
+    test:assertTrue(invalid is Error && invalid !is ServiceError, "expected an invalid duration to fail locally");
     string|Error invalidHigh = fileClient->acquireShareLease(61);
-    test:assertTrue(invalidHigh is ProcessingError, "expected an invalid duration to fail locally");
+    test:assertTrue(invalidHigh is Error && invalidHigh !is ServiceError, "expected an invalid duration to fail locally");
 
     string leaseId = check fileClient->acquireShareLease(-1,
             "11111111-1111-1111-1111-111111111111");
@@ -1258,7 +1292,7 @@ function testGenerateShareAndFileSas() returns error? {
     });
     string|Error denied = sasClient.generateShareSas(
             {expiryTime: expiry, permissions: {read: true}});
-    test:assertTrue(denied is ProcessingError,
+    test:assertTrue(denied is Error && denied !is ServiceError,
             "expected SAS generation without an account key to fail");
 }
 
@@ -1449,7 +1483,7 @@ function testStreamFailurePaths() returns error? {
 
     stream<byte[], error?> failingSource = new (new FailingByteSource());
     Error? aborted = fileClient->uploadFromStream(failingSource, 10, "/failed.txt");
-    test:assertTrue(aborted is ProcessingError, "expected a failing source stream to abort");
+    test:assertTrue(aborted is Error && aborted !is ServiceError, "expected a failing source stream to abort");
 }
 
 @test:Config {}
@@ -1461,7 +1495,7 @@ function testUploadFromStreamOverflow() returns error? {
 
     byte[][] longChunks = ["abcdef".toBytes(), "ghijkl".toBytes()];
     Error? overflow = fileClient->uploadFromStream(longChunks.toStream(), 5, "/overflow.txt");
-    test:assertTrue(overflow is ProcessingError,
+    test:assertTrue(overflow is Error && overflow !is ServiceError,
             "expected a stream longer than contentLength to fail");
 }
 
@@ -1665,8 +1699,8 @@ function testGetFileJson() returns error? {
 
     check fileClient->uploadContent("{not json", "/broken.json");
     json|Error broken = fileClient->getFileJson("/broken.json");
-    test:assertTrue(broken is ProcessingError, "malformed JSON must fail the typed read");
-    if broken is ProcessingError {
+    test:assertTrue(broken is Error, "malformed JSON must fail the typed read");
+    if broken is Error {
         test:assertTrue(broken.message().startsWith("the file content does not bind"),
                 "the binding error must state the content does not bind");
     }
@@ -1688,7 +1722,7 @@ function testGetFileXml() returns error? {
 
     check fileClient->uploadContent("<open", "/broken.xml");
     xml|Error broken = fileClient->getFileXml("/broken.xml");
-    test:assertTrue(broken is ProcessingError, "malformed XML must fail the typed read");
+    test:assertTrue(broken is Error && broken !is ServiceError, "malformed XML must fail the typed read");
 }
 
 @test:Config {}
@@ -1706,7 +1740,7 @@ function testGetFileCsv() returns error? {
 
     check fileClient->uploadContent("name,qty\na,notanint", "/broken.csv");
     TypedReadRow[]|Error broken = fileClient->getFileCsv("/broken.csv");
-    test:assertTrue(broken is ProcessingError, "a CSV row that cannot bind must fail the typed read");
+    test:assertTrue(broken is Error && broken !is ServiceError, "a CSV row that cannot bind must fail the typed read");
 }
 
 @test:Config {}

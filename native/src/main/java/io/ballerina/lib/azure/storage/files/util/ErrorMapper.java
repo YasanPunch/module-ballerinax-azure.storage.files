@@ -84,6 +84,6 @@ public final class ErrorMapper {
         if ("InvalidRange".equals(code)) {
             return "RangeNotSatisfiableError";
         }
-        return "Error";
+        return "ServiceError";
     }
 }

@@ -260,22 +260,19 @@ public isolated client class Client {
                 break;
             }
             if chunk is error {
-                return error ProcessingError("the source stream failed: " + chunk.message(),
-                        chunk, errorCode = "ProcessingError");
+                return error Error("the source stream failed: " + chunk.message(), chunk);
             }
             byte[] bytes = chunk.value;
             if offset + bytes.length() > contentLength {
-                return error ProcessingError(
-                        string `the source stream exceeded the declared contentLength of ${contentLength} bytes`,
-                        errorCode = "ProcessingError");
+                return error Error(
+                        string `the source stream exceeded the declared contentLength of ${contentLength} bytes`);
             }
             check writeStreamChunk(self, destinationPath, offset, bytes);
             offset += bytes.length();
         }
         if offset != contentLength {
-            return error ProcessingError(
-                    string `the source stream ended at ${offset} bytes but contentLength is ${contentLength}`,
-                    errorCode = "ProcessingError");
+            return error Error(
+                    string `the source stream ended at ${offset} bytes but contentLength is ${contentLength}`);
         }
         return;
     }
@@ -330,8 +327,8 @@ public isolated client class Client {
         byte[] bytes = check readFileBytes(self, path, options);
         string|error text = string:fromBytes(bytes);
         if text is error {
-            return error ProcessingError("the file content is not valid UTF-8 text: "
-                    + text.message(), text, errorCode = "ProcessingError");
+            return error Error("the file content is not valid UTF-8 text: "
+                    + text.message(), text);
         }
         return text;
     }

@@ -27,8 +27,8 @@ public isolated client class Caller {
         self.'client = 'client;
     }
 
-    # Downloads a file to a local path. An existing local file at `destinationPath` fails the
-    # download with a `ProcessingError`.
+    # Downloads a file to a local path. An existing local file at `destinationPath` fails
+    # the download.
     #
     # + sourcePath - The share-relative path of the file to download, including the file name
     # + destinationPath - The local path to write the downloaded file to (must not exist)

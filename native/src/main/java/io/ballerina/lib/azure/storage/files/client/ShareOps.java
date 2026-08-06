@@ -22,9 +22,9 @@ import com.azure.core.util.Context;
 import com.azure.storage.file.share.models.ShareAccessTier;
 import com.azure.storage.file.share.models.ShareRequestConditions;
 import com.azure.storage.file.share.options.ShareSetPropertiesOptions;
+import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
@@ -41,25 +41,27 @@ public final class ShareOps {
 
     /** Fetches the bound share's properties as a {@code ShareProperties} record. */
     public static Object getShareProperties(Environment env, BObject self) {
-        return SdkInvoker.invoke(env, () -> RecordMapper.shareProperties(SdkInvoker.shareClient(self).getProperties()));
+        return AzureClientInvoker.invoke(env,
+                () -> RecordMapper.shareProperties(AzureClientInvoker.shareClient(self).getProperties()));
     }
 
     /** Replaces the bound share's user-defined metadata. */
     public static Object setShareMetadata(Environment env, BObject self, BMap<BString, BString> metadata) {
-        return SdkInvoker.invoke(env, () -> {
-            SdkInvoker.shareClient(self).setMetadata(ValueUtils.toStringMap(metadata));
+        return AzureClientInvoker.invoke(env, () -> {
+            AzureClientInvoker.shareClient(self).setMetadata(ValueUtils.toStringMap(metadata));
             return null;
         });
     }
 
     /** Reports the bound share's current usage in bytes. */
     public static Object getShareUsage(Environment env, BObject self) {
-        return SdkInvoker.invoke(env, () -> SdkInvoker.shareClient(self).getStatistics().getShareUsageInBytes());
+        return AzureClientInvoker.invoke(env,
+                () -> AzureClientInvoker.shareClient(self).getStatistics().getShareUsageInBytes());
     }
 
     /** Updates the bound share's quota and access tier. */
     public static Object setShareProperties(Environment env, BObject self, BMap<BString, Object> options) {
-        return SdkInvoker.invoke(env, () -> {
+        return AzureClientInvoker.invoke(env, () -> {
             ShareSetPropertiesOptions sdkOptions = new ShareSetPropertiesOptions();
             Object quota = options.get(OptionsReader.QUOTA_IN_GB);
             if (quota != null) {
@@ -73,7 +75,7 @@ public final class ShareOps {
             if (leaseId != null) {
                 sdkOptions.setRequestConditions(new ShareRequestConditions().setLeaseId(leaseId));
             }
-            SdkInvoker.shareClient(self).setPropertiesWithResponse(sdkOptions, null, Context.NONE);
+            AzureClientInvoker.shareClient(self).setPropertiesWithResponse(sdkOptions, null, Context.NONE);
             return null;
         });
     }

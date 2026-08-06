@@ -26,17 +26,18 @@ import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BString;
 
 /**
- * Creates the typed Ballerina errors declared in {@code errors.bal}. Each error carries an
- * {@code ErrorDetail} record; the type name string must match the Ballerina error type exactly.
+ * Creates the typed Ballerina errors declared in {@code errors.bal}. Service-raised errors carry
+ * a {@code ServiceErrorDetail} record; client-side failures are the generic root {@code Error}
+ * with no detail. The type name string must match the Ballerina error type exactly.
  */
 public final class FilesErrorCreator {
 
     private FilesErrorCreator() {
     }
 
-    private static final String PROCESSING_ERROR = "ProcessingError";
+    private static final String GENERIC_ERROR = "Error";
 
-    private static final String ERROR_DETAIL = "ErrorDetail";
+    private static final String SERVICE_ERROR_DETAIL = "ServiceErrorDetail";
     private static final BString HTTP_STATUS = StringUtils.fromString("httpStatus");
     private static final BString ERROR_CODE = StringUtils.fromString("errorCode");
 
@@ -52,7 +53,7 @@ public final class FilesErrorCreator {
      */
     public static BError storageError(String typeName, String message, int httpStatus, String errorCode,
             Throwable cause) {
-        BMap<BString, Object> detail = ValueCreator.createRecordValue(ModuleUtils.getModule(), ERROR_DETAIL);
+        BMap<BString, Object> detail = ValueCreator.createRecordValue(ModuleUtils.getModule(), SERVICE_ERROR_DETAIL);
         detail.put(HTTP_STATUS, (long) httpStatus);
         detail.put(ERROR_CODE, StringUtils.fromString(errorCode));
         return ErrorCreator.createError(ModuleUtils.getModule(), typeName,
@@ -60,17 +61,16 @@ public final class FilesErrorCreator {
     }
 
     /**
-     * Creates a client-side processing error, with no HTTP status (no server exchange occurred).
+     * Creates a client-side error as the generic root {@code Error}. No server exchange
+     * produced it, so it carries no detail: no HTTP status and no error code.
      *
      * @param message the human-readable message
      * @param cause   the originating Java exception
      * @return the Ballerina error
      */
-    public static BError processingError(String message, Throwable cause) {
-        BMap<BString, Object> detail = ValueCreator.createRecordValue(ModuleUtils.getModule(), ERROR_DETAIL);
-        detail.put(ERROR_CODE, StringUtils.fromString(PROCESSING_ERROR));
-        return ErrorCreator.createError(ModuleUtils.getModule(), PROCESSING_ERROR,
-                StringUtils.fromString(message == null ? "" : message), toCause(cause), detail);
+    public static BError clientError(String message, Throwable cause) {
+        return ErrorCreator.createError(ModuleUtils.getModule(), GENERIC_ERROR,
+                StringUtils.fromString(message == null ? "" : message), toCause(cause), null);
     }
 
     private static BError toCause(Throwable cause) {

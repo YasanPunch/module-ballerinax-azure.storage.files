@@ -22,12 +22,14 @@ configurable string accountName = ?;
 configurable string accountKey = ?;
 configurable string shareName = "drop-folder-example";
 
+// The shape a dropped .json file binds to.
+type Person record {|
+    string name;
+    int age;
+|};
+
 // The share and its /incoming directory are created in the setup steps (see the example
 // description); the listener starts polling the watched path as soon as the program starts.
-function init() {
-    log:printInfo(string `Watching /incoming on share '${shareName}'. Drop files there to process them.`);
-}
-
 listener files:Listener dropListener = new (shareName,
     auth = {accountName, accountKey},
     pollingInterval = 5
@@ -38,18 +40,21 @@ listener files:Listener dropListener = new (shareName,
 // onFile.
 service /incoming on dropListener {
 
-    // Handle JSON object drops, then delete each file once it is processed. A .json file that is
-    // malformed or whose root is not an object cannot bind to map<json>; afterError moves it to
-    // "/failed" so it does not stay in the watched folder and re-fire on every poll.
+    // Handle JSON drops by binding each file to the Person record, then delete each file once
+    // it is processed. A .json file that is malformed or does not match the record cannot
+    // bind; afterError moves it to "/failed" so it does not stay in the watched folder and
+    // re-fire on every poll.
     @files:FunctionConfig {afterProcess: files:DELETE, afterError: {moveTo: "/failed"}}
-    remote function onFileJson(map<json> content, files:FileInfo file, files:Caller caller) returns error? {
-        log:printInfo(string `Processed JSON ${file.name} (${file.sizeBytes} bytes): ${content.toJsonString()}`); //use key and value pair instead
-    } // use a simpler record like a person
+    remote function onFileJson(Person person, files:FileInfo file, files:Caller caller) returns error? {
+        log:printInfo("processed JSON drop", fileName = file.name, sizeBytes = file.sizeBytes,
+                personName = person.name, personAge = person.age);
+    }
 
     // Handle every other file as raw bytes, then move each into "/processed" once it is processed.
     @files:FunctionConfig {afterProcess: {moveTo: "/processed"}}
     remote function onFile(byte[] content, files:FileInfo file, files:Caller caller) returns error? {
-        log:printInfo(string `Processed ${file.name} (${content.length()} bytes); moved to /processed`);
+        log:printInfo("processed file drop", fileName = file.name, sizeBytes = content.length(),
+                movedTo = "/processed");
     }
 
     // Notified when a poll fails (for example a credential or network problem) or a file's

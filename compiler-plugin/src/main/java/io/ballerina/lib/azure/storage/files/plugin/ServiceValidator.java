@@ -59,46 +59,33 @@ public class ServiceValidator {
      * @param context the syntax node analysis context
      */
     public void validate(SyntaxNodeAnalysisContext context) {
-        // Get the service declaration node.
         ServiceDeclarationNode serviceDeclarationNode = (ServiceDeclarationNode) context.node();
-        // Get the members of the service declaration.
         NodeList<Node> members = serviceDeclarationNode.members();
-        // Create a list of content methods.
         List<FunctionDefinitionNode> contentMethods = new ArrayList<>();
-        // Create a list of content method names.
         List<String> contentMethodNames = new ArrayList<>();
 
-        // Iterate over the members.
         for (Node node : members) {
-            // If the node is a resource accessor definition, report a diagnostic.
             if (node.kind() == RESOURCE_ACCESSOR_DEFINITION) {
                 context.reportDiagnostic(getDiagnostic(RESOURCE_FUNCTION_NOT_ALLOWED,
                         DiagnosticSeverity.ERROR, node.location()));
                 continue;
             }
-            // If the node is not an object method definition, continue.
             if (node.kind() != SyntaxKind.OBJECT_METHOD_DEFINITION) {
                 continue;
             }
-            // Get the function definition node.
             FunctionDefinitionNode functionDefinitionNode = (FunctionDefinitionNode) node;
-            // Get the method symbol.
             MethodSymbol methodSymbol = getMethodSymbol(context, functionDefinitionNode);
-            // If the method symbol is null, continue.
             if (methodSymbol == null) {
                 continue;
             }
-            // Get the name of the method.
             Optional<String> functionName = methodSymbol.getName();
             if (functionName.isEmpty()) {
                 continue;
             }
             String name = functionName.get();
-            // If the method name is a content handler, add it to the content methods list.
             if (CONTENT_HANDLERS.contains(name)) {
                 contentMethods.add(functionDefinitionNode);
                 contentMethodNames.add(name);
-            // If the method name is the onError handler, validate it separately.
             } else if (PluginConstants.ON_ERROR_FUNC.equals(name)) {
                 // onError is validated separately and deliberately not added to contentMethods:
                 // a service declaring only onError still fails the at-least-one-handler check.
@@ -109,14 +96,12 @@ public class ServiceValidator {
             }
         }
 
-        // If there are no content methods, report a diagnostic.
         if (contentMethods.isEmpty()) {
             context.reportDiagnostic(getDiagnostic(NO_VALID_REMOTE_METHOD,
                     DiagnosticSeverity.ERROR, serviceDeclarationNode.location()));
             return;
         }
 
-        // Validate each content method.
         for (int i = 0; i < contentMethods.size(); i++) {
             new ContentFunctionValidator(context, contentMethods.get(i), contentMethodNames.get(i)).validate();
         }

@@ -24,9 +24,9 @@ import com.azure.storage.file.share.models.ShareFileRangeList;
 import com.azure.storage.file.share.models.ShareItem;
 import com.azure.storage.file.share.models.ShareSnapshotInfo;
 import com.azure.storage.file.share.options.ShareFileListRangesDiffOptions;
+import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BArray;
@@ -46,10 +46,10 @@ public final class SnapshotOps {
 
     /** Creates a snapshot of the bound share and returns its {@code ShareSnapshotInfo}. */
     public static Object createShareSnapshot(Environment env, BObject self, Object metadata) {
-        return SdkInvoker.invoke(env, () -> {
+        return AzureClientInvoker.invoke(env, () -> {
             @SuppressWarnings("unchecked")
             BMap<BString, BString> metadataMap = (BMap<BString, BString>) metadata;
-            ShareSnapshotInfo info = SdkInvoker.shareClient(self)
+            ShareSnapshotInfo info = AzureClientInvoker.shareClient(self)
                     .createSnapshotWithResponse(
                             metadata == null ? null : ValueUtils.toStringMap(metadataMap), null, Context.NONE)
                     .getValue();
@@ -59,13 +59,13 @@ public final class SnapshotOps {
 
     /** Lists the bound share's snapshots as {@code ShareSnapshotInfo} records. */
     public static Object listShareSnapshots(Environment env, BObject self) {
-        return SdkInvoker.invoke(env, () -> {
-            String shareName = SdkInvoker.shareClient(self).getShareName();
+        return AzureClientInvoker.invoke(env, () -> {
+            String shareName = AzureClientInvoker.shareClient(self).getShareName();
             BArray result = RecordMapper.recordArray(RecordMapper.RECORD_SHARE_SNAPSHOT_INFO);
             ListSharesOptions options = new ListSharesOptions()
                     .setPrefix(shareName)
                     .setIncludeSnapshots(true);
-            for (ShareItem item : SdkInvoker.serviceClient(self).listShares(options, null, null)) {
+            for (ShareItem item : AzureClientInvoker.serviceClient(self).listShares(options, null, null)) {
                 if (item.getName().equals(shareName) && item.getSnapshot() != null) {
                     result.append(RecordMapper.shareSnapshotInfo(item.getSnapshot(),
                             item.getProperties().getETag(), item.getProperties().getLastModified()));
@@ -77,9 +77,9 @@ public final class SnapshotOps {
 
     /** Deletes one snapshot of the bound share. */
     public static Object deleteShareSnapshot(Environment env, BObject self, BString snapshotId) {
-        return SdkInvoker.invoke(env, () -> {
-            String shareName = SdkInvoker.shareClient(self).getShareName();
-            SdkInvoker.serviceClient(self).deleteShareWithResponse(shareName, snapshotId.getValue(), null,
+        return AzureClientInvoker.invoke(env, () -> {
+            String shareName = AzureClientInvoker.shareClient(self).getShareName();
+            AzureClientInvoker.serviceClient(self).deleteShareWithResponse(shareName, snapshotId.getValue(), null,
                     Context.NONE);
             return null;
         });
@@ -88,7 +88,7 @@ public final class SnapshotOps {
     /** Lists the ranges of a file that changed since a previous snapshot. */
     public static Object listRangesDiff(Environment env, BObject self, BString path,
             BString previousSnapshotId, Object options) {
-        return SdkInvoker.invoke(env, () -> {
+        return AzureClientInvoker.invoke(env, () -> {
             ShareFileListRangesDiffOptions sdkOptions =
                     new ShareFileListRangesDiffOptions(previousSnapshotId.getValue());
             if (options != null) {

@@ -18,9 +18,9 @@
 
 package io.ballerina.lib.azure.storage.files.server;
 
+import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.ModuleUtils;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.runtime.api.Runtime;
 import io.ballerina.runtime.api.concurrent.StrandMetadata;
 import io.ballerina.runtime.api.creators.TypeCreator;
@@ -95,7 +95,7 @@ public final class ContentStreams {
                 ValueCreator.createTypedescValue(TypeUtils.getReferredType(elementType)),
                 byteStream, laxDataBinding);
         if (iterator instanceof BError e) {
-            throw FilesErrorCreator.processingError(
+            throw FilesErrorCreator.clientError(
                     "CSV stream binding could not be created: " + e.getErrorMessage(), e);
         }
         StreamType streamType = TypeCreator.createStreamType(elementType,
@@ -109,7 +109,7 @@ public final class ContentStreams {
      * @param iterator the Ballerina iterator object
      * @return the next chunk entry, {@code null} at the end of the file, or an error
      */
-    public static Object byteStreamNext(BObject iterator) {
+    public static Object streamIterator(BObject iterator) {
         InputStream inputStream = (InputStream) iterator.getNativeData(NATIVE_INPUT_STREAM);
         try {
             byte[] buffer = new byte[CHUNK_SIZE];
@@ -125,8 +125,8 @@ public final class ContentStreams {
             entry.put(FIELD_VALUE, ValueCreator.createArrayValue(chunk));
             return entry;
         } catch (IOException e) {
-            return FilesErrorCreator.processingError("failed to read the file content stream: "
-                    + SdkInvoker.describe(e), e);
+            return FilesErrorCreator.clientError("failed to read the file content stream: "
+                    + AzureClientInvoker.describe(e), e);
         }
     }
 
@@ -142,8 +142,8 @@ public final class ContentStreams {
             try {
                 ((InputStream) inputStream).close();
             } catch (IOException e) {
-                return FilesErrorCreator.processingError("failed to close the file content stream: "
-                        + SdkInvoker.describe(e), e);
+                return FilesErrorCreator.clientError("failed to close the file content stream: "
+                        + AzureClientInvoker.describe(e), e);
             }
         }
         return null;

@@ -122,7 +122,7 @@ public final class OptionsReader {
             try {
                 headers.setContentMd5(Base64.getDecoder().decode(md5));
             } catch (IllegalArgumentException e) {
-                throw FilesErrorCreator.processingError("contentMd5 must be base64-encoded", e);
+                throw FilesErrorCreator.clientError("contentMd5 must be base64-encoded", e);
             }
         }
         return headers;
@@ -258,7 +258,7 @@ public final class OptionsReader {
             case ATTRIBUTE_OFFLINE -> NtfsFileAttributes.OFFLINE;
             case ATTRIBUTE_NOT_CONTENT_INDEXED -> NtfsFileAttributes.NOT_CONTENT_INDEXED;
             case ATTRIBUTE_NO_SCRUB_DATA -> NtfsFileAttributes.NO_SCRUB_DATA;
-            default -> throw FilesErrorCreator.processingError("unknown NTFS attribute: " + value, null);
+            default -> throw FilesErrorCreator.clientError("unknown NTFS attribute: " + value, null);
         };
     }
 }

@@ -941,9 +941,9 @@ function testPollFailureSurfacesTypedError() returns error? {
 }
 
 @test:Config {}
-function testPollFailureMapsProcessingError() returns error? {
+function testPollFailureMapsClientSideError() returns error? {
     // A scan failure that is not an Azure service error (here, the endpoint refuses the
-    // connection) surfaces as a ProcessingError.
+    // connection) surfaces as the module's generic Error, not a ServiceError.
     Listener lsn = check new ("pollfail-conn", auth = {
         accountName: "mockaccount",
         accountKey: MOCK_KEY,
@@ -956,8 +956,8 @@ function testPollFailureMapsProcessingError() returns error? {
     check lsn.attach(svc, "/incoming");
 
     error? result = poll(lsn);
-    test:assertTrue(result is ProcessingError,
-            "a non-Azure scan failure must surface from poll() as a ProcessingError");
+    test:assertTrue(result is Error && result !is ServiceError,
+            "a non-Azure scan failure must surface from poll() as a client-side error");
     check lsn.detach(svc);
 }
 
@@ -1076,7 +1076,7 @@ function testOnErrorFiresOnBindingFailure() returns error? {
         }
 
         remote function onError(Error err) returns error? {
-            if err is ProcessingError {
+            if err !is ServiceError {
                 recorder.put("onerror", err.message());
             }
         }
@@ -1089,7 +1089,7 @@ function testOnErrorFiresOnBindingFailure() returns error? {
 
     test:assertEquals(recorder.count("json"), 0, "malformed content must not reach the typed handler");
     test:assertTrue(recorder.count("onerror") >= 1,
-            "a content-binding failure must notify onError with a ProcessingError");
+            "a content-binding failure must notify onError with a client-side error");
 }
 
 @test:Config {}
@@ -1868,7 +1868,7 @@ function testCsvStreamBindingErrorMidStream() returns error? {
                 entry = rows.next();
             }
             if entry is error {
-                recorder.put("midstream", string `${good}:${entry is ProcessingError ? "typed" : "untyped"}`);
+                recorder.put("midstream", string `${good}:${entry is Error ? "typed" : "untyped"}`);
             }
         }
 

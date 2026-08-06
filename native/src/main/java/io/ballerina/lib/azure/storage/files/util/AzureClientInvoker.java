@@ -42,7 +42,7 @@ import java.util.function.Supplier;
  * scheduler via {@link Environment#yieldAndRun}, converts every failure to a typed Ballerina
  * error, and fetches the SDK clients stored on the Ballerina client objects.
  */
-public final class SdkInvoker {
+public final class AzureClientInvoker {
 
     // Keys under which the SDK clients are stored on client objects.
     public static final String NATIVE_SERVICE_CLIENT = "serviceClient";
@@ -50,7 +50,7 @@ public final class SdkInvoker {
     // The query parameter that addresses a share snapshot on the wire.
     private static final String SHARE_SNAPSHOT_PARAM = "sharesnapshot";
 
-    private SdkInvoker() {
+    private AzureClientInvoker() {
     }
 
     /**
@@ -69,7 +69,7 @@ public final class SdkInvoker {
             } catch (BError e) {
                 return e;
             } catch (Exception e) {
-                return FilesErrorCreator.processingError(describe(e), e);
+                return FilesErrorCreator.clientError(describe(e), e);
             }
         });
     }
@@ -161,7 +161,7 @@ public final class SdkInvoker {
     public static String filePath(BString path) {
         String p = trimSlashes(path.getValue());
         if (p.isEmpty()) {
-            throw FilesErrorCreator.processingError("the path must name a file, not the share root", null);
+            throw FilesErrorCreator.clientError("the path must name a file, not the share root", null);
         }
         return p;
     }
