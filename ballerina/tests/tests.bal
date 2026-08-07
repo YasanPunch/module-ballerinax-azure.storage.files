@@ -180,6 +180,44 @@ function testRetryAndTransportConfig() returns error? {
             "expected a request through an unreachable proxy to fail");
 }
 
+// Pinned to the mock: a geo-secondary retry only manifests against an endpoint that can
+// fail on demand. Primary and secondary are the same mock reached through two host names,
+// and the request log's Host header shows which one served the retry.
+@test:Config {}
+function testSecondaryHostRetryReachesSecondaryHost() returns error? {
+    AdminClient admin = check newMockAdmin();
+    string share = testShare("secondary-host");
+    check admin->createShare(share);
+    Client fileClient = check new (share, auth = {
+        accountName: "mockaccount",
+        accountKey: MOCK_KEY,
+        serviceUrl: string `http://localhost:${MOCK_PORT}`
+    }, retryConfig = {
+        maxTries: 2,
+        secondaryHostUrl: string `http://127.0.0.1:${MOCK_PORT}`
+    });
+    check fileClient->uploadContent("payload", "/read.txt");
+
+    mockRequestLog = [];
+    mockFaultRemaining = 1;
+    FileProperties|Error props = fileClient->getFileProperties("/read.txt");
+    mockFaultRemaining = 0;
+    test:assertEquals((check props).contentLength, 7,
+            "the read must succeed through the secondary retry");
+
+    string[] reads = [];
+    foreach string entry in mockRequestLog {
+        if entry.includes(string `/${share}/read.txt`) {
+            reads.push(entry);
+        }
+    }
+    test:assertEquals(reads.length(), 2, "expected the failed primary read and one retry");
+    test:assertTrue(reads[0].includes(string `host=localhost:${MOCK_PORT}`),
+            "the first attempt must target the primary host");
+    test:assertTrue(reads[1].includes(string `host=127.0.0.1:${MOCK_PORT}`),
+            "the retry must reach the configured secondary host");
+}
+
 @test:Config {}
 function testTransportTlsConfig() returns error? {
     // Trust material as a PEM file.
@@ -522,6 +560,52 @@ function testUploadFromStream() returns error? {
     byte[][] shortChunks = ["abc".toBytes()];
     Error? shortResult = fileClient->uploadFromStream(shortChunks.toStream(), 9, "/short.txt");
     test:assertTrue(shortResult is Error && shortResult !is ServiceError, "expected a short stream to fail");
+}
+
+// Pinned to the mock: the range-write count is only observable through the mock's request
+// log. Small source chunks must coalesce into 4 MiB range writes, so the request count
+// tracks the content size rather than the source's chunking.
+@test:Config {}
+function testUploadFromStreamCoalescesSmallChunks() returns error? {
+    AdminClient admin = check newMockAdmin();
+    string share = testShare("stream-coalesce");
+    check admin->createShare(share);
+    Client fileClient = check newMockShareClient(share);
+
+    final int chunkSize = 4096;
+    final int chunkCount = 1280;
+    final int total = chunkSize * chunkCount;
+    byte[][] chunks = [];
+    foreach int i in 0 ..< chunkCount {
+        byte[] chunk = [];
+        chunk.setLength(chunkSize);
+        chunk[0] = <byte>(i % 251 + 1);
+        chunks.push(chunk);
+    }
+
+    mockRequestLog = [];
+    check fileClient->uploadFromStream(chunks.toStream(), total, "/coalesced.bin");
+
+    FileProperties props = check fileClient->getFileProperties("/coalesced.bin");
+    test:assertEquals(props.contentLength, total);
+
+    // Read across the 4 MiB flush boundary: the marker byte of the chunk that starts the
+    // second range write must be in place.
+    final int rangeCap = 4 * 1024 * 1024;
+    stream<byte[], Error?> boundary = check fileClient->getFileContent("/coalesced.bin",
+            {range: {startByte: rangeCap - 2, endByte: rangeCap + 1}});
+    byte boundaryMarker = <byte>((rangeCap / chunkSize) % 251 + 1);
+    test:assertEquals(check collectBytes(boundary), <byte[]>[0, 0, boundaryMarker, 0]);
+
+    int rangeWrites = 0;
+    foreach string entry in mockRequestLog {
+        if entry.startsWith("PUT") && entry.includes(string `/${share}/coalesced.bin`)
+                && entry.includes("comp=range") {
+            rangeWrites += 1;
+        }
+    }
+    test:assertEquals(rangeWrites, 2,
+            "a 5 MiB stream of 4 KiB chunks must coalesce into exactly two range writes");
 }
 
 @test:Config {}
@@ -1376,6 +1460,48 @@ function testGenerateUserDelegationSas() returns error? {
     map<string> fileParams = sasParams(fileToken);
     test:assertEquals(fileParams["sp"], "rd");
     test:assertEquals(fileParams["sktid"], key.signedTenantId);
+}
+
+// Stored access policies do not apply to user delegation SAS, so the generators reject an
+// identifier and require the explicit values. Validation runs before signing, so no key
+// fetch or service call is involved and a placeholder key suffices.
+@test:Config {}
+function testUserDelegationSasRejectsIdentifierAndRequiresExplicitValues() returns error? {
+    Client fileClient = check newShareClient(testShare("udsval"));
+    time:Utc keyStart = [time:utcNow()[0], 0];
+    UserDelegationKey key = {
+        signedObjectId: "00000000-0000-0000-0000-000000000000",
+        signedTenantId: "00000000-0000-0000-0000-000000000000",
+        signedStart: keyStart,
+        signedExpiry: time:utcAddSeconds(keyStart, 3600),
+        signedService: "f",
+        signedVersion: "2025-05-05",
+        value: "ZmFrZQ=="
+    };
+    time:Utc expiry = time:utcAddSeconds(keyStart, 3600);
+
+    string|Error identifierOnly = fileClient.generateShareUserDelegationSas(
+            {identifier: "backup-policy"}, key);
+    test:assertTrue(identifierOnly is Error && identifierOnly !is ServiceError,
+            "expected a user delegation SAS with an identifier to fail client-side");
+    if identifierOnly is Error {
+        test:assertEquals(identifierOnly.message(),
+                "a user delegation SAS cannot use a stored access policy identifier");
+    }
+
+    string|Error identifierAlongside = fileClient.generateUserDelegationSas("/f.txt",
+            {expiryTime: expiry, permissions: {read: true}, identifier: "backup-policy"}, key);
+    test:assertTrue(identifierAlongside is Error && identifierAlongside !is ServiceError,
+            "expected an identifier alongside explicit values to fail client-side");
+
+    string|Error expiryOnly = fileClient.generateShareUserDelegationSas(
+            {expiryTime: expiry}, key);
+    test:assertTrue(expiryOnly is Error && expiryOnly !is ServiceError,
+            "expected a user delegation SAS without permissions to fail client-side");
+    if expiryOnly is Error {
+        test:assertEquals(expiryOnly.message(),
+                "expiryTime and permissions must be set for a user delegation SAS");
+    }
 }
 
 @test:Config {}

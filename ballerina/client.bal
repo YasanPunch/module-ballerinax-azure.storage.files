@@ -243,7 +243,9 @@ public isolated client class Client {
     } external;
 
     # Uploads a byte stream to the bound share. The total content length must be known
-    # up front.
+    # up front. A failed upload leaves the pre-allocated file, holding whatever ranges
+    # were written before the failure, at the destination; inspect or delete it before
+    # retrying.
     #
     # + content - The byte stream to upload
     # + contentLength - The total length of the content, in bytes
@@ -253,6 +255,9 @@ public isolated client class Client {
     isolated remote function uploadFromStream(stream<byte[], error?> content,
             int contentLength, string destinationPath, UploadOptions? options = ()) returns Error? {
         check prepareStreamUpload(self, destinationPath, contentLength, options);
+        // Source chunks coalesce into writes of the service's maximum range size, so the
+        // request count tracks the content size rather than the source's chunking.
+        byte[] buffer = [];
         int offset = 0;
         while true {
             record {|byte[] value;|}|error? chunk = content.next();
@@ -263,16 +268,23 @@ public isolated client class Client {
                 return error Error("the source stream failed: " + chunk.message(), chunk);
             }
             byte[] bytes = chunk.value;
-            if offset + bytes.length() > contentLength {
+            if offset + buffer.length() + bytes.length() > contentLength {
                 return error Error(
                         string `the source stream exceeded the declared contentLength of ${contentLength} bytes`);
             }
-            check writeStreamChunk(self, destinationPath, offset, bytes);
-            offset += bytes.length();
+            buffer.push(...bytes);
+            if buffer.length() >= MAX_RANGE_BYTES {
+                check writeStreamChunk(self, destinationPath, offset, buffer);
+                offset += buffer.length();
+                buffer = [];
+            }
         }
-        if offset != contentLength {
+        if offset + buffer.length() != contentLength {
             return error Error(
-                    string `the source stream ended at ${offset} bytes but contentLength is ${contentLength}`);
+                    string `the source stream ended at ${offset + buffer.length()} bytes but contentLength is ${contentLength}`);
+        }
+        if buffer.length() > 0 {
+            check writeStreamChunk(self, destinationPath, offset, buffer);
         }
         return;
     }

@@ -71,7 +71,8 @@ public annotation ServiceConfiguration ServiceConfig on service;
 # The auto-consume action that deletes the file after the handler runs.
 public const DELETE = "DELETE";
 
-# The auto-consume action that moves the file after the handler runs.
+# The auto-consume action that moves the file after the handler runs. A move onto an
+# existing same-named file replaces it.
 public type Move record {|
     # The target directory the file is moved into (the file keeps its name); the directory
     # is created if it does not exist

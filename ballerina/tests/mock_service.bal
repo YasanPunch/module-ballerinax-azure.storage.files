@@ -85,6 +85,14 @@ string mockServicePropsXml = string `<?xml version="1.0" encoding="utf-8"?><Stor
 // every directory listing fails with it (and mockListFaultStatus) until cleared.
 string? mockListFaultCode = ();
 int mockListFaultStatus = 403;
+// Every request appends "METHOD /segments comp=<comp> host=<host header>" here; tests
+// filter by their unique share name and clear the log by assignment.
+string[] mockRequestLog = [];
+// Count-based fault hook: while positive, each incoming request (any operation) consumes
+// one count and fails with the configured status and code.
+int mockFaultRemaining = 0;
+int mockFaultStatus = 500;
+string mockFaultCode = "InternalError";
 
 function snapshotKey(string shareName, string snapshotId) returns string {
     return shareName + "\n" + snapshotId;
@@ -144,6 +152,12 @@ service / on mockListener {
 function dispatch(string method, string[] segments, string comp, string restype,
         string include, string prefix, string snapshotParam, string prevSnapshotParam,
         map<string> headers, byte[] payload) returns MockResponse {
+    mockRequestLog.push(method + " /" + string:'join("/", ...segments) + " comp=" + comp
+            + " host=" + (headers["host"] ?: ""));
+    if mockFaultRemaining > 0 {
+        mockFaultRemaining -= 1;
+        return errorResponse(mockFaultStatus, mockFaultCode);
+    }
     // Forced-error escape hatch for the error-mapping tests.
     foreach string segment in segments {
         if segment.startsWith("__err-") {

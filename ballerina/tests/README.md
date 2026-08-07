@@ -19,6 +19,8 @@ A few tests deviate from the one-backend rule for physical reasons and self-sele
 
 - The mock is a non `isolated` service: requests dispatch serially, so its in-memory state needs no locking (the compiler hint about this is expected).
 - A path segment of the form `__err-<status>-<AzureErrorCode>` (for example `/__err-403-ShareSizeLimitReached`) makes the mock return that error response; the error-mapping test uses this.
+- `mockRequestLog` records every request as `METHOD /segments comp=<comp> host=<host header>`; a test clears it by assignment and filters by its own share name (the retry and range-count tests use this).
+- Setting `mockFaultRemaining` to N makes the next N requests, of any operation, fail with `mockFaultStatus`/`mockFaultCode` (default 500 `InternalError`); unlike the listing-only `mockListFaultCode` hook it counts down on its own, but reset it after asserting so a test failure cannot leak faults into the next test.
 - HEAD responses must carry the file's real content, so the mock's HTTP layer computes the correct `Content-Length` (the body is stripped on the wire).
 
 ## Live runs

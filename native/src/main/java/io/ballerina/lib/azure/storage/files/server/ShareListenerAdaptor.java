@@ -22,6 +22,7 @@ import com.azure.storage.file.share.ShareClient;
 import com.azure.storage.file.share.ShareDirectoryClient;
 import com.azure.storage.file.share.models.ShareFileItem;
 import com.azure.storage.file.share.models.ShareStorageException;
+import com.azure.storage.file.share.options.ShareFileRenameOptions;
 import com.azure.storage.file.share.options.ShareListFilesAndDirectoriesOptions;
 import com.azure.xml.XmlReader;
 import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
@@ -58,6 +59,7 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -119,6 +121,11 @@ public final class ShareListenerAdaptor {
             Set.of(ON_FILE, ON_FILE_TEXT, ON_FILE_JSON, ON_FILE_XML, ON_FILE_CSV);
     private static final Map<String, String> EXTENSION_HANDLERS = Map.of(
             "json", ON_FILE_JSON, "xml", ON_FILE_XML, "csv", ON_FILE_CSV, "txt", ON_FILE_TEXT);
+    // Routing patterns are checked in this fixed order (the typed handlers, then the onFile
+    // catch-all), so overlapping patterns resolve the same way on every runtime, independent
+    // of method enumeration order.
+    private static final List<String> ROUTING_PATTERN_ORDER =
+            List.of(ON_FILE_TEXT, ON_FILE_JSON, ON_FILE_XML, ON_FILE_CSV, ON_FILE);
 
     private ShareListenerAdaptor() {
     }
@@ -493,9 +500,10 @@ public final class ShareListenerAdaptor {
     // Resolves the handler for a file: a per-handler routing pattern wins, then the extension
     // mapping, then the onFile fallback.
     private static HandlerConfig resolveHandler(ServiceContext serviceContext, String fileName) {
-        for (HandlerConfig handler : serviceContext.handlers().values()) {
-            Pattern routing = handler.routingPattern();
-            if (routing != null && routing.matcher(fileName).matches()) {
+        for (String methodName : ROUTING_PATTERN_ORDER) {
+            HandlerConfig handler = serviceContext.handlers().get(methodName);
+            if (handler != null && handler.routingPattern() != null
+                    && handler.routingPattern().matcher(fileName).matches()) {
                 return handler;
             }
         }
@@ -578,7 +586,10 @@ public final class ShareListenerAdaptor {
                     : join(moveRoot, path.substring(path.lastIndexOf('/') + 1));
             int slash = destination.lastIndexOf('/');
             ensureDirectory(share, slash < 0 ? "" : destination.substring(0, slash));
-            share.getFileClient(path).rename(destination);
+            // A same-named file already at the destination is replaced: a failing rename would
+            // leave the source in the watched path, re-dispatching it on every later poll.
+            share.getFileClient(path).renameWithResponse(
+                    new ShareFileRenameOptions(destination).setReplaceIfExists(true), null, null);
         } catch (RuntimeException e) {
             LOG.warn("azure.storage.files listener: post-process failed for {}", path, e);
         }

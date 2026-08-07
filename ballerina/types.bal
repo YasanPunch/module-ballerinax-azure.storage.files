@@ -441,7 +441,8 @@ public type ShareSasSignatureValues record {|
     # An IP address or range the requests must come from (e.g. `168.1.5.60-168.1.5.70`)
     string ipRange?;
     # The identifier of a stored access policy on the share, as an alternative to spelling
-    # out expiry and permissions here
+    # out expiry and permissions here. Not valid for the user delegation variants, which
+    # reject it
     string identifier?;
 |};
 
@@ -475,7 +476,8 @@ public type FileSasSignatureValues record {|
     # An IP address or range the requests must come from (e.g. `168.1.5.60-168.1.5.70`)
     string ipRange?;
     # The identifier of a stored access policy on the share, as an alternative to spelling
-    # out expiry and permissions here
+    # out expiry and permissions here. Not valid for the user delegation variants, which
+    # reject it
     string identifier?;
 |};
 

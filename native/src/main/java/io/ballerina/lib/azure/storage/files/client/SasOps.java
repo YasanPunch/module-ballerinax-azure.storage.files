@@ -76,20 +76,20 @@ public final class SasOps {
     /** Generates a service SAS token scoped to the bound share. */
     public static Object generateShareSas(Environment env, BObject self, BMap<BString, Object> values) {
         return AzureClientInvoker.invoke(env, () -> StringUtils.fromString(
-                AzureClientInvoker.shareClient(self).generateSas(shareSasValues(values, true))));
+                AzureClientInvoker.shareClient(self).generateSas(shareSasValues(values, true, false))));
     }
 
     /** Generates a service SAS token scoped to one file. */
     public static Object generateSas(Environment env, BObject self, BString path, BMap<BString, Object> values) {
         return AzureClientInvoker.invoke(env, () -> StringUtils.fromString(
-                FileOps.fileClient(self, path).generateSas(shareSasValues(values, false))));
+                FileOps.fileClient(self, path).generateSas(shareSasValues(values, false, false))));
     }
 
     /** Generates a user-delegation SAS token scoped to the bound share. */
     public static Object generateShareUserDelegationSas(Environment env, BObject self,
             BMap<BString, Object> values, BMap<BString, Object> key) {
         return AzureClientInvoker.invoke(env, () -> StringUtils.fromString(
-                AzureClientInvoker.shareClient(self).generateUserDelegationSas(shareSasValues(values, true),
+                AzureClientInvoker.shareClient(self).generateUserDelegationSas(shareSasValues(values, true, true),
                         delegationKey(key))));
     }
 
@@ -97,7 +97,7 @@ public final class SasOps {
     public static Object generateUserDelegationSas(Environment env, BObject self, BString path,
             BMap<BString, Object> values, BMap<BString, Object> key) {
         return AzureClientInvoker.invoke(env, () -> StringUtils.fromString(FileOps.fileClient(self, path)
-                .generateUserDelegationSas(shareSasValues(values, false), delegationKey(key))));
+                .generateUserDelegationSas(shareSasValues(values, false, true), delegationKey(key))));
     }
 
     /** Generates an account SAS token for the file service. */
@@ -131,12 +131,22 @@ public final class SasOps {
         });
     }
 
-    private static ShareServiceSasSignatureValues shareSasValues(BMap<BString, Object> values, boolean shareScope) {
+    private static ShareServiceSasSignatureValues shareSasValues(BMap<BString, Object> values, boolean shareScope,
+            boolean userDelegation) {
         @SuppressWarnings("unchecked")
         BMap<BString, Object> permissions = (BMap<BString, Object>) values.get(RecordMapper.PERMISSIONS);
         Object expiryValue = values.get(EXPIRY_TIME);
         String identifier = ValueUtils.optString(values, IDENTIFIER);
-        if (identifier == null && (expiryValue == null || permissions == null)) {
+        if (userDelegation) {
+            if (identifier != null) {
+                throw FilesErrorCreator.clientError(
+                        "a user delegation SAS cannot use a stored access policy identifier", null);
+            }
+            if (expiryValue == null || permissions == null) {
+                throw FilesErrorCreator.clientError(
+                        "expiryTime and permissions must be set for a user delegation SAS", null);
+            }
+        } else if (identifier == null && (expiryValue == null || permissions == null)) {
             throw FilesErrorCreator.clientError(
                     "either identifier, or expiryTime and permissions, must be set", null);
         }

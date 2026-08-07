@@ -759,6 +759,40 @@ function testFunctionConfigPatternOverridesExtension() returns error? {
 }
 
 @test:Config {}
+function testRoutingPatternPrecedenceCanonical() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-routeorder");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("alpha", "/incoming/report.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    // Both routing patterns match report.dat; the canonical order (onFileText before
+    // onFileCsv, onFile last) decides the winner, not the declaration order. onFileCsv is
+    // deliberately declared first so declaration order cannot mask a broken precedence.
+    Service svc = service object {
+        @FunctionConfig {fileNamePattern: "report\\..*"}
+        remote function onFileCsv(string[][] content) returns error? {
+            recorder.hit("csv");
+        }
+
+        @FunctionConfig {fileNamePattern: ".*\\.dat$", afterProcess: DELETE}
+        remote function onFileText(string content) returns error? {
+            recorder.hit("text");
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("text") >= 1);
+    runtime:sleep(3);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("csv"), 0,
+            "when two routing patterns match, onFileText must win over onFileCsv");
+}
+
+@test:Config {}
 function testInvalidFileNamePatternRejectedAtAttach() returns error? {
     string share = testShare("lsn-badpattern");
     Listener lsn = check newListener(share);
@@ -772,7 +806,7 @@ function testInvalidFileNamePatternRejectedAtAttach() returns error? {
 
 
 @test:Config {}
-function testMoveOntoExistingFileFails() returns error? {
+function testMoveOntoExistingFileReplaces() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-moveclash");
     Client shareClient = setup[0];
     string share = setup[1];
@@ -790,21 +824,20 @@ function testMoveOntoExistingFileFails() returns error? {
     };
     check lsn.attach(svc, "/incoming");
     check lsn.'start();
-    check await(() => recorder.count("ran") >= 1);
-    runtime:sleep(3);
+    check await(function() returns boolean|error {
+        boolean sourcePresent = check shareClient->hasFile("/incoming/report.dat");
+        return recorder.count("ran") >= 1 && !sourcePresent;
+    });
     check lsn.gracefulStop();
     check lsn.detach(svc);
 
-    boolean sourcePresent = check shareClient->hasFile("/incoming/report.dat");
-    test:assertTrue(sourcePresent,
-            "a move onto an existing same-named file must fail, leaving the source in place");
     stream<byte[], Error?> chunks = check shareClient->getFileContent("/processed/report.dat");
     byte[] gathered = [];
     check chunks.forEach(function(byte[] chunk) {
         gathered.push(...chunk);
     });
-    test:assertEquals(check string:fromBytes(gathered), "occupied",
-            "the pre-existing destination file must be untouched");
+    test:assertEquals(check string:fromBytes(gathered), "mover",
+            "a move onto an existing same-named file must replace it");
 }
 
 @test:Config {}

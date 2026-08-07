@@ -172,7 +172,11 @@ public final class ClientInit {
     /*
      * The SDK's endpoint parsing keeps only the URL's scheme and host, so an endpoint carrying
      * an explicit port (a private endpoint, a tunnel, or a local test service) would silently
-     * lose it. This policy restores the configured authority on every outgoing request.
+     * lose it. This policy restores the configured authority on requests still aimed at the
+     * configured host. A request whose host already differs is a retry the storage retry policy
+     * re-targeted at the configured secondary host, and is left untouched (the policy runs per
+     * retry, after that swap). One shape stays unguarded: a secondary sharing the primary's
+     * host and differing only in port is indistinguishable here and still gets rewritten.
      */
     private static void addPortOverride(ShareServiceClientBuilder builder, String url) {
         URI uri = URI.create(url);
@@ -184,6 +188,9 @@ public final class ClientInit {
         String host = uri.getHost();
         HttpPipelinePolicy override = (context, next) -> {
             UrlBuilder requestUrl = UrlBuilder.parse(context.getHttpRequest().getUrl());
+            if (!host.equalsIgnoreCase(requestUrl.getHost())) {
+                return next.process();
+            }
             requestUrl.setScheme(scheme).setHost(host).setPort(port);
             context.getHttpRequest().setUrl(requestUrl.toString());
             return next.process();

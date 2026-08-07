@@ -39,6 +39,10 @@ isolated function readFileBytes(Client fileClient, string path, DownloadOptions?
 // Stream upload plumbing
 // ---------------------------------------------------------------------------
 
+// The service caps one range write at 4 MiB (mirrored by TransferOps.MAX_RANGE_BYTES);
+// buffered source chunks flush at this size.
+const int MAX_RANGE_BYTES = 4 * 1024 * 1024;
+
 isolated function prepareStreamUpload(Client fileClient, string destinationPath, int contentLength,
         UploadOptions? options) returns Error? = @java:Method {
     'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
