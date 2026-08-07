@@ -531,7 +531,7 @@ remote function setFileProperties(string path, FileSetPropertiesOptions options)
 remote function setDirectoryProperties(string directoryPath, DirectorySetPropertiesOptions options) returns Error?;
 ```
 
-These update properties after creation; only what is set is changed, and every omitted field keeps the current value. `setShareProperties` changes the share's quota or access tier; it is administrative, needs account-key-level credentials, and fails with an `AuthorizationError` on SAS credentials. `setFileProperties` covers content headers, SMB properties, an SDDL permission, a new file size (growing pre-allocates, shrinking truncates), and POSIX attributes. `setDirectoryProperties` covers SMB properties, an SDDL permission, and POSIX attributes.
+These update properties after creation; only what is set is changed, and every omitted field keeps the current value. `setShareProperties` changes the share's quota or access tier; it is administrative, needs account-level credentials, and fails with an `AuthorizationError` on a share-scoped SAS. `setFileProperties` covers content headers, SMB properties, an SDDL permission, a new file size (growing pre-allocates, shrinking truncates), and POSIX attributes. `setDirectoryProperties` covers SMB properties, an SDDL permission, and POSIX attributes.
 
 ### 4.12 Access Policy Operations
 
@@ -567,7 +567,7 @@ function generateShareUserDelegationSas(ShareSasSignatureValues values, UserDele
 function generateUserDelegationSas(string path, FileSasSignatureValues values, UserDelegationKey key) returns string|Error;
 ```
 
-`generateShareSas` and `generateSas` sign with the account key, so the client must be authenticated with `SharedKeyConfig` (or a connection string carrying an account key); rotating the account key revokes every SAS minted from it. The signature values carry the validity window, the permissions, and optionally a protocol restriction, an IP range, or a stored access policy `identifier` in place of an explicit window and permissions. The user-delegation variants sign with a `UserDelegationKey` (from `AdminClient.getUserDelegationKey`) instead of the account key, so no storage key is ever handled; they are valid at most 7 days (the key's lifetime), and stored access policies do not apply to them.
+`generateShareSas` and `generateSas` sign with the account key, so the client must be authenticated with `SharedKeyConfig` (or a connection string carrying an account key); rotating the account key revokes every SAS minted from it. The signature values carry the validity window, the permissions, and optionally a protocol restriction, an IP range, or a stored access policy `identifier` in place of an explicit expiry and permissions; generation fails with an `Error` when neither the identifier nor both `expiryTime` and `permissions` are supplied. The user-delegation variants sign with a `UserDelegationKey` (from `AdminClient.getUserDelegationKey`) instead of the account key, so no storage key is ever handled; they are valid at most 7 days (the key's lifetime), and stored access policies do not apply to them.
 
 ### 4.15 NFS Link Operations
 

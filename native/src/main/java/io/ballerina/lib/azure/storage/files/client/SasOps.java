@@ -29,6 +29,7 @@ import com.azure.storage.file.share.sas.ShareFileSasPermission;
 import com.azure.storage.file.share.sas.ShareSasPermission;
 import com.azure.storage.file.share.sas.ShareServiceSasSignatureValues;
 import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
+import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
@@ -133,28 +134,50 @@ public final class SasOps {
     private static ShareServiceSasSignatureValues shareSasValues(BMap<BString, Object> values, boolean shareScope) {
         @SuppressWarnings("unchecked")
         BMap<BString, Object> permissions = (BMap<BString, Object>) values.get(RecordMapper.PERMISSIONS);
-        OffsetDateTime expiry = ValueUtils.fromUtc((BArray) values.get(EXPIRY_TIME));
+        Object expiryValue = values.get(EXPIRY_TIME);
+        String identifier = ValueUtils.optString(values, IDENTIFIER);
+        if (identifier == null && (expiryValue == null || permissions == null)) {
+            throw FilesErrorCreator.clientError(
+                    "either identifier, or expiryTime and permissions, must be set", null);
+        }
         ShareServiceSasSignatureValues sdkValues;
-        if (shareScope) {
-            sdkValues = new ShareServiceSasSignatureValues(expiry, new ShareSasPermission()
-                    .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
-                    .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
-                    .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
-                    .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE))
-                    .setListPermission(permissions.getBooleanValue(PERMISSION_LIST)));
+        if (identifier != null) {
+            sdkValues = new ShareServiceSasSignatureValues(identifier);
+            if (expiryValue != null) {
+                sdkValues.setExpiryTime(ValueUtils.fromUtc((BArray) expiryValue));
+            }
+            if (permissions != null) {
+                if (shareScope) {
+                    sdkValues.setPermissions(sharePermissions(permissions));
+                } else {
+                    sdkValues.setPermissions(filePermissions(permissions));
+                }
+            }
         } else {
-            sdkValues = new ShareServiceSasSignatureValues(expiry, new ShareFileSasPermission()
-                    .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
-                    .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
-                    .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
-                    .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE)));
+            OffsetDateTime expiry = ValueUtils.fromUtc((BArray) expiryValue);
+            sdkValues = shareScope
+                    ? new ShareServiceSasSignatureValues(expiry, sharePermissions(permissions))
+                    : new ShareServiceSasSignatureValues(expiry, filePermissions(permissions));
         }
         applyCommon(values, sdkValues::setStartTime, sdkValues::setProtocol, sdkValues::setSasIpRange);
-        String identifier = ValueUtils.optString(values, IDENTIFIER);
-        if (identifier != null) {
-            sdkValues.setIdentifier(identifier);
-        }
         return sdkValues;
+    }
+
+    private static ShareSasPermission sharePermissions(BMap<BString, Object> permissions) {
+        return new ShareSasPermission()
+                .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
+                .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
+                .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
+                .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE))
+                .setListPermission(permissions.getBooleanValue(PERMISSION_LIST));
+    }
+
+    private static ShareFileSasPermission filePermissions(BMap<BString, Object> permissions) {
+        return new ShareFileSasPermission()
+                .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
+                .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
+                .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
+                .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE));
     }
 
     private static void applyCommon(BMap<BString, Object> values,

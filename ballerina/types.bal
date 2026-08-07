@@ -430,9 +430,10 @@ public type AccountSasResourceTypes record {|
 public type ShareSasSignatureValues record {|
     # The end of the SAS validity period (UTC). May be omitted only when `identifier`
     # references a stored access policy that carries an expiry
-    time:Utc expiryTime;
-    # The permissions the SAS grants
-    ShareSasPermissions permissions;
+    time:Utc expiryTime?;
+    # The permissions the SAS grants. May be omitted only when `identifier` references a
+    # stored access policy that carries permissions
+    ShareSasPermissions permissions?;
     # The start of the SAS validity period (UTC); omit for immediately valid
     time:Utc startTime?;
     # The protocols a request presenting the SAS may use; omit to allow HTTPS and HTTP
@@ -463,9 +464,10 @@ public type ShareSasPermissions record {|
 public type FileSasSignatureValues record {|
     # The end of the SAS validity period (UTC). May be omitted only when `identifier`
     # references a stored access policy that carries an expiry
-    time:Utc expiryTime;
-    # The permissions the SAS grants
-    FileSasPermissions permissions;
+    time:Utc expiryTime?;
+    # The permissions the SAS grants. May be omitted only when `identifier` references a
+    # stored access policy that carries permissions
+    FileSasPermissions permissions?;
     # The start of the SAS validity period (UTC); omit for immediately valid
     time:Utc startTime?;
     # The protocols a request presenting the SAS may use; omit to allow HTTPS and HTTP

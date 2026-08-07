@@ -628,7 +628,8 @@ public isolated client class Client {
     // Property setters
     // -----------------------------------------------------------------------
 
-    # Changes the bound share's quota or access tier. Requires account key credentials.
+    # Changes the bound share's quota or access tier. Requires account-level credentials;
+    # a share-scoped SAS fails.
     #
     # + options - The properties to change; only what is set is changed
     # + return - An `Error` if the properties could not be changed, otherwise `()`

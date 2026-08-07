@@ -1310,6 +1310,45 @@ function testGenerateShareAndFileSas() returns error? {
             "expected SAS generation without an account key to fail");
 }
 
+// Signing is local, so a stored-access-policy token needs no share to exist: the policy
+// identifier rides the token and the policy supplies expiry and permissions at use time.
+@test:Config {}
+function testSasGenerationWithStoredPolicyIdentifier() returns error? {
+    Client fileClient = check newShareClient(testShare("saspol"));
+
+    string shareSas = check fileClient.generateShareSas({identifier: "backup-policy"});
+    map<string> shareParams = sasParams(shareSas);
+    test:assertEquals(shareParams["si"], "backup-policy");
+    test:assertTrue(shareParams.hasKey("sig"), "expected a signature");
+    test:assertFalse(shareParams.hasKey("se"), "expected no expiry when the policy carries it");
+    test:assertFalse(shareParams.hasKey("sp"), "expected no permissions when the policy carries them");
+
+    string fileSas = check fileClient.generateSas("/data.txt", {identifier: "backup-policy"});
+    test:assertEquals(sasParams(fileSas)["si"], "backup-policy");
+}
+
+@test:Config {}
+function testSasGenerationRequiresIdentifierOrExpiryAndPermissions() returns error? {
+    Client fileClient = check newShareClient(testShare("sasval"));
+    time:Utc expiry = check time:utcFromString("2026-08-01T00:00:00Z");
+
+    string|Error neither = fileClient.generateShareSas({});
+    test:assertTrue(neither is Error && neither !is ServiceError,
+            "expected SAS generation with no identifier, expiry, or permissions to fail client-side");
+    if neither is Error {
+        test:assertEquals(neither.message(),
+                "either identifier, or expiryTime and permissions, must be set");
+    }
+
+    string|Error expiryOnly = fileClient.generateSas("/data.txt", {expiryTime: expiry});
+    test:assertTrue(expiryOnly is Error && expiryOnly !is ServiceError,
+            "expected SAS generation without permissions or identifier to fail client-side");
+
+    string|Error permissionsOnly = fileClient.generateShareSas({permissions: {read: true}});
+    test:assertTrue(permissionsOnly is Error && permissionsOnly !is ServiceError,
+            "expected SAS generation without expiry or identifier to fail client-side");
+}
+
 // Azure serves user-delegation keys only to Entra-authenticated callers, so in live
 // runs this needs the Entra credentials and skips without them; mock runs always work.
 // Signing with the fetched key needs no credentials, so the regular clients do the rest.
