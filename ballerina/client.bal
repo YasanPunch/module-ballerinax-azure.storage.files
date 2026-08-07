@@ -466,7 +466,8 @@ public isolated client class Client {
     // Share snapshots
     // -----------------------------------------------------------------------
 
-    # Creates a point-in-time, read-only snapshot of the bound share.
+    # Creates a point-in-time, read-only snapshot of the bound share. Requires account-level
+    # credentials.
     #
     # + metadata - Optional metadata to set on the snapshot; when absent, the share's
     #              metadata is copied to the snapshot

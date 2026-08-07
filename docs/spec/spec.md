@@ -481,7 +481,7 @@ remote function deleteShareSnapshot(string snapshotId) returns Error?;
 remote function listRangesDiff(string path, string previousSnapshotId, RangeListOptions? options = ()) returns RangeDiff|Error;
 ```
 
-A share snapshot is a point-in-time, read-only copy of the whole share. Snapshot contents are read through the regular read operations: pass the returned `snapshotId` in `DownloadOptions` (`downloadFile`, `getFileContent`) or `ListOptions` (`list`) to resolve the same paths inside the snapshot instead of the live share. `listShareSnapshots` and `deleteShareSnapshot` run service-level operations, so they need account-level credentials (an account key, a connection string carrying one, or an account SAS; a share-scoped SAS is not sufficient). `listRangesDiff` reports which of a file's ranges were written and which were cleared since a baseline snapshot, for incremental backup on top of snapshots.
+A share snapshot is a point-in-time, read-only copy of the whole share. Snapshot contents are read through the regular read operations: pass the returned `snapshotId` in `DownloadOptions` (`downloadFile`, `getFileContent`) or `ListOptions` (`list`) to resolve the same paths inside the snapshot instead of the live share. `createShareSnapshot`, `listShareSnapshots`, and `deleteShareSnapshot` all need account-level credentials (an account key, a connection string carrying one, or an account SAS; a share-scoped SAS is not sufficient). `listRangesDiff` reports which of a file's ranges were written and which were cleared since a baseline snapshot, for incremental backup on top of snapshots.
 
 ### 4.9 Lease Operations
 
