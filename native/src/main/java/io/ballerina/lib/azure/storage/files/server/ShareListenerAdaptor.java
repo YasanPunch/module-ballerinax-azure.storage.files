@@ -435,7 +435,7 @@ public final class ShareListenerAdaptor {
                                     streamContentType.getConstrainedType());
                 } catch (RuntimeException e) {
                     closeQuietly(inputStream);
-                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, path, e);
+                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e);
                     return;
                 }
             } else {
@@ -449,7 +449,7 @@ public final class ShareListenerAdaptor {
                 try {
                     content = bindContent(ctx, handler, bytes, item.getName());
                 } catch (RuntimeException e) {
-                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, path, e);
+                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e);
                     return;
                 }
             }
@@ -464,9 +464,9 @@ public final class ShareListenerAdaptor {
                 // The handler already saw its own error, so onError is not notified; the error is
                 // printed so the failure stays visible without a logging backend.
                 error.printStackTrace();
-                postProcess(listenerObj, serviceContext, handler.afterError(), path);
+                postProcess(listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
             } else {
-                postProcess(listenerObj, serviceContext, handler.afterProcess(), path);
+                postProcess(listenerObj, serviceContext, handler.afterProcess(), path, listedETag(item));
             }
         } catch (Throwable e) {
             LOG.error("azure.storage.files listener: unexpected dispatch failure for {}", path, e);
@@ -479,14 +479,27 @@ public final class ShareListenerAdaptor {
     // the file; without an onError the error is printed so the failure stays visible.
     private static void handleBindingFailure(BObject listenerObj, ListenerContext ctx,
                                              ServiceContext serviceContext, HandlerConfig handler,
-                                             String path, RuntimeException e) {
+                                             ShareFileItem item, String path, RuntimeException e) {
         BError bindingError = e instanceof BError bError
                 ? bError : FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
         if (serviceContext.onErrorArity() == 0) {
             bindingError.printStackTrace();
         }
         invokeOnError(ctx, bindingError);
-        postProcess(listenerObj, serviceContext, handler.afterError(), path);
+        postProcess(listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
+    }
+
+    private static String listedETag(ShareFileItem item) {
+        return item.getProperties() == null ? null : item.getProperties().getETag();
+    }
+
+    // The SDK serves the listing's entity tag quoted and the properties read's unquoted, so
+    // the two forms only compare equal once the quotes are stripped.
+    private static String unquoteETag(String eTag) {
+        if (eTag != null && eTag.length() >= 2 && eTag.startsWith("\"") && eTag.endsWith("\"")) {
+            return eTag.substring(1, eTag.length() - 1);
+        }
+        return eTag;
     }
 
     private static void closeQuietly(InputStream inputStream) {
@@ -570,12 +583,24 @@ public final class ShareListenerAdaptor {
     // Applies a post-process action (delete, or move to a target directory). A failure is
     // logged and left alone so the file re-fires on a later poll.
     private static void postProcess(BObject listenerObj, ServiceContext serviceContext, PostAction action,
-                                    String path) {
+                                    String path, String expectedETag) {
         if (action == null) {
             return;
         }
         try {
             ShareClient share = AzureClientInvoker.shareClient(listenerObj);
+            // A file overwritten while its handler ran holds content no dispatch has seen;
+            // consuming it here would lose that version, so a changed entity tag leaves the
+            // file for the next poll. Azure Files has no conditional deletes or renames, so
+            // the moment between this check and the action stays unguarded.
+            if (expectedETag != null) {
+                String currentETag = share.getFileClient(path).getProperties().getETag();
+                if (!unquoteETag(expectedETag).equals(unquoteETag(currentETag))) {
+                    LOG.debug("azure.storage.files listener: {} changed since dispatch; "
+                            + "leaving it for the next poll", path);
+                    return;
+                }
+            }
             if (action.isDelete()) {
                 share.getFileClient(path).delete();
                 return;

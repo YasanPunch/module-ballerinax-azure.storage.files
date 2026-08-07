@@ -2374,6 +2374,44 @@ function testOverwriteDuringHandlingSerializesPerPath() returns error? {
 }
 
 @test:Config {}
+function testOverwriteDuringHandlingNotConsumedUnseen() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-consumeguard");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("version one", "/incoming/hot.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = isolated service object {
+        @FunctionConfig {afterProcess: DELETE}
+        isolated remote function onFile(byte[] content, FileInfo info) returns error? {
+            recorder.hit("dispatch");
+            recorder.put("last", check string:fromBytes(content));
+            if recorder.count("dispatch") == 1 {
+                // Hold the first handling open while the file is overwritten underneath it.
+                runtime:sleep(3);
+            }
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("dispatch") >= 1, intervalSeconds = 0.2);
+    // Overwrite while the first dispatch is still handling: the finishing dispatch's
+    // afterProcess must not consume the version it never saw.
+    check shareClient->uploadContent("version two", "/incoming/hot.dat");
+    check await(() => recorder.count("dispatch") >= 2);
+    test:assertEquals(recorder.payload("last"), "version two",
+            "the overwritten content must be dispatched before any consume");
+    // With no further overwrites, the second dispatch's afterProcess consumes the file.
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/hot.dat");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+}
+
+@test:Config {}
 function testImmediateStopDuringScanIsPrompt() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-stopscan");
     Client shareClient = setup[0];

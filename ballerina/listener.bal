@@ -31,18 +31,18 @@ public type ListenerConfiguration record {|
     # Relaxed data binding for the typed content handlers: JSON, XML, and CSV record binding
     # treat a null value as an optional field and an absent field as a nilable field
     boolean laxDataBinding = false;
-    # Fail safe CSV processing: a malformed CSV record is skipped and appended to an error
+    # Fail-safe CSV processing: a malformed CSV record is skipped and appended to an error
     # log file, instead of failing the whole binding.
     FailSafeOptions csvFailSafe?;
 |};
 
-# Configuration for fail safe CSV content processing.
+# Configuration for fail-safe CSV content processing.
 public type FailSafeOptions record {|
     # What each skipped CSV record's error log entry carries
     ErrorLogContentType contentType = METADATA;
 |};
 
-# The content of a fail safe CSV error log entry.
+# The content of a fail-safe CSV error log entry.
 public enum ErrorLogContentType {
     # Log only the metadata of the failure (position and message)
     METADATA,

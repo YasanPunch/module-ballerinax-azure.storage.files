@@ -608,6 +608,44 @@ function testUploadFromStreamCoalescesSmallChunks() returns error? {
             "a 5 MiB stream of 4 KiB chunks must coalesce into exactly two range writes");
 }
 
+// Pinned to the mock: the range-write count is only observable through the request log.
+// A source chunk larger than 4 MiB is split by the native layer into service-compliant
+// range writes, so no single range write ever exceeds the service cap.
+@test:Config {}
+function testUploadFromStreamSplitsOversizedChunk() returns error? {
+    AdminClient admin = check newMockAdmin();
+    string share = testShare("stream-split");
+    check admin->createShare(share);
+    Client fileClient = check newMockShareClient(share);
+
+    final int rangeCap = 4 * 1024 * 1024;
+    final int total = rangeCap + 512;
+    byte[] big = [];
+    big.setLength(total);
+    big[rangeCap - 1] = 7;
+    big[rangeCap] = 9;
+    byte[][] chunks = [big];
+
+    mockRequestLog = [];
+    check fileClient->uploadFromStream(chunks.toStream(), total, "/oversized.bin");
+
+    FileProperties props = check fileClient->getFileProperties("/oversized.bin");
+    test:assertEquals(props.contentLength, total);
+    stream<byte[], Error?> boundary = check fileClient->getFileContent("/oversized.bin",
+            {range: {startByte: rangeCap - 1, endByte: rangeCap}});
+    test:assertEquals(check collectBytes(boundary), <byte[]>[7, 9]);
+
+    int rangeWrites = 0;
+    foreach string entry in mockRequestLog {
+        if entry.startsWith("PUT") && entry.includes(string `/${share}/oversized.bin`)
+                && entry.includes("comp=range") {
+            rangeWrites += 1;
+        }
+    }
+    test:assertEquals(rangeWrites, 2,
+            "an oversized chunk must split into two service-compliant range writes");
+}
+
 @test:Config {}
 function testRangedDownload() returns error? {
     AdminClient admin = check newAdmin();
