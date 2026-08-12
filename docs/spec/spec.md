@@ -159,7 +159,7 @@ public type EntraIdConfig DefaultEntraIdConfig|ManagedIdentityConfig|ClientSecre
     ClientCertificateConfig|WorkloadIdentityConfig;
 ```
 
-Azure Files honors OAuth tokens only on requests carrying the backup intent, which the connector sets automatically. The intent bypasses file and directory ACLs and requires the identity to hold the `Storage File Data Privileged Reader` or `Storage File Data Privileged Contributor` role.
+Azure Files honors OAuth tokens only on requests carrying the backup intent, which the connector sets automatically. The intent bypasses file and directory ACLs and requires the identity to hold the `Storage File Data Privileged Reader` or `Storage File Data Privileged Contributor` role. Those roles cover the file and directory data operations; share-level and account-level management operations (the `AdminClient` surface, and the `Client` operations on the share itself) authorize against the storage account's management role actions instead (`Microsoft.Storage/storageAccounts/fileServices/shares/` read, write, and delete, carried by roles such as `Contributor`), so an identity covering the full surface holds both a privileged data role and a management role.
 
 ```ballerina
 # The credential-kind discriminator value selecting `DefaultEntraIdConfig`.

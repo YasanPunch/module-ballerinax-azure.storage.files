@@ -1,9 +1,9 @@
 # Ballerina Azure Files Connector
 
-[![Build](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/ci.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/ci.yml)
+[![Build](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-timestamped-master.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-timestamped-master.yml)
 [![codecov](https://codecov.io/gh/ballerina-platform/module-ballerinax-azure.storage.files/branch/main/graph/badge.svg)](https://codecov.io/gh/ballerina-platform/module-ballerinax-azure.storage.files)
 [![GitHub Last Commit](https://img.shields.io/github/last-commit/ballerina-platform/module-ballerinax-azure.storage.files.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/commits/main)
-[![GraalVM Check](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-with-bal-test-native.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-with-bal-test-native.yml)
+[![GraalVM Check](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-with-bal-test-graalvm.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-with-bal-test-graalvm.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## Overview

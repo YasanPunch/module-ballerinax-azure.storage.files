@@ -123,7 +123,6 @@ function testAttachRejectsSecondService() returns error? {
 @test:Config {}
 function testStartTwiceRejected() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-start2");
-    Client shareClient = setup[0];
     string share = setup[1];
     Listener lsn = check newListener(share);
     Service svc = service object {
@@ -954,7 +953,6 @@ function setupMockWatchedShare(string base) returns [Client, string]|error {
 @test:Config {}
 function testPollFailureSurfacesTypedError() returns error? {
     [Client, string] setup = check setupMockWatchedShare("lsn-pollfail");
-    Client shareClient = setup[0];
     string share = setup[1];
 
     Listener lsn = check newMockListener(share);
@@ -1042,7 +1040,6 @@ function testPollFailureSurfacesEveryPoll() returns error? {
     // Every failing poll returns its error, so the poll service's log line and a declared
     // onError run on each scheduled attempt; there is no suppression between polls.
     [Client, string] setup = check setupMockWatchedShare("lsn-pollrepeat");
-    Client shareClient = setup[0];
     string share = setup[1];
 
     final Recorder recorder = new;
@@ -1077,7 +1074,6 @@ function testPollFailureSurfacesEveryPoll() returns error? {
 @test:Config {}
 function testOnErrorFiresOnPollFailure() returns error? {
     [Client, string] setup = check setupMockWatchedShare("lsn-onerr-poll");
-    Client shareClient = setup[0];
     string share = setup[1];
 
     final Recorder recorder = new;
@@ -2230,7 +2226,6 @@ function testEmptyAttachPointDefaultsToShareRoot() returns error? {
 @test:Config {}
 function testRootDefaultSurfacesAuthorizationError() returns error? {
     [Client, string] setup = check setupMockWatchedShare("lsn-rootauth");
-    Client shareClient = setup[0];
     string share = setup[1];
 
     Listener lsn = check newMockListener(share);

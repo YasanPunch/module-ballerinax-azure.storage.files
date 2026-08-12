@@ -85,23 +85,23 @@ function testInitAcceptsConnectionString() {
 @test:Config {}
 function testInitEntraIdModes() returns error? {
     // Every Entra credential kind builds locally; tokens are requested only on first use.
-    Client defaultChain = check new ("share", auth = {kind: "default", accountName: "acct"});
+    _ = check new Client("share", auth = {kind: "default", accountName: "acct"});
 
-    Client managed = check new ("share",
+    _ = check new Client("share",
             auth = {kind: "managed-identity", accountName: "acct", clientId: "mi-client"});
 
-    Client secret = check new ("share",
+    _ = check new Client("share",
             auth = {accountName: "acct", tenantId: "tenant", clientId: "client", clientSecret: "s3cret"});
 
     string tokenFile = "target/mock-workload-token.txt";
     check io:fileWriteString(tokenFile, "federated-token");
-    Client workload = check new ("share",
+    _ = check new Client("share",
             auth = {accountName: "acct", tenantId: "tenant", clientId: "client", tokenFilePath: tokenFile});
 
     string certificateFile = "target/mock-entra-cert.pem";
     check io:fileWriteString(certificateFile,
             "-----BEGIN CERTIFICATE-----\nTUlJQg==\n-----END CERTIFICATE-----\n");
-    Client certificate = check new ("share", auth = {
+    _ = check new Client("share", auth = {
         accountName: "acct",
         tenantId: "tenant",
         clientId: "client",
@@ -221,18 +221,18 @@ function testSecondaryHostRetryReachesSecondaryHost() returns error? {
 @test:Config {}
 function testTransportTlsConfig() returns error? {
     // Trust material as a PEM file.
-    Client pemTrust = check new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
+    _ = check new Client("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {secureSocket: {cert: "tests/resources/cert.pem"}});
 
     // Trust material as a PKCS12 store.
-    Client storeTrust = check new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
+    _ = check new Client("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {
                 secureSocket: {cert: {path: "tests/resources/trust.p12", password: "ballerina"}}
             });
 
     // Client identity from a certificate and key pair, plus version and cipher pinning,
     // hostname-verification and session flags, and timeouts.
-    Client mutualTls = check new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
+    _ = check new Client("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {
                 secureSocket: {
                     cert: "tests/resources/cert.pem",
@@ -248,7 +248,7 @@ function testTransportTlsConfig() returns error? {
             });
 
     // Revocation checking builds against PEM trust material.
-    Client revocation = check new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
+    _ = check new Client("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {
                 secureSocket: {cert: "tests/resources/cert.pem", validateRevocation: true}
             });

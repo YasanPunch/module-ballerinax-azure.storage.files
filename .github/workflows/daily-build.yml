@@ -3,6 +3,7 @@ name: Daily build
 on:
   schedule:
     - cron: "30 2 * * *"
+  workflow_dispatch:
 
 jobs:
   call_workflow:
@@ -12,3 +13,6 @@ jobs:
     secrets: inherit
     with:
       repo-name: module-ballerinax-azure.storage.files
+      # The docker-based daily never populates the host target/ballerina-runtime that the
+      # compiler plugin tests resolve from, so they cannot run on this path (kafka does the same).
+      additional-test-flags: "-x :azure.storage.files-compiler-plugin-tests:test"
