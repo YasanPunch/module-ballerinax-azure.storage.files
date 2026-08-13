@@ -88,7 +88,6 @@ public final class Listener {
     private static final String CALLER_TYPE_NAME = "Caller";
 
     private static final BString LAX_DATA_BINDING = StringUtils.fromString("laxDataBinding");
-    private static final BString CSV_FAIL_SAFE = StringUtils.fromString("csvFailSafe");
     // The module-level Ballerina helper that binds CSV content on a real strand.
     private static final String BIND_CSV_CONTENT_FUNCTION = "bindCsvContent";
 
@@ -166,10 +165,8 @@ public final class Listener {
                     BallerinaAzureClient.getShareClient(client));
 
             boolean laxDataBinding = Boolean.TRUE.equals(config.get(LAX_DATA_BINDING));
-            @SuppressWarnings("unchecked")
-            BMap<BString, Object> csvFailSafe = (BMap<BString, Object>) config.get(CSV_FAIL_SAFE);
             listenerObj.addNativeData(NATIVE_LISTENER_CONTEXT,
-                    new ListenerContext(caller, shareName.getValue(), laxDataBinding, csvFailSafe));
+                    new ListenerContext(caller, shareName.getValue(), laxDataBinding));
             return null;
         } catch (BError e) {
             return e;
@@ -441,7 +438,7 @@ public final class Listener {
                     return;
                 }
                 try {
-                    content = bindContent(ctx, handler, bytes, path);
+                    content = bindContent(ctx, handler, bytes);
                 } catch (RuntimeException e) {
                     handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e);
                     return;
@@ -521,7 +518,7 @@ public final class Listener {
         return serviceContext.handlers().get(ON_FILE);
     }
 
-    private static Object bindContent(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String filePath) {
+    private static Object bindContent(ListenerContext ctx, HandlerConfig handler, byte[] bytes) {
         switch (handler.methodName()) {
             case ON_FILE_TEXT:
                 return StringUtils.fromString(new String(bytes, StandardCharsets.UTF_8));
@@ -532,7 +529,7 @@ public final class Listener {
                 return ContentBinder.bindXml(ValueCreator.createArrayValue(bytes),
                         handler.contentType(), ctx.laxDataBinding, XML_BIND_CONTEXT, XML_PARSE_CONTEXT);
             case ON_FILE_CSV:
-                return bindCsv(ctx, handler, bytes, filePath);
+                return bindCsv(ctx, handler, bytes);
             default:
                 return ValueCreator.createArrayValue(bytes);
         }
@@ -540,21 +537,12 @@ public final class Listener {
 
     // Binds CSV content on a real Ballerina strand through the module-level bindCsvContent helper,
     // because the data.csv parser needs the runtime environment of a strand.
-    private static Object bindCsv(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String filePath) {
-        // The fail-safe error-log prefix derives from the share-relative path, so same-named
-        // files in different directories quarantine to distinct logs.
-        String prefix = filePath.replaceAll("\\.[^.]+$", "");
-        if (prefix.startsWith("/")) {
-            prefix = prefix.substring(1);
-        }
-        prefix = prefix.replace('/', '_');
+    private static Object bindCsv(ListenerContext ctx, HandlerConfig handler, byte[] bytes) {
         Object result = ctx.runtime.callFunction(ModuleUtils.getModule(), BIND_CSV_CONTENT_FUNCTION,
                 new StrandMetadata(true, null),
                 ValueCreator.createArrayValue(bytes),
                 ValueCreator.createTypedescValue(TypeUtils.getReferredType(handler.contentType())),
-                ctx.laxDataBinding,
-                ctx.csvFailSafe,
-                StringUtils.fromString(prefix));
+                ctx.laxDataBinding);
         if (result instanceof BError bError) {
             throw FilesErrorCreator.clientError("content does not bind to the '" + ON_FILE_CSV
                     + "' handler's declared type: " + bError.getErrorMessage(), bError);
@@ -808,7 +796,6 @@ public final class Listener {
         private final BObject caller;
         private final String shareName;
         private final boolean laxDataBinding;
-        private final BMap<BString, Object> csvFailSafe;
 
         // Files whose dispatch is still running, keyed by path: one file, one invocation at
         // a time, regardless of version changes while handling runs.
@@ -824,12 +811,10 @@ public final class Listener {
         // The stopped flag: set by a stop, checked by the scan and dispatch paths.
         private volatile boolean stopped;
 
-        private ListenerContext(BObject caller, String shareName,
-                                boolean laxDataBinding, BMap<BString, Object> csvFailSafe) {
+        private ListenerContext(BObject caller, String shareName, boolean laxDataBinding) {
             this.caller = caller;
             this.shareName = shareName;
             this.laxDataBinding = laxDataBinding;
-            this.csvFailSafe = csvFailSafe;
         }
     }
 

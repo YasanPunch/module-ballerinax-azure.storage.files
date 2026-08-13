@@ -31,29 +31,7 @@ public type ListenerConfiguration record {|
     # Relaxed data binding for the typed content handlers: JSON, XML, and CSV record binding
     # treat a null value as an optional field and an absent field as a nilable field
     boolean laxDataBinding = false;
-    # Fail-safe CSV processing: a malformed CSV record is skipped and appended to an error
-    # log file, instead of failing the whole binding.
-    FailSafeOptions csvFailSafe?;
 |};
-
-# Configuration for fail-safe CSV content processing.
-public type FailSafeOptions record {|
-    # What each skipped CSV record's error log entry carries
-    ErrorLogContentType contentType = METADATA;
-    # The directory the error log files are written into; when absent, the process
-    # working directory
-    string logDirectory?;
-|};
-
-# The content of a fail-safe CSV error log entry.
-public enum ErrorLogContentType {
-    # Log only the metadata of the failure (position and message)
-    METADATA,
-    # Log only the raw content that caused the failure
-    RAW,
-    # Log both the raw content and the metadata
-    RAW_AND_METADATA
-}
 
 # Optional per-service filters, supplied through the `@files:ServiceConfig` annotation. The
 # watched path itself is the service's attach point (for example `service /invoices on lsn`),

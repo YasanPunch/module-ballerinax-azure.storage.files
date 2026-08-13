@@ -384,7 +384,6 @@ The constructor takes the share name and the listener configuration as an includ
 * `pollingInterval`: how often the watched path is polled, in seconds. Must be greater than zero; a non positive value fails `init`. Defaults to 60.
 * `retryConfig` and `transportConfig`: forwarded to the listener's underlying client (sections 2.3 and 2.4).
 * `laxDataBinding`: relaxed data binding for the typed content handlers (section 5.3). Defaults to false.
-* `csvFailSafe`: fail safe CSV processing (section 5.3). Absent by default.
 
 The listener builds one share scoped client at `init` and uses it for both its own polling and the `Caller` passed to handlers, so one listener holds exactly one connection stack. `init` also performs a one time XML parser setup for the XML content handlers; if that setup fails, `init` returns an error and the initialization can simply be retried.
 
@@ -438,8 +437,6 @@ The `FileInfo` and `Caller` parameters are optional trailing parameters: a handl
 Routing is by file extension: `txt` to `onFileText`, `json` to `onFileJson`, `xml` to `onFileXml`, `csv` to `onFileCsv`, and everything else to `onFile`. A per handler `@files:FunctionConfig` `fileNamePattern` overrides the extension routing. When more than one routing pattern matches a file name, the winner is fixed: patterns are checked in the order `onFileText`, `onFileJson`, `onFileXml`, `onFileCsv`, then `onFile`, so a typed handler's pattern always beats the catch all's. A file whose extension maps to an undeclared typed handler falls back to `onFile`, and is skipped and logged when `onFile` is absent too. A file routed to a typed handler whose content is malformed raises a content binding error rather than falling through to `onFile` (section 5.5).
 
 Binding is strict by default. Setting `laxDataBinding` on the listener relaxes it: JSON and CSV record binding treat a null value as an optional field and an absent member as a nilable field, and XML record binding tolerates elements the record does not declare.
-
-With `csvFailSafe` set, a malformed record in a materialized CSV binding is skipped instead of failing the whole binding, and is appended to an error log file. The log is named from the file's share relative path with separators as underscores (`incoming_reports_daily_error.log` for `/incoming/reports/daily.csv`), so same named files in different directories quarantine to distinct logs, and it is written into `FailSafeOptions.logDirectory`, defaulting to the process working directory. The `contentType` field selects what each entry carries: `METADATA` (the default), `RAW`, or `RAW_AND_METADATA`. Fail safe mode applies to the materialized CSV forms only, not the stream forms.
 
 The stream content forms read the file from the service in chunks as the handler drains the stream, instead of downloading it up front. A stream closes its underlying source at the end of the file, and a handler that abandons a stream early should call its `close()`. A CSV stream row that fails to bind surfaces as the error entry of that `next()` call, after which the stream is closed. The consume actions run on the handler's return exactly as for materialized content, so a handler that deletes or moves the file (or declares `afterProcess`) while its stream is not fully drained loses access to the remaining content.
 

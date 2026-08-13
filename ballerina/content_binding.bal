@@ -18,29 +18,17 @@ import ballerina/data.csv;
 // The jsondata import keeps the module in the dependency graph: the Java adaptor calls its
 // natives directly (TypedReadOps and ContentBinder), with no Ballerina-side reference.
 import ballerina/data.jsondata as _;
-import ballerina/file;
 
 // Binds CSV file content to the declared handler type through the data.csv module. Invoked from
 // the native dispatcher, which supplies the handler's declared parameter type as the typedesc.
 isolated function bindCsvContent(byte[] content, typedesc<string[][]|record {}[]> targetType,
-        boolean laxDataBinding, FailSafeOptions? csvFailSafe, string fileNamePrefix)
-        returns string[][]|record {}[]|error {
+        boolean laxDataBinding) returns string[][]|record {}[]|error {
     csv:ParseOptions options = csvParseOptions(laxDataBinding);
     // A record target maps its fields through the header row (the file's first row), which
     // the data.csv default already consumes; the string matrix keeps every row of the file,
     // so the header consumption is turned off for it.
     if targetType !is typedesc<record {}[]> {
         options.header = ();
-    }
-    if csvFailSafe is FailSafeOptions {
-        string logDirectory = csvFailSafe.logDirectory ?: file:getCurrentDir();
-        options.failSafe = {
-            fileOutputMode: {
-                filePath: logDirectory + "/" + fileNamePrefix + "_error.log",
-                fileWriteOption: csv:APPEND,
-                contentType: csvFailSafe.contentType
-            }
-        };
     }
     return csv:parseBytes(content, options, targetType);
 }
