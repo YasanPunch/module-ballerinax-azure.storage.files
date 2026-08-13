@@ -24,7 +24,7 @@ import com.azure.storage.file.share.models.PermissionCopyModeType;
 import com.azure.storage.file.share.models.ShareFileCopyInfo;
 import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.options.ShareFileCopyOptions;
-import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
@@ -53,9 +53,9 @@ public final class CopyOps {
     /** Starts a server-side copy from another file in the same share. */
     public static Object copyFile(Environment env, BObject self, BString sourcePath,
                                   BString destinationPath, Object options) {
-        return AzureClientInvoker.invoke(env, () -> {
-            String sourceUrl = AzureClientInvoker.shareClient(self)
-                    .getFileClient(AzureClientInvoker.filePath(sourcePath)).getFileUrl();
+        return BallerinaAzureClient.invoke(env, () -> {
+            String sourceUrl = BallerinaAzureClient.getShareClient(self)
+                    .getFileClient(BallerinaAzureClient.filePath(sourcePath)).getFileUrl();
             return startCopy(self, sourceUrl, destinationPath, options);
         });
     }
@@ -63,18 +63,18 @@ public final class CopyOps {
     /** Starts a server-side copy from any accessible source URL. */
     public static Object copyFileFromUrl(Environment env, BObject self, BString sourceUrl,
                                          BString destinationPath, Object options) {
-        return AzureClientInvoker.invoke(env, () -> startCopy(self, sourceUrl.getValue(), destinationPath, options));
+        return BallerinaAzureClient.invoke(env, () -> startCopy(self, sourceUrl.getValue(), destinationPath, options));
     }
 
     /** Reports the progress of a copy targeting the given file; {@code null} when none exists. */
     public static Object checkCopyStatus(Environment env, BObject self, BString path) {
-        return AzureClientInvoker.invoke(env, () ->
+        return BallerinaAzureClient.invoke(env, () ->
                 RecordMapper.copyStatusInfo(FileOps.fileClient(self, path).getProperties()));
     }
 
     /** Aborts an in-progress copy identified by its copy id. */
     public static Object abortCopy(Environment env, BObject self, BString path, BString copyId) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             FileOps.fileClient(self, path).abortCopy(copyId.getValue());
             return null;
         });

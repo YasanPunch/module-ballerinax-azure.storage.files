@@ -25,8 +25,8 @@ import com.azure.storage.file.share.models.ShareStorageException;
 import com.azure.storage.file.share.options.ShareFileRenameOptions;
 import com.azure.storage.file.share.options.ShareListFilesAndDirectoriesOptions;
 import com.azure.xml.XmlReader;
-import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
-import io.ballerina.lib.azure.storage.files.util.ErrorMapper;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
+import io.ballerina.lib.azure.storage.files.util.ContentBinder;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.ModuleUtils;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
@@ -77,17 +77,15 @@ import javax.xml.stream.XMLStreamException;
  * Ballerina side), and dispatches each present file to the matching content handler on a
  * virtual thread.
  */
-public final class ShareListenerAdaptor {
+public final class Listener {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ShareListenerAdaptor.class);
+    private static final Logger LOG = LoggerFactory.getLogger(Listener.class);
 
     // Native-data key under which the per-listener context is stored on the listener object.
     private static final String NATIVE_LISTENER_CONTEXT = "listenerContext";
 
     // The Caller type name, matched against a handler's second parameter type.
     private static final String CALLER_TYPE_NAME = "Caller";
-    // The Caller field holding the wrapped Client, whose SDK client the listener reuses.
-    private static final BString CALLER_CLIENT_FIELD = StringUtils.fromString("client");
 
     private static final BString LAX_DATA_BINDING = StringUtils.fromString("laxDataBinding");
     private static final BString CSV_FAIL_SAFE = StringUtils.fromString("csvFailSafe");
@@ -117,8 +115,6 @@ public final class ShareListenerAdaptor {
     // The optional error-notification handler: not a content handler (no routing, no
     // afterProcess/afterError semantics of its own).
     private static final String ON_ERROR = "onError";
-    private static final Set<String> HANDLER_NAMES =
-            Set.of(ON_FILE, ON_FILE_TEXT, ON_FILE_JSON, ON_FILE_XML, ON_FILE_CSV);
     private static final Map<String, String> EXTENSION_HANDLERS = Map.of(
             "json", ON_FILE_JSON, "xml", ON_FILE_XML, "csv", ON_FILE_CSV, "txt", ON_FILE_TEXT);
     // Routing patterns are checked in this fixed order (the typed handlers, then the onFile
@@ -126,8 +122,16 @@ public final class ShareListenerAdaptor {
     // of method enumeration order.
     private static final List<String> ROUTING_PATTERN_ORDER =
             List.of(ON_FILE_TEXT, ON_FILE_JSON, ON_FILE_XML, ON_FILE_CSV, ON_FILE);
+    private static final Set<String> HANDLER_NAMES = Set.copyOf(ROUTING_PATTERN_ORDER);
+    // The binding-failure message contexts handed to the shared ContentBinder.
+    private static final String JSON_BIND_CONTEXT =
+            "content does not bind to the '" + ON_FILE_JSON + "' handler's declared type";
+    private static final String XML_BIND_CONTEXT =
+            "content does not bind to the '" + ON_FILE_XML + "' handler's declared type";
+    private static final String XML_PARSE_CONTEXT =
+            "content is not valid XML for the '" + ON_FILE_XML + "' handler";
 
-    private ShareListenerAdaptor() {
+    private Listener() {
     }
 
     /**
@@ -154,11 +158,12 @@ public final class ShareListenerAdaptor {
                 // initialization only
             } catch (XMLStreamException | RuntimeException | Error e) {
                 return FilesErrorCreator.clientError("XML support could not be initialized: "
-                        + AzureClientInvoker.describe(e) + ". Retry initializing the listener.", e);
+                        + BallerinaAzureClient.describe(e) + ". Retry initializing the listener.", e);
             }
 
-            BObject client = caller.getObjectValue(CALLER_CLIENT_FIELD);
-            listenerObj.addNativeData(AzureClientInvoker.NATIVE_SHARE_CLIENT, AzureClientInvoker.shareClient(client));
+            BObject client = caller.getObjectValue(BallerinaAzureClient.CALLER_CLIENT_FIELD);
+            listenerObj.addNativeData(BallerinaAzureClient.NATIVE_SHARE_CLIENT,
+                    BallerinaAzureClient.getShareClient(client));
 
             boolean laxDataBinding = Boolean.TRUE.equals(config.get(LAX_DATA_BINDING));
             @SuppressWarnings("unchecked")
@@ -169,7 +174,7 @@ public final class ShareListenerAdaptor {
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -177,13 +182,12 @@ public final class ShareListenerAdaptor {
      * Attaches the single service to the listener, reading its watch configuration and handlers.
      * A second attach fails: one service per listener.
      *
-     * @param env         the Ballerina runtime environment
      * @param listenerObj the Ballerina listener object
      * @param service     the service being attached
      * @param name        the name of the service
      * @return {@code null} on success, or the validation error
      */
-    public static Object attachService(Environment env, BObject listenerObj, BObject service, Object name) {
+    public static Object attachService(BObject listenerObj, BObject service, Object name) {
         ListenerContext ctx = context(listenerObj);
         if (ctx.service != null) {
             return FilesErrorCreator.clientError(
@@ -196,21 +200,20 @@ public final class ShareListenerAdaptor {
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
         }
     }
 
     /**
      * Detaches the service from the listener.
      *
-     * @param env         the Ballerina runtime environment
      * @param listenerObj the Ballerina listener object
      * @param service     the service being detached
      * @return an error if the given service is not the attached one, otherwise {@code null}
      */
-    public static Object detachService(Environment env, BObject listenerObj, BObject service) {
+    public static Object detachService(BObject listenerObj, BObject service) {
         ListenerContext ctx = context(listenerObj);
-        if (ctx == null || ctx.service != service) {
+        if (ctx.service != service) {
             return FilesErrorCreator.clientError("the given service is not attached to this listener", null);
         }
         ctx.service = null;
@@ -230,33 +233,23 @@ public final class ShareListenerAdaptor {
      * @return {@code null} on success, or the mapped scan error
      */
     public static Object poll(Environment env, BObject listenerObj) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             ListenerContext ctx = context(listenerObj);
-            if (ctx == null || ctx.stopped) {
+            // Captured once so a detach on another thread cannot null it mid-poll.
+            ServiceContext serviceContext = ctx.serviceContext;
+            if (ctx.stopped || serviceContext == null) {
                 return null;
             }
             ctx.runtime = env.getRuntime();
             try {
-                scan(listenerObj, ctx, ctx.serviceContext);
+                scan(listenerObj, ctx, serviceContext);
             } catch (Throwable e) {
-                BError mapped = mapScanFailure(e);
+                BError mapped = BallerinaAzureClient.mapFailure(e);
                 invokeOnError(ctx, mapped);
                 return mapped;
             }
             return null;
         });
-    }
-
-    // Maps a scan failure to the module's typed error: Azure service failures go through the
-    // code-keyed mapper, and anything else becomes the generic client-side Error.
-    private static BError mapScanFailure(Throwable e) {
-        if (e instanceof ShareStorageException storageException) {
-            return ErrorMapper.toBError(storageException);
-        }
-        if (e instanceof BError bError) {
-            return bError;
-        }
-        return FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
     }
 
     /**
@@ -325,7 +318,7 @@ public final class ShareListenerAdaptor {
      * @param serviceContext the attached service's watch configuration
      */
     private static void scan(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext) {
-        ShareClient share = AzureClientInvoker.shareClient(listenerObj);
+        ShareClient share = BallerinaAzureClient.getShareClient(listenerObj);
         Deque<String> pending = new ArrayDeque<>();
         pending.push(serviceContext.watchedPath());
         while (!pending.isEmpty()) {
@@ -422,7 +415,8 @@ public final class ShareListenerAdaptor {
                 // A stream handler skips the eager download: the file is read chunk by chunk.
                 InputStream inputStream;
                 try {
-                    inputStream = AzureClientInvoker.shareClient(listenerObj).getFileClient(path).openInputStream();
+                    inputStream = BallerinaAzureClient.getShareClient(listenerObj)
+                            .getFileClient(path).openInputStream();
                 } catch (RuntimeException e) {
                     LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
                     return;
@@ -447,7 +441,7 @@ public final class ShareListenerAdaptor {
                     return;
                 }
                 try {
-                    content = bindContent(ctx, handler, bytes, item.getName());
+                    content = bindContent(ctx, handler, bytes, path);
                 } catch (RuntimeException e) {
                     handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e);
                     return;
@@ -481,7 +475,7 @@ public final class ShareListenerAdaptor {
                                              ServiceContext serviceContext, HandlerConfig handler,
                                              ShareFileItem item, String path, RuntimeException e) {
         BError bindingError = e instanceof BError bError
-                ? bError : FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
+                ? bError : FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
         if (serviceContext.onErrorArity() == 0) {
             bindingError.printStackTrace();
         }
@@ -527,16 +521,18 @@ public final class ShareListenerAdaptor {
         return serviceContext.handlers().get(ON_FILE);
     }
 
-    private static Object bindContent(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String fileName) {
+    private static Object bindContent(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String filePath) {
         switch (handler.methodName()) {
             case ON_FILE_TEXT:
                 return StringUtils.fromString(new String(bytes, StandardCharsets.UTF_8));
             case ON_FILE_JSON:
-                return ContentBinder.bindJson(bytes, handler.contentType(), ctx.laxDataBinding);
+                return ContentBinder.bindJson(ValueCreator.createArrayValue(bytes),
+                        handler.contentType(), ctx.laxDataBinding, JSON_BIND_CONTEXT);
             case ON_FILE_XML:
-                return ContentBinder.bindXml(bytes, handler.contentType(), ctx.laxDataBinding);
+                return ContentBinder.bindXml(ValueCreator.createArrayValue(bytes),
+                        handler.contentType(), ctx.laxDataBinding, XML_BIND_CONTEXT, XML_PARSE_CONTEXT);
             case ON_FILE_CSV:
-                return bindCsv(ctx, handler, bytes, fileName);
+                return bindCsv(ctx, handler, bytes, filePath);
             default:
                 return ValueCreator.createArrayValue(bytes);
         }
@@ -544,8 +540,14 @@ public final class ShareListenerAdaptor {
 
     // Binds CSV content on a real Ballerina strand through the module-level bindCsvContent helper,
     // because the data.csv parser needs the runtime environment of a strand.
-    private static Object bindCsv(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String fileName) {
-        String prefix = fileName.replaceAll("\\.[^.]+$", "");
+    private static Object bindCsv(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String filePath) {
+        // The fail-safe error-log prefix derives from the share-relative path, so same-named
+        // files in different directories quarantine to distinct logs.
+        String prefix = filePath.replaceAll("\\.[^.]+$", "");
+        if (prefix.startsWith("/")) {
+            prefix = prefix.substring(1);
+        }
+        prefix = prefix.replace('/', '_');
         Object result = ctx.runtime.callFunction(ModuleUtils.getModule(), BIND_CSV_CONTENT_FUNCTION,
                 new StrandMetadata(true, null),
                 ValueCreator.createArrayValue(bytes),
@@ -588,7 +590,7 @@ public final class ShareListenerAdaptor {
             return;
         }
         try {
-            ShareClient share = AzureClientInvoker.shareClient(listenerObj);
+            ShareClient share = BallerinaAzureClient.getShareClient(listenerObj);
             // A file overwritten while its handler ran holds content no dispatch has seen;
             // consuming it here would lose that version, so a changed entity tag leaves the
             // file for the next poll. Azure Files has no conditional deletes or renames, so
@@ -605,7 +607,7 @@ public final class ShareListenerAdaptor {
                 share.getFileClient(path).delete();
                 return;
             }
-            String moveRoot = AzureClientInvoker.directoryPath(StringUtils.fromString(action.moveTo()));
+            String moveRoot = BallerinaAzureClient.directoryPath(StringUtils.fromString(action.moveTo()));
             String destination = action.preserveSubDirs()
                     ? join(moveRoot, relativeTo(path, serviceContext.watchedPath()))
                     : join(moveRoot, path.substring(path.lastIndexOf('/') + 1));
@@ -643,7 +645,7 @@ public final class ShareListenerAdaptor {
 
     private static byte[] download(BObject listenerObj, String path) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        AzureClientInvoker.shareClient(listenerObj).getFileClient(path).download(out);
+        BallerinaAzureClient.getShareClient(listenerObj).getFileClient(path).download(out);
         return out.toByteArray();
     }
 
@@ -721,14 +723,14 @@ public final class ShareListenerAdaptor {
                 }
                 joined.append(segments.getBString(i).getValue());
             }
-            return AzureClientInvoker.directoryPath(StringUtils.fromString(joined.toString()));
+            return BallerinaAzureClient.directoryPath(StringUtils.fromString(joined.toString()));
         }
         if (name instanceof BString path) {
             String collapsed = path.getValue().strip();
             while (collapsed.contains("//")) {
                 collapsed = collapsed.replace("//", "/");
             }
-            return AzureClientInvoker.directoryPath(StringUtils.fromString(collapsed));
+            return BallerinaAzureClient.directoryPath(StringUtils.fromString(collapsed));
         }
         return "";
     }

@@ -20,7 +20,7 @@ package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.storage.file.share.models.ShareAccessPolicy;
 import com.azure.storage.file.share.models.ShareSignedIdentifier;
-import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
@@ -44,9 +44,9 @@ public final class PolicyOps {
 
     /** Fetches the share's stored access policies as {@code SignedIdentifier} records. */
     public static Object getShareAccessPolicy(Environment env, BObject self) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             BArray result = RecordMapper.recordArray(RecordMapper.RECORD_SIGNED_IDENTIFIER);
-            for (ShareSignedIdentifier identifier : AzureClientInvoker.shareClient(self).getAccessPolicy()) {
+            for (ShareSignedIdentifier identifier : BallerinaAzureClient.getShareClient(self).getAccessPolicy()) {
                 result.append(RecordMapper.signedIdentifier(identifier));
             }
             return result;
@@ -55,7 +55,7 @@ public final class PolicyOps {
 
     /** Replaces the share's stored access policies. */
     public static Object setShareAccessPolicy(Environment env, BObject self, BArray identifiers) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             List<ShareSignedIdentifier> sdkIdentifiers = new ArrayList<>();
             for (int i = 0; i < identifiers.size(); i++) {
                 @SuppressWarnings("unchecked")
@@ -76,21 +76,22 @@ public final class PolicyOps {
                         .setId(record.getStringValue(RecordMapper.ID).getValue())
                         .setAccessPolicy(sdkPolicy));
             }
-            AzureClientInvoker.shareClient(self).setAccessPolicy(sdkIdentifiers);
+            BallerinaAzureClient.getShareClient(self).setAccessPolicy(sdkIdentifiers);
             return null;
         });
     }
 
     /** Fetches the SDDL permission stored under the given permission key. */
     public static Object getSharePermission(Environment env, BObject self, BString permissionKey) {
-        return AzureClientInvoker.invoke(env, () ->
-                StringUtils.fromString(AzureClientInvoker.shareClient(self).getPermission(permissionKey.getValue())));
+        return BallerinaAzureClient.invoke(env, () ->
+                StringUtils.fromString(BallerinaAzureClient.getShareClient(self)
+                        .getPermission(permissionKey.getValue())));
     }
 
     /** Stores an SDDL permission on the share and returns its permission key. */
     public static Object createSharePermission(Environment env, BObject self, BString sddlPermission) {
-        return AzureClientInvoker.invoke(env, () ->
-                StringUtils.fromString(AzureClientInvoker.shareClient(self)
+        return BallerinaAzureClient.invoke(env, () ->
+                StringUtils.fromString(BallerinaAzureClient.getShareClient(self)
                         .createPermission(sddlPermission.getValue())));
     }
 }

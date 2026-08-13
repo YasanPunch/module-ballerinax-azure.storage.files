@@ -480,6 +480,12 @@ function testCallerOperations() returns error? {
             check caller->createDirectory("/work");
             check caller->uploadContent("alpha", "/work/a.txt");
 
+            // The Caller mirrors the Client's record upload contract by delegation.
+            check caller->uploadContent({"kind": "caller"}, "/work/meta.json");
+            string metaJson = check caller->getFileText("/work/meta.json");
+            recorder.put("recordUpload", metaJson);
+            check caller->deleteFile("/work/meta.json");
+
             stream<Entry, Error?> entries = check caller->list("/work");
             int listed = 0;
             check entries.forEach(function(Entry entry) {
@@ -525,6 +531,7 @@ function testCallerOperations() returns error? {
 
     test:assertEquals(recorder.payload("shareName"), share);
     test:assertEquals(recorder.payload("downloaded"), "alpha");
+    test:assertEquals(recorder.payload("recordUpload"), "{\"kind\":\"caller\"}");
     test:assertTrue(recorder.count("copy-status-seen") >= 1);
     test:assertTrue(recorder.count("abort-rejected") >= 1, "abortCopy on a completed copy must fail");
     test:assertTrue(recorder.count("done") >= 1);
@@ -1479,7 +1486,7 @@ function readErrorLog(string prefix) returns string {
 
 @test:Config {}
 function testCsvFailSafeSkipsMalformedRows() returns error? {
-    cleanupErrorLog("people");
+    cleanupErrorLog("incoming_people");
     [Client, string] setup = check setupWatchedShare("lsn-failsafe");
     Client shareClient = setup[0];
     string share = setup[1];
@@ -1512,12 +1519,12 @@ function testCsvFailSafeSkipsMalformedRows() returns error? {
             "fail safe mode must skip the malformed row and bind the valid rows");
     test:assertEquals(recorder.count("onerror"), 0,
             "fail safe mode must not treat a skipped row as a binding failure");
-    cleanupErrorLog("people");
+    cleanupErrorLog("incoming_people");
 }
 
 @test:Config {}
 function testCsvFailSafeQuarantinesMetadata() returns error? {
-    cleanupErrorLog("meta");
+    cleanupErrorLog("incoming_meta");
     [Client, string] setup = check setupWatchedShare("lsn-failsafe-meta");
     Client shareClient = setup[0];
     string share = setup[1];
@@ -1537,17 +1544,17 @@ function testCsvFailSafeQuarantinesMetadata() returns error? {
     check lsn.gracefulStop();
     check lsn.detach(svc);
 
-    string logContent = readErrorLog("meta");
+    string logContent = readErrorLog("incoming_meta");
     test:assertTrue(logContent.includes("location"),
             "with the default METADATA content type, the failure metadata must be logged");
     test:assertFalse(logContent.includes("dana,notanint"),
             "with the default METADATA content type, the raw row must not be logged");
-    cleanupErrorLog("meta");
+    cleanupErrorLog("incoming_meta");
 }
 
 @test:Config {}
 function testCsvFailSafeQuarantinesRaw() returns error? {
-    cleanupErrorLog("raw");
+    cleanupErrorLog("incoming_raw");
     [Client, string] setup = check setupWatchedShare("lsn-failsafe-raw");
     Client shareClient = setup[0];
     string share = setup[1];
@@ -1568,15 +1575,15 @@ function testCsvFailSafeQuarantinesRaw() returns error? {
     check lsn.gracefulStop();
     check lsn.detach(svc);
 
-    string logContent = readErrorLog("raw");
+    string logContent = readErrorLog("incoming_raw");
     test:assertTrue(logContent.includes("dana,notanint"),
             "with the RAW content type, the raw offending row must be logged");
-    cleanupErrorLog("raw");
+    cleanupErrorLog("incoming_raw");
 }
 
 @test:Config {}
 function testCsvFailSafeQuarantinesRawAndMetadata() returns error? {
-    cleanupErrorLog("both");
+    cleanupErrorLog("incoming_both");
     [Client, string] setup = check setupWatchedShare("lsn-failsafe-both");
     Client shareClient = setup[0];
     string share = setup[1];
@@ -1597,12 +1604,75 @@ function testCsvFailSafeQuarantinesRawAndMetadata() returns error? {
     check lsn.gracefulStop();
     check lsn.detach(svc);
 
-    string logContent = readErrorLog("both");
+    string logContent = readErrorLog("incoming_both");
     test:assertTrue(logContent.includes("offendingRow"),
             "with RAW_AND_METADATA, the raw offending row must be logged");
     test:assertTrue(logContent.includes("location"),
             "with RAW_AND_METADATA, the metadata must be logged too");
-    cleanupErrorLog("both");
+    cleanupErrorLog("incoming_both");
+}
+
+@test:Config {}
+function testCsvFailSafeLogNamesArePathQualified() returns error? {
+    cleanupErrorLog("incoming_east_dup");
+    cleanupErrorLog("incoming_west_dup");
+    [Client, string] setup = check setupWatchedShare("lsn-failsafe-dup");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->createDirectory("/incoming/east");
+    check shareClient->createDirectory("/incoming/west");
+    check shareClient->uploadContent("name,age\neve,notanint\nfay,1", "/incoming/east/dup.csv");
+    check shareClient->uploadContent("name,age\ngil,notanint\nhal,2", "/incoming/west/dup.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, csvFailSafe = {});
+    Service svc = service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(CsvPerson[] rows) returns error? {
+            recorder.hit("csv");
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 2);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    // Same-named files in different directories quarantine to distinct, path-qualified logs.
+    test:assertTrue(readErrorLog("incoming_east_dup").includes("location"),
+            "the east file's skipped row must land in its own path-qualified log");
+    test:assertTrue(readErrorLog("incoming_west_dup").includes("location"),
+            "the west file's skipped row must land in its own path-qualified log");
+    cleanupErrorLog("incoming_east_dup");
+    cleanupErrorLog("incoming_west_dup");
+}
+
+@test:Config {}
+function testCsvFailSafeLogDirectory() returns error? {
+    string logDir = check file:createTempDir();
+    [Client, string] setup = check setupWatchedShare("lsn-failsafe-dir");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->uploadContent("name,age\nian,notanint\njan,3", "/incoming/logs.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1,
+            csvFailSafe = {logDirectory: logDir});
+    Service svc = service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(CsvPerson[] rows) returns error? {
+            recorder.hit("csv");
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    string logContent = check io:fileReadString(check file:joinPath(logDir, "incoming_logs_error.log"));
+    test:assertTrue(logContent.includes("location"),
+            "the error log must be written into the configured logDirectory");
 }
 
 @test:Config {}
@@ -1770,6 +1840,14 @@ function testStreamPartialDrainThenClose() returns error? {
             }
             check content.close();
             recorder.hit("closed");
+            // A next() after close may end the stream or surface a read error, but must
+            // never panic and must never deliver another chunk.
+            record {|byte[] value;|}|error? afterClose = trap content.next();
+            if afterClose is record {|byte[] value;|} {
+                recorder.hit("value-after-close");
+            } else if afterClose is error && afterClose.message().includes("NullPointerException") {
+                recorder.hit("npe-after-close");
+            }
         }
     };
     check lsn.attach(svc, "/incoming");
@@ -1783,6 +1861,10 @@ function testStreamPartialDrainThenClose() returns error? {
     check lsn.detach(svc);
 
     test:assertTrue(recorder.count("read") >= 1, "the first chunk must be readable");
+    test:assertEquals(recorder.count("npe-after-close"), 0,
+            "a next() after close must not raise a NullPointerException panic");
+    test:assertEquals(recorder.count("value-after-close"), 0,
+            "a next() after close must not deliver another chunk");
     boolean stillPresent = check shareClient->hasFile("/incoming/partial.bin");
     test:assertFalse(stillPresent,
             "afterProcess must still run when the handler closes the stream early and returns");
@@ -2445,7 +2527,7 @@ function testCallerTypedRead() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-typedread");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent({kind: "probe", value: 7}, "/incoming/data.json");
+    check shareClient->uploadContent({"kind": "probe", "value": 7}, "/incoming/data.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);

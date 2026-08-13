@@ -18,7 +18,7 @@
 
 package io.ballerina.lib.azure.storage.files.server;
 
-import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.ModuleUtils;
 import io.ballerina.runtime.api.Runtime;
@@ -126,7 +126,7 @@ public final class ContentStreams {
             return entry;
         } catch (IOException e) {
             return FilesErrorCreator.clientError("failed to read the file content stream: "
-                    + AzureClientInvoker.describe(e), e);
+                    + BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -137,13 +137,17 @@ public final class ContentStreams {
      * @return {@code null}, or an error when the source could not be closed
      */
     public static Object close(BObject iterator) {
+        // The reference is deliberately kept after closing: the read path dereferences it
+        // unguarded (a next() after close must surface the closed stream's IOException as a
+        // typed error, not a NullPointerException), a failed close stays retryable, and the
+        // Ballerina-side isClosed flag already prevents a double close.
         Object inputStream = iterator.getNativeData(NATIVE_INPUT_STREAM);
         if (inputStream != null) {
             try {
                 ((InputStream) inputStream).close();
             } catch (IOException e) {
                 return FilesErrorCreator.clientError("failed to close the file content stream: "
-                        + AzureClientInvoker.describe(e), e);
+                        + BallerinaAzureClient.describe(e), e);
             }
         }
         return null;

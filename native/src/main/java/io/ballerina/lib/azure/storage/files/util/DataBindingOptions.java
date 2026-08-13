@@ -77,9 +77,9 @@ public final class DataBindingOptions {
         if (laxDataBinding) {
             @SuppressWarnings("unchecked")
             BMap<BString, Object> projection = (BMap<BString, Object>) options.getMapValue(ALLOW_DATA_PROJECTION);
+            // getMapValue returns the live map, so mutating it is enough.
             projection.put(NIL_AS_OPTIONAL_FIELD, Boolean.TRUE);
             projection.put(ABSENT_AS_NILABLE_TYPE, Boolean.TRUE);
-            options.put(ALLOW_DATA_PROJECTION, projection);
         } else {
             options.put(ALLOW_DATA_PROJECTION, Boolean.FALSE);
         }

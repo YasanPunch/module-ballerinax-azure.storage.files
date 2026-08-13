@@ -82,12 +82,12 @@ public final class ClientInit {
      */
     public static Object initAdminClient(BObject self, BMap<BString, Object> config) {
         try {
-            self.addNativeData(AzureClientInvoker.NATIVE_SERVICE_CLIENT, buildServiceClient(config));
+            self.addNativeData(BallerinaAzureClient.NATIVE_SERVICE_CLIENT, buildServiceClient(config));
             return null;
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -106,13 +106,13 @@ public final class ClientInit {
                 return FilesErrorCreator.clientError("shareName must not be empty", null);
             }
             ShareServiceClient serviceClient = buildServiceClient(config);
-            self.addNativeData(AzureClientInvoker.NATIVE_SERVICE_CLIENT, serviceClient);
-            self.addNativeData(AzureClientInvoker.NATIVE_SHARE_CLIENT, serviceClient.getShareClient(share));
+            self.addNativeData(BallerinaAzureClient.NATIVE_SERVICE_CLIENT, serviceClient);
+            self.addNativeData(BallerinaAzureClient.NATIVE_SHARE_CLIENT, serviceClient.getShareClient(share));
             return null;
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.clientError(AzureClientInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -149,7 +149,7 @@ public final class ClientInit {
         try {
             return builder.buildClient();
         } catch (IllegalArgumentException | IllegalStateException e) {
-            throw FilesErrorCreator.clientError("invalid client configuration: " + AzureClientInvoker.describe(e), e);
+            throw FilesErrorCreator.clientError("invalid client configuration: " + BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -162,11 +162,8 @@ public final class ClientInit {
             throw FilesErrorCreator.clientError("accountKey is not a valid base64 string", e);
         }
         String serviceUrl = ValueUtils.optString(auth, SERVICE_URL);
-        builder.endpoint(serviceUrl == null ? defaultEndpoint(accountName) : validateUrl(serviceUrl, "serviceUrl"))
-                .credential(new AzureNamedKeyCredential(accountName, accountKey));
-        if (serviceUrl != null) {
-            addPortOverride(builder, serviceUrl);
-        }
+        applyEndpoint(builder, accountName, serviceUrl);
+        builder.credential(new AzureNamedKeyCredential(accountName, accountKey));
     }
 
     /*
@@ -178,6 +175,17 @@ public final class ClientInit {
      * retry, after that swap). One shape stays unguarded: a secondary sharing the primary's
      * host and differing only in port is indistinguishable here and still gets rewritten.
      */
+    /**
+     * Applies the service endpoint: the validated explicit {@code serviceUrl} (with its port
+     * override) when given, or the account's default endpoint.
+     */
+    private static void applyEndpoint(ShareServiceClientBuilder builder, String accountName, String serviceUrl) {
+        builder.endpoint(serviceUrl == null ? defaultEndpoint(accountName) : validateUrl(serviceUrl, "serviceUrl"));
+        if (serviceUrl != null) {
+            addPortOverride(builder, serviceUrl);
+        }
+    }
+
     private static void addPortOverride(ShareServiceClientBuilder builder, String url) {
         URI uri = URI.create(url);
         int port = uri.getPort();
@@ -243,12 +251,8 @@ public final class ClientInit {
         }
         String accountName = requireNonEmpty(auth, ACCOUNT_NAME);
         String serviceUrl = ValueUtils.optString(auth, SERVICE_URL);
-        builder.endpoint(serviceUrl == null ? defaultEndpoint(accountName) : validateUrl(serviceUrl, "serviceUrl"))
-                .credential(credential)
-                .shareTokenIntent(ShareTokenIntent.BACKUP);
-        if (serviceUrl != null) {
-            addPortOverride(builder, serviceUrl);
-        }
+        applyEndpoint(builder, accountName, serviceUrl);
+        builder.credential(credential).shareTokenIntent(ShareTokenIntent.BACKUP);
     }
 
     private static void configureSas(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
@@ -272,7 +276,7 @@ public final class ClientInit {
             throw FilesErrorCreator.clientError(
                     "sasUrl carries no SAS token (no `sig=` in its query); for a bare token use SasConfig", null);
         }
-        String base = uri.getRawQuery() == null ? sasUrl : sasUrl.substring(0, sasUrl.indexOf('?'));
+        String base = sasUrl.substring(0, sasUrl.indexOf('?'));
         builder.endpoint(base).credential(new AzureSasCredential(uri.getRawQuery()));
         addPortOverride(builder, base);
     }
@@ -287,7 +291,7 @@ public final class ClientInit {
         try {
             builder.connectionString(connectionString);
         } catch (IllegalArgumentException e) {
-            throw FilesErrorCreator.clientError("invalid connection string: " + AzureClientInvoker.describe(e), e);
+            throw FilesErrorCreator.clientError("invalid connection string: " + BallerinaAzureClient.describe(e), e);
         }
         for (String pair : connectionString.split(";")) {
             if (pair.startsWith("FileEndpoint=")) {

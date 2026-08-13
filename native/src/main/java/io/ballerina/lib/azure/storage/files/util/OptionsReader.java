@@ -104,6 +104,25 @@ public final class OptionsReader {
     private OptionsReader() {
     }
 
+    /**
+     * The options shared by the download-shaped operations.
+     *
+     * @param range      the byte range to read, or {@code null} for the whole file
+     * @param snapshotId the share snapshot to read from, or {@code null} for the live share
+     */
+    public record DownloadArgs(Object range, String snapshotId) {
+    }
+
+    /** Reads the download-shaped options record, tolerating its absence. */
+    public static DownloadArgs downloadArgs(Object options) {
+        if (options == null) {
+            return new DownloadArgs(null, null);
+        }
+        @SuppressWarnings("unchecked")
+        BMap<BString, Object> record = (BMap<BString, Object>) options;
+        return new DownloadArgs(record.get(RANGE), ValueUtils.optString(record, SNAPSHOT_ID));
+    }
+
     /** Converts a {@code ContentHeaders} record to the SDK header class; {@code null} when absent. */
     public static ShareFileHttpHeaders contentHeaders(Object value) {
         if (value == null) {

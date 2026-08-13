@@ -27,6 +27,7 @@ import com.azure.storage.file.share.ShareClientBuilder;
 import com.azure.storage.file.share.ShareServiceClient;
 import com.azure.storage.file.share.models.ShareStorageException;
 import io.ballerina.runtime.api.Environment;
+import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BError;
 import io.ballerina.runtime.api.values.BObject;
 import io.ballerina.runtime.api.values.BString;
@@ -42,15 +43,17 @@ import java.util.function.Supplier;
  * scheduler via {@link Environment#yieldAndRun}, converts every failure to a typed Ballerina
  * error, and fetches the SDK clients stored on the Ballerina client objects.
  */
-public final class AzureClientInvoker {
+public final class BallerinaAzureClient {
 
     // Keys under which the SDK clients are stored on client objects.
     public static final String NATIVE_SERVICE_CLIENT = "serviceClient";
     public static final String NATIVE_SHARE_CLIENT = "shareClient";
+    /** The Caller field holding the wrapped Client object. */
+    public static final BString CALLER_CLIENT_FIELD = StringUtils.fromString("client");
     // The query parameter that addresses a share snapshot on the wire.
     private static final String SHARE_SNAPSHOT_PARAM = "sharesnapshot";
 
-    private AzureClientInvoker() {
+    private BallerinaAzureClient() {
     }
 
     /**
@@ -64,14 +67,28 @@ public final class AzureClientInvoker {
         return env.yieldAndRun(() -> {
             try {
                 return body.get();
-            } catch (ShareStorageException e) {
-                return ErrorMapper.toBError(e);
-            } catch (BError e) {
-                return e;
             } catch (Exception e) {
-                return FilesErrorCreator.clientError(describe(e), e);
+                return mapFailure(e);
             }
         });
+    }
+
+    /**
+     * Maps a failure to the module's typed error: Azure service failures go through the
+     * code-keyed mapper, Ballerina errors pass through, and anything else becomes the
+     * generic client-side {@code Error}.
+     *
+     * @param e the failure
+     * @return the mapped Ballerina error
+     */
+    public static BError mapFailure(Throwable e) {
+        if (e instanceof ShareStorageException storageException) {
+            return ErrorMapper.toBError(storageException);
+        }
+        if (e instanceof BError bError) {
+            return bError;
+        }
+        return FilesErrorCreator.clientError(describe(e), e);
     }
 
     /** Builds a human-readable message for an unexpected local exception. */
@@ -85,7 +102,7 @@ public final class AzureClientInvoker {
      * @param self the Ballerina client object
      * @return the SDK service client
      */
-    public static ShareServiceClient serviceClient(BObject self) {
+    public static ShareServiceClient getServiceClient(BObject self) {
         return (ShareServiceClient) self.getNativeData(NATIVE_SERVICE_CLIENT);
     }
 
@@ -95,7 +112,7 @@ public final class AzureClientInvoker {
      * @param self the Ballerina client object
      * @return the SDK share client
      */
-    public static ShareClient shareClient(BObject self) {
+    public static ShareClient getShareClient(BObject self) {
         return (ShareClient) self.getNativeData(NATIVE_SHARE_CLIENT);
     }
 
@@ -112,8 +129,8 @@ public final class AzureClientInvoker {
      * @param snapshotId the snapshot to read from, or {@code null} for the live share
      * @return the SDK share client
      */
-    public static ShareClient shareClient(BObject self, String snapshotId) {
-        ShareClient base = shareClient(self);
+    public static ShareClient getShareClient(BObject self, String snapshotId) {
+        ShareClient base = getShareClient(self);
         if (snapshotId == null) {
             return base;
         }

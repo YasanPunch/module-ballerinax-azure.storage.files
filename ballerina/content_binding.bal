@@ -15,8 +15,9 @@
 // under the License.
 
 import ballerina/data.csv;
+// The jsondata import keeps the module in the dependency graph: the Java adaptor calls its
+// natives directly (TypedReadOps and ContentBinder), with no Ballerina-side reference.
 import ballerina/data.jsondata as _;
-import ballerina/data.xmldata as _;
 import ballerina/file;
 
 // Binds CSV file content to the declared handler type through the data.csv module. Invoked from
@@ -25,18 +26,17 @@ isolated function bindCsvContent(byte[] content, typedesc<string[][]|record {}[]
         boolean laxDataBinding, FailSafeOptions? csvFailSafe, string fileNamePrefix)
         returns string[][]|record {}[]|error {
     csv:ParseOptions options = csvParseOptions(laxDataBinding);
-    if targetType is typedesc<record {}[]> {
-        // A record target maps its fields through the header row (the file's first row),
-        // which the data.csv default already consumes.
-    } else {
-        // The string matrix keeps every row of the file, including the first.
+    // A record target maps its fields through the header row (the file's first row), which
+    // the data.csv default already consumes; the string matrix keeps every row of the file,
+    // so the header consumption is turned off for it.
+    if targetType !is typedesc<record {}[]> {
         options.header = ();
     }
     if csvFailSafe is FailSafeOptions {
-        string currentDir = file:getCurrentDir();
+        string logDirectory = csvFailSafe.logDirectory ?: file:getCurrentDir();
         options.failSafe = {
             fileOutputMode: {
-                filePath: currentDir + "/" + fileNamePrefix + "_error.log",
+                filePath: logDirectory + "/" + fileNamePrefix + "_error.log",
                 fileWriteOption: csv:APPEND,
                 contentType: csvFailSafe.contentType
             }

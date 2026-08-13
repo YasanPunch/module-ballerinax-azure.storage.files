@@ -17,10 +17,16 @@
 import ballerina/data.csv;
 import ballerina/jballerina.java;
 
-# Record returned from the `ContentByteStream.next()` method.
+# One entry of a byte stream: the chunk wrapper the byte-stream iterators return.
 type ContentStreamEntry record {|
     # The chunk of bytes read from the file
     byte[] value;
+|};
+
+# One entry of a CSV row stream: a row bound to the handler's declared row type.
+type CsvRowEntry record {|
+    # The bound row, a record or a string array
+    record {}|string[] value;
 |};
 
 // Backs a stream content handler's byte stream: each next() reads one chunk of the watched
@@ -30,7 +36,7 @@ class ContentByteStream {
 
     private boolean isClosed = false;
 
-    public isolated function next() returns record {|byte[] value;|}|error? {
+    public isolated function next() returns ContentStreamEntry|error? {
         return externStreamIterator(self);
     }
 
@@ -53,18 +59,17 @@ class ContentByteStream {
 class ContentCsvStream {
 
     private boolean isClosed = false;
-    private stream<record {}|anydata[], error?> csvStream;
+    private stream<record {}|string[], error?> csvStream;
 
-    public isolated function init(typedesc<record {}|anydata[]> targetType,
+    public isolated function init(typedesc<record {}|string[]> targetType,
             stream<byte[], error?> byteStream, csv:ParseOptions options) returns error? {
-        if targetType is typedesc<record {}> {
-            // A record target maps its fields through the header row (the file's first row),
-            // which the data.csv default already consumes.
-        } else {
-            // The string array form yields every row of the file, including the first.
+        // A record target maps its fields through the header row (the file's first row),
+        // which the data.csv default already consumes; the string array form yields every
+        // row of the file, so the header consumption is turned off for it.
+        if targetType !is typedesc<record {}> {
             options.header = ();
         }
-        stream<record {}|anydata[], error?>|csv:Error parsed =
+        stream<record {}|string[], error?>|csv:Error parsed =
             csv:parseToStream(byteStream, options, targetType);
         if parsed is csv:Error {
             closeByteStreamQuietly(byteStream);
@@ -74,11 +79,11 @@ class ContentCsvStream {
         self.csvStream = parsed;
     }
 
-    public isolated function next() returns record {|record {}|anydata[] value;|}|error? {
+    public isolated function next() returns CsvRowEntry|error? {
         if self.isClosed {
             return;
         }
-        record {|record {}|anydata[] value;|}|error? nextEntry = trap self.csvStream.next();
+        CsvRowEntry|error? nextEntry = trap self.csvStream.next();
         if nextEntry is () {
             self.isClosed = true;
             closeRowStreamQuietly(self.csvStream);
@@ -105,7 +110,7 @@ class ContentCsvStream {
 // Constructs the CSV row stream backing on a real strand: the data.csv stream construction
 // runs Ballerina code, so the native dispatcher calls in here through the runtime rather than
 // constructing the object on a plain dispatch thread.
-isolated function newContentCsvStream(typedesc<record {}|anydata[]> targetType,
+isolated function newContentCsvStream(typedesc<record {}|string[]> targetType,
         stream<byte[], error?> byteStream, boolean laxDataBinding) returns ContentCsvStream|error {
     return new (targetType, byteStream, csvParseOptions(laxDataBinding));
 }
@@ -117,7 +122,7 @@ isolated function closeByteStreamQuietly(stream<byte[], error?> byteStream) {
     }
 }
 
-isolated function closeRowStreamQuietly(stream<record {}|anydata[], error?> rowStream) {
+isolated function closeRowStreamQuietly(stream<record {}|string[], error?> rowStream) {
     error? closed = rowStream.close();
     if closed is error {
         // Best effort cleanup.
@@ -125,7 +130,7 @@ isolated function closeRowStreamQuietly(stream<record {}|anydata[], error?> rowS
 }
 
 isolated function externStreamIterator(ContentByteStream iterator)
-        returns record {|byte[] value;|}|error? = @java:Method {
+        returns ContentStreamEntry|error? = @java:Method {
     'class: "io.ballerina.lib.azure.storage.files.server.ContentStreams",
     name: "streamIterator"
 } external;

@@ -19,60 +19,46 @@
 package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.storage.file.share.ShareFileClient;
-import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
+import io.ballerina.lib.azure.storage.files.util.ContentBinder;
 import io.ballerina.lib.azure.storage.files.util.DataBindingOptions;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
-import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.creators.ValueCreator;
 import io.ballerina.runtime.api.types.ArrayType;
 import io.ballerina.runtime.api.types.RecordType;
 import io.ballerina.runtime.api.types.Type;
 import io.ballerina.runtime.api.utils.TypeUtils;
-import io.ballerina.runtime.api.utils.XmlUtils;
 import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BError;
-import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
 import io.ballerina.runtime.api.values.BString;
 import io.ballerina.runtime.api.values.BTypedesc;
 
 import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Typed content reads: download a file's full content and bind it to the caller-directed target
  * type through the data.jsondata, data.xmldata, and data.csv modules. Binding is strict (the
  * listener's {@code laxDataBinding} does not apply to client reads) and always runs on the
- * extern's own strand, after the network call has returned from {@link AzureClientInvoker#invoke}.
+ * extern's own strand, after the network call has returned from {@link BallerinaAzureClient#invoke}.
  */
 public final class TypedReadOps {
-
-    private static final String XML_TYPE_NAME = "xml";
-    private static final BString CALLER_CLIENT_FIELD = io.ballerina.runtime.api.utils.StringUtils
-            .fromString("client");
 
     private TypedReadOps() {
     }
 
     /** Downloads a file's full content (or a range of it) into a Ballerina byte array. */
     public static Object readFileBytes(Environment env, BObject clientObj, BString path, Object options) {
-        return AzureClientInvoker.invoke(env, () -> {
-            Object range = null;
-            String snapshotId = null;
-            if (options != null) {
-                @SuppressWarnings("unchecked")
-                BMap<BString, Object> record = (BMap<BString, Object>) options;
-                range = record.get(OptionsReader.RANGE);
-                snapshotId = ValueUtils.optString(record, OptionsReader.SNAPSHOT_ID);
-            }
-            ShareFileClient client = FileOps.fileClient(clientObj, path, snapshotId);
+        return BallerinaAzureClient.invoke(env, () -> {
+            OptionsReader.DownloadArgs args = OptionsReader.downloadArgs(options);
+            ShareFileClient client = FileOps.fileClient(clientObj, path, args.snapshotId());
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            if (range == null) {
+            if (args.range() == null) {
                 client.download(out);
             } else {
-                client.downloadWithResponse(out, OptionsReader.range(range), null, null, null);
+                client.downloadWithResponse(out, OptionsReader.range(args.range()), null, null, null);
             }
             return ValueCreator.createArrayValue(out.toByteArray());
         });
@@ -85,11 +71,11 @@ public final class TypedReadOps {
             return bytes;
         }
         try {
-            Object result = io.ballerina.lib.data.jsondata.json.Native.parseBytes((BArray) bytes,
-                    DataBindingOptions.jsonParseOptions(false), targetType);
-            return result instanceof BError bError ? bindingFailure("JSON", bError) : result;
+            return ContentBinder.bindJson((BArray) bytes,
+                    TypeUtils.getReferredType(targetType.getDescribingType()), false,
+                    "the file content does not bind to the target JSON type");
         } catch (BError e) {
-            return bindingFailure("JSON", e);
+            return e;
         }
     }
 
@@ -99,23 +85,13 @@ public final class TypedReadOps {
         if (bytes instanceof BError) {
             return bytes;
         }
-        BArray byteArray = (BArray) bytes;
-        Type described = TypeUtils.getReferredType(targetType.getDescribingType());
-        if (XML_TYPE_NAME.equals(described.getQualifiedName())) {
-            try {
-                return XmlUtils.parse(new String(byteArray.getBytes(), StandardCharsets.UTF_8));
-            } catch (BError e) {
-                return FilesErrorCreator.clientError(
-                        "the file content is not valid XML: " + e.getErrorMessage(), e);
-            }
-        }
         try {
-            // The xmldata parser does not unwrap type references, so hand it the referred type.
-            Object result = io.ballerina.lib.data.xmldata.xml.Native.parseBytes(byteArray,
-                    DataBindingOptions.xmlSourceOptions(false), ValueCreator.createTypedescValue(described));
-            return result instanceof BError bError ? bindingFailure("XML", bError) : result;
+            return ContentBinder.bindXml((BArray) bytes,
+                    TypeUtils.getReferredType(targetType.getDescribingType()), false,
+                    "the file content does not bind to the target XML type",
+                    "the file content is not valid XML");
         } catch (BError e) {
-            return bindingFailure("XML", e);
+            return e;
         }
     }
 
@@ -153,7 +129,7 @@ public final class TypedReadOps {
     }
 
     private static BObject callerClient(BObject caller) {
-        return (BObject) caller.getObjectValue(CALLER_CLIENT_FIELD);
+        return (BObject) caller.getObjectValue(BallerinaAzureClient.CALLER_CLIENT_FIELD);
     }
 
     private static BError bindingFailure(String kind, BError cause) {

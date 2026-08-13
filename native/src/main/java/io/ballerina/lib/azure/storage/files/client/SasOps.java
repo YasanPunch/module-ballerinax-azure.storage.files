@@ -28,7 +28,7 @@ import com.azure.storage.file.share.models.UserDelegationKey;
 import com.azure.storage.file.share.sas.ShareFileSasPermission;
 import com.azure.storage.file.share.sas.ShareSasPermission;
 import com.azure.storage.file.share.sas.ShareServiceSasSignatureValues;
-import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
@@ -45,7 +45,7 @@ import java.util.function.Function;
 /**
  * Native implementations of the SAS-generation operations. Every operation signs locally
  * (with the account key or a user-delegation key); no request reaches Azure, but signing
- * still runs through {@link AzureClientInvoker#invoke} so failures surface as typed errors.
+ * still runs through {@link BallerinaAzureClient#invoke} so failures surface as typed errors.
  */
 public final class SasOps {
 
@@ -75,34 +75,34 @@ public final class SasOps {
 
     /** Generates a service SAS token scoped to the bound share. */
     public static Object generateShareSas(Environment env, BObject self, BMap<BString, Object> values) {
-        return AzureClientInvoker.invoke(env, () -> StringUtils.fromString(
-                AzureClientInvoker.shareClient(self).generateSas(shareSasValues(values, true, false))));
+        return BallerinaAzureClient.invoke(env, () -> StringUtils.fromString(
+                BallerinaAzureClient.getShareClient(self).generateSas(shareSasValues(values, true, false))));
     }
 
     /** Generates a service SAS token scoped to one file. */
     public static Object generateSas(Environment env, BObject self, BString path, BMap<BString, Object> values) {
-        return AzureClientInvoker.invoke(env, () -> StringUtils.fromString(
+        return BallerinaAzureClient.invoke(env, () -> StringUtils.fromString(
                 FileOps.fileClient(self, path).generateSas(shareSasValues(values, false, false))));
     }
 
     /** Generates a user-delegation SAS token scoped to the bound share. */
     public static Object generateShareUserDelegationSas(Environment env, BObject self,
             BMap<BString, Object> values, BMap<BString, Object> key) {
-        return AzureClientInvoker.invoke(env, () -> StringUtils.fromString(
-                AzureClientInvoker.shareClient(self).generateUserDelegationSas(shareSasValues(values, true, true),
+        return BallerinaAzureClient.invoke(env, () -> StringUtils.fromString(
+                BallerinaAzureClient.getShareClient(self).generateUserDelegationSas(shareSasValues(values, true, true),
                         delegationKey(key))));
     }
 
     /** Generates a user-delegation SAS token scoped to one file. */
     public static Object generateUserDelegationSas(Environment env, BObject self, BString path,
             BMap<BString, Object> values, BMap<BString, Object> key) {
-        return AzureClientInvoker.invoke(env, () -> StringUtils.fromString(FileOps.fileClient(self, path)
+        return BallerinaAzureClient.invoke(env, () -> StringUtils.fromString(FileOps.fileClient(self, path)
                 .generateUserDelegationSas(shareSasValues(values, false, true), delegationKey(key))));
     }
 
     /** Generates an account SAS token for the file service. */
     public static Object generateAccountSas(Environment env, BObject self, BMap<BString, Object> values) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             @SuppressWarnings("unchecked")
             BMap<BString, Object> permissions = (BMap<BString, Object>) values.get(RecordMapper.PERMISSIONS);
             AccountSasPermission sasPermission = new AccountSasPermission()
@@ -127,7 +127,7 @@ public final class SasOps {
                     new AccountSasService().setFileAccess(true),
                     sasResourceTypes);
             applyCommon(values, sdkValues::setStartTime, sdkValues::setProtocol, sdkValues::setSasIpRange);
-            return StringUtils.fromString(AzureClientInvoker.serviceClient(self).generateAccountSas(sdkValues));
+            return StringUtils.fromString(BallerinaAzureClient.getServiceClient(self).generateAccountSas(sdkValues));
         });
     }
 

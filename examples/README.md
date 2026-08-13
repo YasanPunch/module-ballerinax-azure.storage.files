@@ -5,11 +5,11 @@ The `ballerinax/azure.storage.files` connector provides practical examples illus
 1. [File backup](file-backup) — back up a local folder to an Azure file share, list the share's contents recursively, and restore a file from the backup.
 2. [Share handout](share-handout) — upload a report to a share and generate a time-limited, read-only SAS URL that can be handed to a third party.
 3. [Drop folder processor](drop-folder-processor) — watch a folder on a share with the listener and process each dropped file, deleting JSON files and moving the rest into a processed folder.
-4. [Change tracker](change-tracker) — watch a share with the listener and derive created, modified, and deleted events from an application-kept eTag snapshot.
+4. [Change tracker](change-tracker) — a schedulable program that diffs a share against the snapshot saved by its previous run and logs created, modified, and deleted events.
 
 ## Prerequisites
 
-Each example needs an Azure storage account and its access key; the walkthrough inside each example describes the setup and documents the `Config.toml` to create in the example directory.
+Each example needs an Azure storage account and its access key; the connector's [setup guide](../README.md#setup-guide) walks through creating them. Each example's walkthrough documents the `Config.toml` to create in the example directory.
 
 ## Running an example
 

@@ -25,7 +25,7 @@ import com.azure.storage.file.share.models.ShareFilePermission;
 import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.options.ShareFileCreateOptions;
 import com.azure.storage.file.share.options.ShareFileSetPropertiesOptions;
-import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
@@ -51,7 +51,7 @@ public final class FileOps {
 
     /** Creates an empty file pre-allocated to the given size. */
     public static Object createFile(Environment env, BObject self, BString path, long sizeInBytes, Object options) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             fileClient(self, path).createWithResponse(createOptions(sizeInBytes, options), null, null);
             return null;
         });
@@ -59,7 +59,7 @@ public final class FileOps {
 
     /** Deletes a file. */
     public static Object deleteFile(Environment env, BObject self, BString path) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             fileClient(self, path).delete();
             return null;
         });
@@ -67,19 +67,19 @@ public final class FileOps {
 
     /** Checks whether the file exists; {@code false} only on a confirmed 404. */
     public static Object hasFile(Environment env, BObject self, BString path) {
-        return AzureClientInvoker.invoke(env, () -> Boolean.TRUE.equals(fileClient(self, path).exists()));
+        return BallerinaAzureClient.invoke(env, () -> fileClient(self, path).exists());
     }
 
     /** Fetches a file's properties as a {@code FileProperties} record. */
     public static Object getFileProperties(Environment env, BObject self, BString path) {
-        return AzureClientInvoker.invoke(env,
+        return BallerinaAzureClient.invoke(env,
                 () -> RecordMapper.fileProperties(fileClient(self, path).getProperties()));
     }
 
     /** Updates a file's size, content headers, SMB, and POSIX properties. */
     public static Object setFileProperties(Environment env, BObject self, BString path,
             BMap<BString, Object> options) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             ShareFileClient client = fileClient(self, path);
             Object newSize = options.get(NEW_FILE_SIZE_BYTES);
             Object headers = options.get(OptionsReader.CONTENT_HEADERS);
@@ -113,7 +113,7 @@ public final class FileOps {
     /** Replaces a file's user-defined metadata. */
     public static Object setFileMetadata(Environment env, BObject self, BString path,
                                          BMap<BString, BString> metadata) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             fileClient(self, path).setMetadata(ValueUtils.toStringMap(metadata));
             return null;
         });
@@ -122,7 +122,7 @@ public final class FileOps {
     /** Replaces a file's HTTP content headers, keeping its current size. */
     public static Object setContentHeaders(Environment env, BObject self, BString path,
                                            BMap<BString, Object> headers) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             ShareFileClient client = fileClient(self, path);
             long currentSize = client.getProperties().getContentLength();
             ShareFileHttpHeaders sdkHeaders = OptionsReader.contentHeaders(headers);
@@ -134,10 +134,10 @@ public final class FileOps {
     /** Renames or moves a file within the share. */
     public static Object renameFile(Environment env, BObject self, BString sourcePath,
                                     BString destinationPath, Object options) {
-        return AzureClientInvoker.invoke(env, () -> {
-            String source = AzureClientInvoker.filePath(sourcePath);
-            String destination = AzureClientInvoker.filePath(destinationPath);
-            AzureClientInvoker.shareClient(self).getFileClient(source)
+        return BallerinaAzureClient.invoke(env, () -> {
+            String source = BallerinaAzureClient.filePath(sourcePath);
+            String destination = BallerinaAzureClient.filePath(destinationPath);
+            BallerinaAzureClient.getShareClient(self).getFileClient(source)
                     .renameWithResponse(DirectoryOps.renameOptions(destination, options), null, null);
             return null;
         });
@@ -160,10 +160,10 @@ public final class FileOps {
 
     /** Creates an NFS hard link to an existing file. */
     public static Object createHardLink(Environment env, BObject self, BString path, BString targetPath) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             // The SDK sends the target verbatim in the x-ms-file-target-file header, which is
             // the share-relative path of the existing file, not including the share name.
-            String target = AzureClientInvoker.filePath(targetPath);
+            String target = BallerinaAzureClient.filePath(targetPath);
             fileClient(self, path).createHardLink(target);
             return null;
         });
@@ -171,7 +171,7 @@ public final class FileOps {
 
     /** Creates an NFS symbolic link pointing at the given target. */
     public static Object createSymbolicLink(Environment env, BObject self, BString path, BString linkTarget) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             fileClient(self, path).createSymbolicLink(linkTarget.getValue());
             return null;
         });
@@ -181,7 +181,7 @@ public final class FileOps {
     public static Object getSymbolicLink(Environment env, BObject self, BString path) {
         // The service returns the link text percent-encoded. URLDecoder alone would also turn a
         // literal + into a space (form semantics), so pluses are escaped first to preserve them.
-        return AzureClientInvoker.invoke(env, () -> StringUtils.fromString(
+        return BallerinaAzureClient.invoke(env, () -> StringUtils.fromString(
                 URLDecoder.decode(
                         fileClient(self, path).getSymbolicLink().getLinkText().replace("+", "%2B"),
                         StandardCharsets.UTF_8)));
@@ -189,11 +189,11 @@ public final class FileOps {
 
     /** Returns the SDK file client for a combined share-relative path. */
     static ShareFileClient fileClient(BObject self, BString path) {
-        return AzureClientInvoker.shareClient(self).getFileClient(AzureClientInvoker.filePath(path));
+        return BallerinaAzureClient.getShareClient(self).getFileClient(BallerinaAzureClient.filePath(path));
     }
 
     /** Returns the SDK file client for a path, bound to a share snapshot when an id is given. */
     static ShareFileClient fileClient(BObject self, BString path, String snapshotId) {
-        return AzureClientInvoker.shareClient(self, snapshotId).getFileClient(AzureClientInvoker.filePath(path));
+        return BallerinaAzureClient.getShareClient(self, snapshotId).getFileClient(BallerinaAzureClient.filePath(path));
     }
 }

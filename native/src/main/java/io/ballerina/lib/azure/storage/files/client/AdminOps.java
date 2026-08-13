@@ -30,7 +30,7 @@ import com.azure.storage.file.share.models.ShareSnapshotsDeleteOptionType;
 import com.azure.storage.file.share.models.UserDelegationKey;
 import com.azure.storage.file.share.options.ShareCreateOptions;
 import com.azure.storage.file.share.options.ShareDeleteOptions;
-import io.ballerina.lib.azure.storage.files.util.AzureClientInvoker;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
@@ -51,16 +51,18 @@ public final class AdminOps {
     private AdminOps() {
     }
 
-    /** Checks whether the named share exists; {@code false} only on a confirmed 404. */
+    /**
+     * Checks whether the named share exists; {@code false} only on a confirmed 404. The SDK's
+     * {@code exists()} always yields a real boolean (404 folds to false, other failures throw).
+     */
     public static Object hasShare(Environment env, BObject self, BString shareName) {
-        return AzureClientInvoker.invoke(env, () ->
-                Boolean.TRUE.equals(AzureClientInvoker.serviceClient(self)
-                        .getShareClient(shareName.getValue()).exists()));
+        return BallerinaAzureClient.invoke(env, () -> BallerinaAzureClient.getServiceClient(self)
+                .getShareClient(shareName.getValue()).exists());
     }
 
     /** Lists the shares in the storage account as an array of {@code ShareInfo} records. */
     public static Object listShares(Environment env, BObject self, Object options) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             ListSharesOptions sdkOptions = new ListSharesOptions();
             if (options != null) {
                 @SuppressWarnings("unchecked")
@@ -71,7 +73,7 @@ public final class AdminOps {
                         .setIncludeDeleted(record.getBooleanValue(OptionsReader.INCLUDE_DELETED));
             }
             BArray result = RecordMapper.recordArray(RecordMapper.RECORD_SHARE_INFO);
-            for (ShareItem item : AzureClientInvoker.serviceClient(self).listShares(sdkOptions, null, null)) {
+            for (ShareItem item : BallerinaAzureClient.getServiceClient(self).listShares(sdkOptions, null, null)) {
                 result.append(RecordMapper.shareInfo(item));
             }
             return result;
@@ -80,7 +82,7 @@ public final class AdminOps {
 
     /** Creates a new share with the given options. */
     public static Object createShare(Environment env, BObject self, BString shareName, Object options) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             ShareCreateOptions sdkOptions = new ShareCreateOptions();
             if (options != null) {
                 @SuppressWarnings("unchecked")
@@ -113,7 +115,7 @@ public final class AdminOps {
                     sdkOptions.setRootSquash(ShareRootSquash.fromString(rootSquash));
                 }
             }
-            AzureClientInvoker.serviceClient(self)
+            BallerinaAzureClient.getServiceClient(self)
                     .createShareWithResponse(shareName.getValue(), sdkOptions, null, null);
             return null;
         });
@@ -121,8 +123,8 @@ public final class AdminOps {
 
     /** Deletes a share, one of its snapshots, or the share together with its snapshots. */
     public static Object deleteShare(Environment env, BObject self, BString shareName, Object options) {
-        return AzureClientInvoker.invoke(env, () -> {
-            ShareServiceClient serviceClient = AzureClientInvoker.serviceClient(self);
+        return BallerinaAzureClient.invoke(env, () -> {
+            ShareServiceClient serviceClient = BallerinaAzureClient.getServiceClient(self);
             if (options == null) {
                 serviceClient.deleteShare(shareName.getValue());
                 return null;
@@ -152,31 +154,31 @@ public final class AdminOps {
 
     /** Restores a soft-deleted share identified by its name and delete version. */
     public static Object undeleteShare(Environment env, BObject self, BString shareName, BString version) {
-        return AzureClientInvoker.invoke(env, () -> {
-            AzureClientInvoker.serviceClient(self).undeleteShare(shareName.getValue(), version.getValue());
+        return BallerinaAzureClient.invoke(env, () -> {
+            BallerinaAzureClient.getServiceClient(self).undeleteShare(shareName.getValue(), version.getValue());
             return null;
         });
     }
 
     /** Fetches the account's file-service properties as a {@code ServiceProperties} record. */
     public static Object getServiceProperties(Environment env, BObject self) {
-        return AzureClientInvoker.invoke(env, () ->
-                RecordMapper.serviceProperties(AzureClientInvoker.serviceClient(self).getProperties()));
+        return BallerinaAzureClient.invoke(env, () ->
+                RecordMapper.serviceProperties(BallerinaAzureClient.getServiceClient(self).getProperties()));
     }
 
     /** Replaces the account's file-service properties. */
     public static Object setServiceProperties(Environment env, BObject self, BMap<BString, Object> properties) {
-        return AzureClientInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             ShareServiceProperties sdkProperties = OptionsReader.serviceProperties(properties);
-            AzureClientInvoker.serviceClient(self).setProperties(sdkProperties);
+            BallerinaAzureClient.getServiceClient(self).setProperties(sdkProperties);
             return null;
         });
     }
 
     /** Requests a user-delegation key valid for the given time window. */
     public static Object getUserDelegationKey(Environment env, BObject self, BArray startTime, BArray expiryTime) {
-        return AzureClientInvoker.invoke(env, () -> {
-            UserDelegationKey key = AzureClientInvoker.serviceClient(self)
+        return BallerinaAzureClient.invoke(env, () -> {
+            UserDelegationKey key = BallerinaAzureClient.getServiceClient(self)
                     .getUserDelegationKey(ValueUtils.fromUtc(startTime), ValueUtils.fromUtc(expiryTime));
             return RecordMapper.userDelegationKey(key);
         });

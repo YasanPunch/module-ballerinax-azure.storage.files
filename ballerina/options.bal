@@ -167,6 +167,26 @@ public type UploadOptions record {|
     PosixProperties posixProperties?;
 |};
 
+# The content forms accepted by `uploadContent`: raw bytes, text, an XML document,
+# CSV rows, and records or record arrays serialized per the resolved `FileFormat`.
+public type UploadContent byte[]|string|xml|string[][]|record {}|record {}[];
+
+# The serialization format of record content passed to `uploadContent`.
+public enum FileFormat {
+    JSON,
+    XML,
+    CSV
+}
+
+# Options for `uploadContent`, extending the upload options with the record
+# serialization format.
+public type UploadContentOptions record {|
+    *UploadOptions;
+    # The serialization format for `record {}` and `record {}[]` content; when absent,
+    # the format is inferred from the destination path's extension (`.json`, `.xml`, `.csv`)
+    FileFormat fileFormat?;
+|};
+
 # Options for the download operations (`downloadFile`, `getFileContent`).
 public type DownloadOptions record {|
     # Download only this byte range instead of the whole file

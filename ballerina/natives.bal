@@ -35,12 +35,22 @@ isolated function readFileBytes(Client fileClient, string path, DownloadOptions?
     'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
 } external;
 
+// Writes already-serialized upload content; record content is serialized in Ballerina
+// before reaching this call (see Client.uploadContent).
+isolated function externUploadContent(Client fileClient, byte[]|string|xml|string[][] content,
+        string destinationPath, UploadContentOptions? options) returns Error? = @java:Method {
+    'class: "io.ballerina.lib.azure.storage.files.client.TransferOps",
+    name: "uploadContent"
+} external;
+
 // ---------------------------------------------------------------------------
 // Stream upload plumbing
 // ---------------------------------------------------------------------------
 
-// The service caps one range write at 4 MiB (mirrored by TransferOps.MAX_RANGE_BYTES);
-// buffered source chunks flush at this size.
+// The Azure Files service caps one range write at 4 MiB — Put Range returns HTTP 413 above
+// it (learn.microsoft.com/rest/api/storageservices/put-range) and the SDK exposes no public
+// constant for it (mirrored by TransferOps.MAX_RANGE_BYTES). Buffered source chunks flush
+// at this size.
 const int MAX_RANGE_BYTES = 4 * 1024 * 1024;
 
 isolated function prepareStreamUpload(Client fileClient, string destinationPath, int contentLength,
@@ -57,13 +67,19 @@ isolated function writeStreamChunk(Client fileClient, string destinationPath, in
 // Entry listing stream
 // ---------------------------------------------------------------------------
 
+# One entry of the listing stream returned by `Client.list`.
+type ListStreamEntry record {|
+    # The listed entry
+    Entry value;
+|};
+
 # Backs the lazy stream returned by `Client.list`, pulling one entry per pull.
 isolated class EntryStreamGenerator {
 
     # Pulls the next listed entry from the service-backed iterator.
     #
     # + return - The next `Entry`, `()` when the listing is exhausted, or an `Error`
-    public isolated function next() returns record {|Entry value;|}|Error? {
+    public isolated function next() returns ListStreamEntry|Error? {
         Entry|Error? entry = nextEntry(self);
         if entry is Entry {
             return {value: entry};
@@ -102,7 +118,7 @@ isolated class ContentStreamGenerator {
     # Reads the next chunk of the file content.
     #
     # + return - The next chunk, `()` at the end of the content, or an `Error`
-    public isolated function next() returns record {|byte[] value;|}|Error? {
+    public isolated function next() returns ContentStreamEntry|Error? {
         byte[]|Error? chunk = nextContentChunk(self);
         if chunk is byte[] {
             return {value: chunk};

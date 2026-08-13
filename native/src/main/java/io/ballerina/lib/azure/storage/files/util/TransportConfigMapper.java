@@ -218,7 +218,7 @@ public final class TransportConfigMapper {
             });
         } catch (GeneralSecurityException | IOException e) {
             throw FilesErrorCreator.clientError(
-                    "invalid secureSocket configuration: " + AzureClientInvoker.describe(e), e);
+                    "invalid secureSocket configuration: " + BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -293,7 +293,7 @@ public final class TransportConfigMapper {
     }
 
     private static KeyStore loadKeyStore(String path, String password)
-            throws GeneralSecurityException, IOException { 
+            throws GeneralSecurityException, IOException {
         requireFile(path, "store path");
         for (String type : new String[] {"PKCS12", "JKS"}) {
             KeyStore store = KeyStore.getInstance(type);

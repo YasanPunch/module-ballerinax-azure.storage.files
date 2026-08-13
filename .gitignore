@@ -61,3 +61,5 @@ docker.env
 examples/**/Dependencies.toml
 examples/file-backup/data/
 examples/file-backup/restored-notes.txt
+examples/change-tracker/snapshot.json
+

@@ -28,38 +28,30 @@ type Person record {|
     int age;
 |};
 
-// The share and its /incoming directory are created in the setup steps (see the example
-// description); the listener starts polling the watched path as soon as the program starts.
 listener files:Listener dropListener = new (shareName,
     auth = {accountName, accountKey},
     pollingInterval = 5
 );
 
-// The service's attach point is the watched path: this service watches "/incoming". Files are
-// routed to a handler by extension: a .json file goes to onFileJson, and everything else to
-// onFile.
+// Watches the share's /incoming folder: .json files go to onFileJson, everything else to onFile.
 service /incoming on dropListener {
 
-    // Handle JSON drops by binding each file to the Person record, then delete each file once
-    // it is processed. A .json file that is malformed or does not match the record cannot
-    // bind; afterError moves it to "/failed" so it does not stay in the watched folder and
-    // re-fire on every poll.
+    // Logs each JSON drop bound to a Person, then deletes it; a .json file that does not
+    // bind is moved to "/failed" instead.
     @files:FunctionConfig {afterProcess: files:DELETE, afterError: {moveTo: "/failed"}}
     remote function onFileJson(Person person, files:FileInfo file, files:Caller caller) returns error? {
         log:printInfo("processed JSON drop", fileName = file.name, sizeBytes = file.sizeBytes,
                 personName = person.name, personAge = person.age);
     }
 
-    // Handle every other file as raw bytes, then move each into "/processed" once it is processed.
+    // Logs every other file, then moves it into "/processed".
     @files:FunctionConfig {afterProcess: {moveTo: "/processed"}}
     remote function onFile(byte[] content, files:FileInfo file, files:Caller caller) returns error? {
         log:printInfo("processed file drop", fileName = file.name, sizeBytes = content.length(),
                 movedTo = "/processed");
     }
 
-    // Notified when a poll fails (for example a credential or network problem) or a file's
-    // content fails to bind to a typed handler. Purely observational: the afterError move
-    // above still consumes a malformed file.
+    // Logs poll failures (for example a credential or network problem) and binding failures.
     remote function onError(files:Error err) returns error? {
         log:printError("drop-folder listener reported an error", 'error = err);
     }

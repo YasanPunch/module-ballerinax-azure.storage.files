@@ -4,8 +4,7 @@ This example shares a file with a third party without sharing the account creden
 
 ## Prerequisites
 
-1. An Azure storage account. In the [Azure portal](https://portal.azure.com), create a storage account for Azure Files (Standard performance, Pay-as-you-go file share billing), or use an existing one.
-2. The account credentials. Open **Security + networking → Access keys** on the storage account and copy the storage account name and the key1 value.
+Complete the connector's [setup guide](../../README.md#setup-guide) to create a storage account and obtain the credentials. This example creates its own share.
 
 ## Configuration
 

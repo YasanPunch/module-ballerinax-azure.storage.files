@@ -226,26 +226,39 @@ public isolated client class Client {
     } external;
 
     # Uploads in-memory content to the bound share. A `byte[]` is written as-is, a `string`
-    # as raw text, an `xml` value as its textual form, a `map<json>` as a JSON document, and
-    # a `string[][]` as CSV rows.
+    # as raw text, an `xml` value as its textual form, and a `string[][]` as CSV rows.
+    # A record (which includes any map of `anydata` members) or a record array is serialized
+    # per the format inferred from the destination path's extension or set with
+    # `UploadContentOptions.fileFormat`: a record becomes a JSON or an XML document (never
+    # CSV), and a record array becomes CSV rows headed by the first record's field names.
     #
     # ```ballerina
-    # check fileClient->uploadContent({revenue: 1250000, growth: 0.12}, "/2026/q1/metrics.json");
+    # check fileClient->uploadContent({"revenue": 1250000, "growth": 0.12}, "/2026/q1/metrics.json");
     # ```
     #
     # + content - The content to upload
     # + destinationPath - The share-relative path the content is written to, including the file name
-    # + options - Optional upload options (headers, metadata, permission, SMB properties)
+    # + options - Optional upload options (headers, metadata, permission, SMB properties, format override)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadContent(byte[]|string|xml|map<json>|string[][] content,
-            string destinationPath, UploadOptions? options = ()) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
-    } external;
+    isolated remote function uploadContent(UploadContent content,
+            string destinationPath, UploadContentOptions? options = ()) returns Error? {
+        byte[]|string|xml|string[][] payload;
+        if content is record {} {
+            payload = check serializeRecord(content, destinationPath, options?.fileFormat);
+        } else if content is record {}[] {
+            payload = check serializeRecordArray(content, destinationPath, options?.fileFormat);
+        } else {
+            // The compiler does not subtract record {}[] from the union here, but both
+            // record shapes are handled above, so the residual value is cast-safe.
+            payload = <byte[]|string|xml|string[][]>content;
+        }
+        return externUploadContent(self, payload, destinationPath, options);
+    }
 
     # Uploads a byte stream to the bound share. The total content length must be known
-    # up front. A failed upload leaves the pre-allocated file, holding whatever ranges
-    # were written before the failure, at the destination; inspect or delete it before
-    # retrying.
+    # up front and must not be negative. A failed upload closes the source stream and
+    # leaves the pre-allocated file, holding whatever ranges were written before the
+    # failure, at the destination; inspect or delete it before retrying.
     #
     # + content - The byte stream to upload
     # + contentLength - The total length of the content, in bytes
@@ -254,25 +267,59 @@ public isolated client class Client {
     # + return - An `Error` if the upload failed, otherwise `()`
     isolated remote function uploadFromStream(stream<byte[], error?> content,
             int contentLength, string destinationPath, UploadOptions? options = ()) returns Error? {
+        if contentLength < 0 {
+            closeByteStreamQuietly(content);
+            return error Error(string `contentLength must not be negative: ${contentLength}`);
+        }
+        Error? result = self.pumpStream(content, contentLength, destinationPath, options);
+        if result is Error {
+            closeByteStreamQuietly(content);
+        }
+        return result;
+    }
+
+    // Drives the stream upload: source chunks coalesce into writes of the service's maximum
+    // range size, so the request count tracks the content size rather than the source's
+    // chunking. The buffer fills to at most one range per iteration with the remainder
+    // carried, so memory stays bounded even when one source chunk exceeds the range size.
+    private isolated function pumpStream(stream<byte[], error?> content, int contentLength,
+            string destinationPath, UploadOptions? options) returns Error? {
         check prepareStreamUpload(self, destinationPath, contentLength, options);
-        // Source chunks coalesce into writes of the service's maximum range size, so the
-        // request count tracks the content size rather than the source's chunking.
         byte[] buffer = [];
+        byte[] carry = [];
         int offset = 0;
         while true {
-            record {|byte[] value;|}|error? chunk = content.next();
-            if chunk is () {
-                break;
+            byte[] bytes;
+            if carry.length() > 0 {
+                bytes = carry;
+                carry = [];
+            } else {
+                ContentStreamEntry|error? chunk = content.next();
+                if chunk is () {
+                    break;
+                }
+                if chunk is error {
+                    return error Error("the source stream failed: " + chunk.message(), chunk);
+                }
+                bytes = chunk.value;
             }
-            if chunk is error {
-                return error Error("the source stream failed: " + chunk.message(), chunk);
-            }
-            byte[] bytes = chunk.value;
             if offset + buffer.length() + bytes.length() > contentLength {
                 return error Error(
                         string `the source stream exceeded the declared contentLength of ${contentLength} bytes`);
             }
-            buffer.push(...bytes);
+            int room = MAX_RANGE_BYTES - buffer.length();
+            boolean sliced = false;
+            if bytes.length() > room {
+                carry = bytes.slice(room);
+                bytes = bytes.slice(0, room);
+                sliced = true;
+            }
+            if sliced && buffer.length() == 0 {
+                // The slice is already a fresh copy, so it becomes the buffer without another copy.
+                buffer = bytes;
+            } else {
+                buffer.push(...bytes);
+            }
             if buffer.length() >= MAX_RANGE_BYTES {
                 check writeStreamChunk(self, destinationPath, offset, buffer);
                 offset += buffer.length();
@@ -350,10 +397,10 @@ public isolated client class Client {
     #
     # + path - The source share-relative path
     # + options - Optional download options (range, snapshot)
-    # + targetType - The type to bind the content to, a `json` form or a record
+    # + targetType - The type to bind the content to, a `json` form, a record, or a record array
     # + return - The bound value, or an `Error`
     isolated remote function getFileJson(string path, DownloadOptions? options = (),
-            typedesc<json|record {}> targetType = <>) returns targetType|Error = @java:Method {
+            typedesc<json|record {}|record {}[]> targetType = <>) returns targetType|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
     } external;
 

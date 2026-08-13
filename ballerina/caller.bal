@@ -17,7 +17,7 @@
 import ballerina/jballerina.java;
 
 # The context object passed to a listener service's handlers, exposing a share-scoped
-# subset of `Client` to act on the event's file. 
+# subset of `Client` to act on the event's file.
 # It cannot be instantiated by user code.
 public isolated client class Caller {
 
@@ -64,10 +64,10 @@ public isolated client class Caller {
     #
     # + path - The source share-relative path
     # + options - Optional download options (range, snapshot)
-    # + targetType - The type to bind the content to, a `json` form or a record
+    # + targetType - The type to bind the content to, a `json` form, a record, or a record array
     # + return - The bound value, or an `Error`
     isolated remote function getFileJson(string path, DownloadOptions? options = (),
-            typedesc<json|record {}> targetType = <>) returns targetType|Error = @java:Method {
+            typedesc<json|record {}|record {}[]> targetType = <>) returns targetType|Error = @java:Method {
         name: "callerGetFileJson",
         'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
     } external;
@@ -109,17 +109,18 @@ public isolated client class Caller {
         return self.'client->uploadFile(sourcePath, destinationPath, options);
     }
 
-    # Uploads in-memory content to the watched share. Dispatch is by the value's runtime type:
-    # `byte[]` is written as-is, a `string` as raw text, `xml` as its textual form, a
-    # `map<json>` (including compatible records) as a JSON document, and a `string[][]` as
-    # CSV rows.
+    # Uploads in-memory content to the watched share. A `byte[]` is written as-is, a `string`
+    # as raw text, `xml` as its textual form, and a `string[][]` as CSV rows. A record (which
+    # includes any map of `anydata` members) or a record array is serialized per the format
+    # inferred from the destination path's extension or set with `UploadContentOptions.fileFormat`:
+    # a record becomes a JSON or an XML document (never CSV), and a record array becomes CSV rows.
     #
     # + content - The content to upload
     # + destinationPath - The share-relative path the content is written to, including the file name
-    # + options - Optional upload options (headers, metadata, permission, SMB properties)
+    # + options - Optional upload options (headers, metadata, permission, SMB properties, format override)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadContent(byte[]|string|xml|map<json>|string[][] content,
-            string destinationPath, UploadOptions? options = ()) returns Error? {
+    isolated remote function uploadContent(UploadContent content,
+            string destinationPath, UploadContentOptions? options = ()) returns Error? {
         return self.'client->uploadContent(content, destinationPath, options);
     }
 

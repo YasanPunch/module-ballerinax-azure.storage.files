@@ -45,6 +45,7 @@ import com.azure.storage.file.share.models.ShareSignedIdentifier;
 import com.azure.storage.file.share.models.UserDelegationKey;
 import io.ballerina.runtime.api.creators.TypeCreator;
 import io.ballerina.runtime.api.creators.ValueCreator;
+import io.ballerina.runtime.api.types.ArrayType;
 import io.ballerina.runtime.api.types.PredefinedTypes;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.utils.TypeUtils;
@@ -53,8 +54,11 @@ import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BString;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.EnumSet;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Maps the SDK model classes to the Ballerina result records declared in {@code types.bal}.
@@ -343,7 +347,7 @@ public final class RecordMapper {
      */
     public static BMap<BString, Object> entry(ShareFileItem item, String parentPath) {
         BMap<BString, Object> record = newRecord(RECORD_ENTRY);
-        String path = parentPath.isEmpty() ? "/" + item.getName() : "/" + parentPath + "/" + item.getName();
+        String path = itemPath(parentPath, item.getName());
         record.put(PATH, StringUtils.fromString(path));
         record.put(NAME, StringUtils.fromString(item.getName()));
         record.put(IS_DIRECTORY, item.isDirectory());
@@ -374,7 +378,7 @@ public final class RecordMapper {
      */
     public static BMap<BString, Object> fileInfo(ShareFileItem item, String parentPath, String shareName) {
         BMap<BString, Object> record = newRecord(RECORD_FILE_INFO);
-        String path = parentPath.isEmpty() ? "/" + item.getName() : "/" + parentPath + "/" + item.getName();
+        String path = itemPath(parentPath, item.getName());
         record.put(FILE_INFO_SHARE_NAME, StringUtils.fromString(shareName));
         record.put(FILE_INFO_PATH, StringUtils.fromString(path));
         record.put(FILE_INFO_NAME, StringUtils.fromString(item.getName()));
@@ -387,10 +391,10 @@ public final class RecordMapper {
         String eTag = item.getProperties() == null || item.getProperties().getETag() == null
                 ? "" : item.getProperties().getETag();
         record.put(FILE_INFO_E_TAG, StringUtils.fromString(eTag));
-        java.time.OffsetDateTime lastModified = item.getProperties() == null
+        OffsetDateTime lastModified = item.getProperties() == null
                 ? null : item.getProperties().getLastModified();
         record.put(FILE_INFO_LAST_MODIFIED, ValueUtils.toUtc(lastModified == null
-                ? java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC) : lastModified));
+                ? OffsetDateTime.now(ZoneOffset.UTC) : lastModified));
         return record;
     }
 
@@ -554,10 +558,20 @@ public final class RecordMapper {
         return record;
     }
 
+    // Array types are cached per record name: building one otherwise costs a throwaway
+    // record value on every list-shaped call.
+    private static final Map<String, ArrayType> ARRAY_TYPES = new ConcurrentHashMap<>();
+
     /** Creates an array value typed to the named module record. */
     public static BArray recordArray(String recordTypeName) {
-        BMap<BString, Object> template = newRecord(recordTypeName);
-        return ValueCreator.createArrayValue(TypeCreator.createArrayType(TypeUtils.getType(template)));
+        ArrayType arrayType = ARRAY_TYPES.computeIfAbsent(recordTypeName,
+                name -> TypeCreator.createArrayType(TypeUtils.getType(newRecord(name))));
+        return ValueCreator.createArrayValue(arrayType);
+    }
+
+    // The share-relative path of a listed item under its parent directory.
+    private static String itemPath(String parentPath, String name) {
+        return parentPath.isEmpty() ? "/" + name : "/" + parentPath + "/" + name;
     }
 
     private static BMap<BString, Object> newRecord(String typeName) {
