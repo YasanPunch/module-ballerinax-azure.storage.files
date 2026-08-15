@@ -144,10 +144,20 @@ test.dependsOn copyToLib
 task publishToLocalRepo(type: Exec) {
     dependsOn build
     workingDir project.projectDir
-    // The docker pack writes the bala under build/bal_build_target; resolve it after build.
+    // The docker pack writes the bala under build/bal_build_target and bal push extracts the bala's platform jars beside the
+    // bala file. The push therefore runs against a copy staged in a host-owned directory.
     doFirst {
-        def bala = fileTree("${project.projectDir}/build/bal_build_target/bala").singleFile
-        commandLine 'bal', 'push', '--repository=local', bala.absolutePath
+        def bala = fileTree("${project.projectDir}/build/bal_build_target/bala") {
+            include '*.bala'
+        }.singleFile
+        def stageDir = new File("${project.rootProject.buildDir}/local-push-stage")
+        project.delete stageDir
+        project.mkdir stageDir
+        project.copy {
+            from bala
+            into stageDir
+        }
+        commandLine 'bal', 'push', '--repository=local', new File(stageDir, bala.name).absolutePath
     }
 }
 
