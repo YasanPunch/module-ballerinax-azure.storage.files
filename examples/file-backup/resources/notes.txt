@@ -1,0 +1,2 @@
+A sample file for the backup watcher. Copy it into the watched folder and it
+appears on the Azure file share moments later.

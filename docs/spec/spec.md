@@ -66,7 +66,7 @@ The public surface is four types:
 
 Directory and file operations take a single slash delimited, share relative path (for example `/reports/2026/q4.pdf`). Where two paths co-occur, they are named `sourcePath` and `destinationPath`, in source first order. Every entry returned by a listing carries its full share relative path, so listing results feed directly into the path taking operations.
 
-The `AdminClient`, `Client`, and `Caller` are isolated client classes holding only immutable configuration, and the `Listener` is an isolated class, so a single instance of any of them can be used safely from concurrent strands. Every operation that calls the service is a remote method, invoked with `->`. Methods that make no service call are ordinary methods, invoked with `.`: the `Listener`'s lifecycle methods and the SAS generation methods, which sign tokens locally with the credential the client already holds. The clients hold no releasable resources, so there is no close method; a client that is no longer needed is simply discarded.
+Every operation that calls the service is a remote method, invoked with `->`. Methods that make no service call are ordinary methods, invoked with `.`: the `Listener`'s lifecycle methods and the SAS generation methods, which sign tokens locally with the credential the client already holds. The clients hold no releasable resources, so there is no close method; a client that is no longer needed is simply discarded.
 
 ## 2. Configuration
 
@@ -80,20 +80,19 @@ public type AuthConfig SharedKeyConfig|SasConfig|SasUrlConfig|ConnectionStringCo
 
 Every member has a unique required field or field combination, so both the compiler and `Config.toml` select the right member by structural matching, with no discriminator field. The two Microsoft Entra ID chain records (`DefaultEntraIdConfig` and `ManagedIdentityConfig`), which would otherwise share the same field shape, are the exception: they carry a `kind` discriminator.
 
-###### Example: Selecting an Authentication Mode in Config.toml
+###### Example: Selecting an Authentication Mode
 
-```toml
-# The fields present select the union member:
-[myapp.filesConfig]
-auth = {accountName = "myacct", accountKey = "..."}               # SharedKeyConfig
-# auth = {accountName = "myacct", sasToken = "sv=..."}            # SasConfig
-# auth = {sasUrl = "https://myacct.file.core.windows.net/?sv=..."}# SasUrlConfig
-# auth = {connectionString = "..."}                               # ConnectionStringConfig
-# auth = {kind = "default", accountName = "myacct"}               # DefaultEntraIdConfig
-# auth = {kind = "managed-identity", accountName = "myacct"}      # ManagedIdentityConfig
-# auth = {accountName = "myacct", tenantId = "...", clientId = "...", clientSecret = "..."}                # ClientSecretConfig
-# auth = {accountName = "myacct", tenantId = "...", clientId = "...", certificatePath = "/path/cert.pem"}  # ClientCertificateConfig
-# auth = {accountName = "myacct", tenantId = "...", clientId = "...", tokenFilePath = "/path/token"}       # WorkloadIdentityConfig
+```ballerina
+// The fields present select the union member:
+files:AuthConfig sharedKey = {accountName: "myacct", accountKey: "..."};
+files:AuthConfig sasToken = {accountName: "myacct", sasToken: "sv=..."};
+files:AuthConfig sasUrl = {sasUrl: "https://myacct.file.core.windows.net/?sv=..."};
+files:AuthConfig connectionString = {connectionString: "..."};
+files:AuthConfig defaultChain = {kind: "default", accountName: "myacct"};
+files:AuthConfig managedIdentity = {kind: "managed-identity", accountName: "myacct"};
+files:AuthConfig servicePrincipal = {accountName: "myacct", tenantId: "...", clientId: "...", clientSecret: "..."};
+files:AuthConfig certificate = {accountName: "myacct", tenantId: "...", clientId: "...", certificatePath: "/path/cert.pem"};
+files:AuthConfig workloadIdentity = {accountName: "myacct", tenantId: "...", clientId: "...", tokenFilePath: "/path/token"};
 ```
 
 The five modes:
@@ -222,19 +221,13 @@ check entries.forEach(function(files:Entry entry) {
 * `uploadContent(content, destinationPath, options)`: uploads in-memory content (section 4.5.1).
 * `uploadFromStream(content, contentLength, destinationPath, options)`: uploads a byte stream (section 4.5.2).
 * `downloadFile(sourcePath, destinationPath, options)`: copies a share file to a local path, the share path first. The download fails with a client side `Error` when a local file already exists at the destination.
-* `getFileContent(path, options)`: opens the file's content as a lazy byte stream, so memory stays bounded for any file size.
-* `getFileText(path, options)`: reads the file's full content and decodes it as UTF-8 text; content that is not valid UTF-8 fails with a client side `Error`.
-* `getFileJson(path, options, targetType)`: reads a JSON file and binds the document to the caller directed target type: a `json` form, a record, or a record array.
-* `getFileXml(path, options, targetType)`: reads an XML file and binds it to an `xml` value or to a record projected from the document.
-* `getFileCsv(path, options, targetType)`: reads a CSV file and binds it to `string[][]` rows or to a record array whose field names are taken from the file's header row. The string matrix form keeps every row, including the first.
+* `getFile(path, options, targetType)`: retrieves the file's content in the form the caller directed target type selects (section 4.5.3).
 
-The upload options carry content headers, metadata, an SDDL permission, SMB properties, and POSIX properties; `uploadContent` additionally accepts the `fileFormat` override described below. The download options carry a byte `range` and a `snapshotId` to read from a share snapshot (section 4.8).
-
-The typed reads materialize the file's full content before binding, and binding is strict: content that does not match the target type fails with a client side `Error`. The listener's `laxDataBinding` setting applies only to listener handlers, not to these reads.
+The upload options carry content headers, metadata, an SDDL permission, SMB properties, and POSIX properties; `uploadContent` additionally accepts the `fileFormat` override described below. The retrieval options carry a byte `range`, a `snapshotId` to read from a share snapshot (section 4.8), and the `fileFormat` override for record shaped targets.
 
 #### 4.5.1 In-Memory Content
 
-`uploadContent` takes its content as the `UploadContent` union. A `byte[]` is written as is, a `string` as raw text, an `xml` value in its textual form, and a `string[][]` as CSV rows, with fields containing a comma, quote, backslash, or line break quoted in the dialect `getFileCsv` reads back.
+`uploadContent` takes its content as the `UploadContent` union. A `byte[]` is written as is, a `string` as raw text, an `xml` value in its textual form, and a `string[][]` as CSV rows, with fields containing a comma, quote, backslash, or line break quoted in the dialect the CSV reads bind back.
 
 A record (which includes any map of `anydata` members) or a record array is serialized per a resolved format: the explicit `UploadContentOptions.fileFormat` override wins, else the destination path's extension (`.json`, `.xml`, `.csv`) decides. A record becomes a JSON or an XML document; a record array becomes CSV rows headed by the first record's field names, with nil members as empty cells. A record directed to CSV, a record array directed to a non CSV format, and a format that resolves to neither an override nor a known extension are each refused with a client side `Error`.
 
@@ -260,12 +253,37 @@ check fileShare->uploadContent(quarters, "/2026/summary.dat", {fileFormat: files
 
 A source stream failure, a stream whose length does not match `contentLength`, and a negative length each surface as a client side `Error`, and every failure closes the source stream. A failed stream upload leaves the pre-allocated file, holding whatever ranges were written before the failure, at the destination; the connector does not delete it, so the caller can inspect it, overwrite it by uploading again, or delete it.
 
+#### 4.5.3 Content Retrieval
+
+`getFile` returns the file's content in the form the caller directed target type selects, so one operation covers every consumption shape:
+
+* `byte[]`: the raw content, materialized in one call.
+* `string`: the content decoded as UTF-8 text; content that is not valid UTF-8 fails with a client side `Error`.
+* `json`: the content parsed as a JSON document.
+* `xml`: the content parsed as an XML document.
+* `string[][]`: the content parsed as CSV rows; every row of the file is kept, including the first.
+* `record {}` or `record {}[]`: the content bound to the record shape per a resolved format. The explicit `GetFileOptions.fileFormat` override wins, else the path's extension (`.json`, `.xml`, `.csv`) decides. A single record binds from JSON or XML (never CSV), a record array binds from a JSON array or CSV rows (never XML), and a format that resolves to neither an override nor a known extension is refused with a client side `Error`, mirroring the `uploadContent` refusals.
+* `stream<byte[], error?>`: a lazy byte stream, so memory stays bounded for any file size.
+* `stream<record {}, error?>`: CSV rows bound lazily, one record per pull; a row that fails to bind surfaces as the error entry of that pull.
+
+The materialized targets download the full content before binding, and binding is strict: content that does not match the target type fails with a client side `Error`. The listener's `laxDataBinding` setting applies only to listener handlers, not to these reads.
+
+###### Example: Retrieving Content by Target Type
+
+```ballerina
+byte[] raw = check fileShare->getFile("/2026/q1/report.pdf");
+
+Person[] people = check fileShare->getFile("/2026/q1/people.csv");
+
+stream<byte[], error?> chunks = check fileShare->getFile("/2026/q1/large.bin");
+```
+
 ###### Example: Working with Files
 
 ```ballerina
 check fileShare->uploadFile("./invoice-2026-07.pdf", "/2026/07/invoice.pdf");
 
-string text = check fileShare->getFileText("/2026/07/notes.txt");
+string text = check fileShare->getFile("/2026/07/notes.txt");
 
 check fileShare->downloadFile("/2026/07/invoice.pdf", "./copies/invoice.pdf");
 ```
@@ -292,7 +310,7 @@ Copies are asynchronous: inspect the returned `CopyInfo.copyStatus` and, if pend
 * `deleteShareSnapshot(snapshotId)`: deletes one snapshot.
 * `listRangesDiff(path, previousSnapshotId, options)`: reports which of a file's ranges were written and which were cleared since a baseline snapshot, for incremental backup on top of snapshots.
 
-Snapshot contents are read through the regular read operations: pass the snapshot id in the download options (`downloadFile`, `getFileContent`, the typed reads) or the list options (`list`) to resolve the same paths inside the snapshot instead of the live share. The three snapshot management operations need account level credentials (an account key, a connection string carrying one, or an account SAS); a share scoped SAS is not sufficient.
+Snapshot contents are read through the regular read operations: pass the snapshot id in the options of `downloadFile` or `getFile`, or the list options of `list`, to resolve the same paths inside the snapshot instead of the live share. The three snapshot management operations need account level credentials (an account key, a connection string carrying one, or an account SAS); a share scoped SAS is not sufficient.
 
 ### 4.9 Lease Operations
 
@@ -476,7 +494,7 @@ A file overwritten in the short window between a poll's listing and its content 
 
 ### 5.7 The Caller
 
-A `Caller` is passed to each handler so it can act on the event's file without constructing a separate client; it cannot be created by user code. It forwards a curated share scoped subset of the `Client`: `downloadFile`, `getFileContent`, `getFileText`, `getFileJson`, `getFileXml`, `getFileCsv`, `uploadFile`, `uploadContent`, `deleteFile`, `copyFile`, `checkCopyStatus`, `abortCopy`, `renameFile`, `createDirectory`, `deleteDirectory`, and `list`, each with the semantics of its `Client` counterpart. Handlers pass the event's path explicitly, for example `caller->deleteFile(file.path)`, and read the share's name from `FileInfo.shareName`.
+A `Caller` is passed to each handler so it can act on the event's file without constructing a separate client; it cannot be created by user code. It forwards a curated share scoped subset of the `Client`: `getFile`, `downloadFile`, `uploadFile`, `uploadContent`, `deleteFile`, `copyFile`, `checkCopyStatus`, `abortCopy`, `renameFile`, `createDirectory`, `deleteDirectory`, and `list`, each with the semantics of its `Client` counterpart. Handlers pass the event's path explicitly, for example `caller->deleteFile(file.path)`, and read the share's name from `FileInfo.shareName`.
 
 ## 6. Errors
 

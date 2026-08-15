@@ -30,11 +30,6 @@ isolated function initClient(Client fileClient, string shareName, ClientConfigur
     'class: "io.ballerina.lib.azure.storage.files.util.ClientInit"
 } external;
 
-isolated function readFileBytes(Client fileClient, string path, DownloadOptions? options)
-        returns byte[]|Error = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
-} external;
-
 // Writes already-serialized upload content; record content is serialized in Ballerina
 // before reaching this call (see Client.uploadContent).
 isolated function externUploadContent(Client fileClient, byte[]|string|xml|string[][] content,
@@ -133,11 +128,6 @@ isolated class ContentStreamGenerator {
         return closeContentStream(self);
     }
 }
-
-isolated function openContentStream(Client fileClient, ContentStreamGenerator generator,
-        string path, DownloadOptions? options) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
-} external;
 
 isolated function nextContentChunk(ContentStreamGenerator generator) returns byte[]|Error? = @java:Method {
     'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"

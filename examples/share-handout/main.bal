@@ -24,13 +24,6 @@ configurable string accountKey = ?;
 configurable string shareName = "handout-example";
 
 public function main() returns error? {
-    // Create the share if this is the first run.
-    files:AdminClient admin = check new (auth = {accountName, accountKey});
-    boolean shareExists = check admin->hasShare(shareName);
-    if !shareExists {
-        check admin->createShare(shareName);
-    }
-
     // Upload the report to hand out.
     files:Client share = check new (shareName, auth = {accountName, accountKey});
     check share->uploadContent("Quarterly revenue is up 14%.", "/q2-summary.txt");

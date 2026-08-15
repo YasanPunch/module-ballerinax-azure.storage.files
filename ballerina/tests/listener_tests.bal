@@ -482,7 +482,7 @@ function testCallerOperations() returns error? {
 
             // The Caller mirrors the Client's record upload contract by delegation.
             check caller->uploadContent({"kind": "caller"}, "/work/meta.json");
-            string metaJson = check caller->getFileText("/work/meta.json");
+            string metaJson = check caller->getFile("/work/meta.json");
             recorder.put("recordUpload", metaJson);
             check caller->deleteFile("/work/meta.json");
 
@@ -493,7 +493,7 @@ function testCallerOperations() returns error? {
             });
             recorder.put("listed", listed.toString());
 
-            stream<byte[], Error?> chunks = check caller->getFileContent("/work/a.txt");
+            stream<byte[], Error?> chunks = check caller->getFile("/work/a.txt");
             byte[] gathered = [];
             check chunks.forEach(function(byte[] chunk) {
                 gathered.push(...chunk);
@@ -837,7 +837,7 @@ function testMoveOntoExistingFileReplaces() returns error? {
     check lsn.gracefulStop();
     check lsn.detach(svc);
 
-    stream<byte[], Error?> chunks = check shareClient->getFileContent("/processed/report.dat");
+    stream<byte[], Error?> chunks = check shareClient->getFile("/processed/report.dat");
     byte[] gathered = [];
     check chunks.forEach(function(byte[] chunk) {
         gathered.push(...chunk);
@@ -2296,7 +2296,7 @@ function testCallerTypedRead() returns error? {
     Listener lsn = check newListener(share);
     Service svc = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
-            json bound = check caller->getFileJson(info.path);
+            json bound = check caller->getFile(info.path);
             recorder.put("typed", bound.toJsonString());
         }
     };

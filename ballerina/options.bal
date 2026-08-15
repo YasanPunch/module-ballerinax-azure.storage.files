@@ -171,6 +171,20 @@ public type UploadOptions record {|
 # CSV rows, and records or record arrays serialized per the resolved `FileFormat`.
 public type UploadContent byte[]|string|xml|string[][]|record {}|record {}[];
 
+# The target forms `getFile` retrieves: raw bytes, text, a JSON or XML value, CSV rows,
+# records or record arrays bound per the resolved `FileFormat`, a lazy byte stream, or
+# a lazy stream of CSV-bound records.
+public type RetrievableContent byte[]|string|json|xml|record {}|record {}[]|string[][]|
+    stream<byte[], error?>|stream<record {}, error?>;
+
+# Options for `getFile`, extending the download options with the record binding format.
+public type GetFileOptions record {|
+    *DownloadOptions;
+    # The binding format for `record {}` and `record {}[]` targets; when absent, the
+    # format is inferred from the path's extension (`.json`, `.xml`, `.csv`)
+    FileFormat fileFormat?;
+|};
+
 # The serialization format of record content passed to `uploadContent`.
 public enum FileFormat {
     JSON,

@@ -81,6 +81,7 @@ public final class OptionsReader {
     public static final BString IGNORE_READ_ONLY = StringUtils.fromString("ignoreReadOnly");
     public static final BString CONTENT_HEADERS = StringUtils.fromString("contentHeaders");
     public static final BString RANGE = StringUtils.fromString("range");
+    public static final BString FILE_FORMAT = StringUtils.fromString("fileFormat");
     public static final BString PERMISSION_COPY_MODE = StringUtils.fromString("permissionCopyMode");
     public static final BString CONTENT_TYPE = StringUtils.fromString("contentType");
     public static final BString CONTENT_ENCODING = StringUtils.fromString("contentEncoding");

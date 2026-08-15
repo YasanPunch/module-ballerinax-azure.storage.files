@@ -62,9 +62,12 @@ test {
     useTestNG {
         suites 'src/test/resources/testng.xml'
     }
-    // Resolve every import from the unpacked distribution, never the network.
+    dependsOn ':azure.storage.files-ballerina:publishToLocalRepo'
+    // Resolve every import from the installed released distribution (plus the module
+    // itself from the local repository), never the network.
     systemProperty 'ballerina.offline.flag', 'true'
-    systemProperty 'ballerina.home', "${rootProject.projectDir}/target/ballerina-runtime"
+    systemProperty 'ballerina.home',
+            "${System.getenv('BALLERINA_HOME') ?: '/Library/Ballerina'}/distributions/ballerina-${ballerinaLangVersion}"
     testLogging {
         events "passed", "failed", "skipped"
         exceptionFormat "full"

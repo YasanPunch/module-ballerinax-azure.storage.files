@@ -353,78 +353,25 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
 
-    # Opens a file's content as a byte stream.
+    # Retrieves a file's content in the form the target type selects: raw bytes, UTF-8
+    # text, a JSON or XML value, CSV rows, a record or record array, a lazy byte stream,
+    # or a lazy stream of CSV-bound records. Binding is strict: content that does not
+    # match the target type fails with a client-side `Error`. A record or record array
+    # target binds per the format resolved from `GetFileOptions.fileFormat` when set,
+    # else from the path's extension (`.json`, `.xml`, `.csv`).
     #
     # ```ballerina
-    # stream<byte[], files:Error?> contentStream = check fileClient->getFileContent("/2026/q1/data.json");
-    # byte[] content = [];
-    # check contentStream.forEach(function(byte[] chunk) {
-    #     content.push(...chunk);
-    # });
+    # byte[] raw = check fileClient->getFile("/2026/q1/report.pdf");
+    # Person[] people = check fileClient->getFile("/2026/q1/people.csv");
+    # stream<byte[], error?> chunks = check fileClient->getFile("/2026/q1/large.bin");
     # ```
     #
     # + path - The source share-relative path
-    # + options - Optional download options (range)
-    # + return - A byte stream over the file content, or an `Error`
-    isolated remote function getFileContent(string path, DownloadOptions? options = ())
-            returns stream<byte[], Error?>|Error {
-        ContentStreamGenerator generator = new;
-        Error? result = openContentStream(self, generator, path, options);
-        if result is Error {
-            return result;
-        }
-        return new stream<byte[], Error?>(generator);
-    }
-
-    # Reads a file's full content as UTF-8 text.
-    #
-    # + path - The source share-relative path
-    # + options - Optional download options (range, snapshot)
-    # + return - The file content as a string, or an `Error`
-    isolated remote function getFileText(string path, DownloadOptions? options = ())
-            returns string|Error {
-        byte[] bytes = check readFileBytes(self, path, options);
-        string|error text = string:fromBytes(bytes);
-        if text is error {
-            return error Error("the file content is not valid UTF-8 text: "
-                    + text.message(), text);
-        }
-        return text;
-    }
-
-    # Reads a file's full content and binds it as JSON to the target type. Binding is strict:
-    # the content must match the target type exactly.
-    #
-    # + path - The source share-relative path
-    # + options - Optional download options (range, snapshot)
-    # + targetType - The type to bind the content to, a `json` form, a record, or a record array
-    # + return - The bound value, or an `Error`
-    isolated remote function getFileJson(string path, DownloadOptions? options = (),
-            typedesc<json|record {}|record {}[]> targetType = <>) returns targetType|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
-    } external;
-
-    # Reads a file's full content and binds it as XML: to an `xml` value, or to a record
-    # projected from the document. Binding is strict.
-    #
-    # + path - The source share-relative path
-    # + options - Optional download options (range, snapshot)
-    # + targetType - The type to bind the content to, `xml` or a record
-    # + return - The bound value, or an `Error`
-    isolated remote function getFileXml(string path, DownloadOptions? options = (),
-            typedesc<xml|record {}> targetType = <>) returns targetType|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
-    } external;
-
-    # Reads a file's full content and binds it as CSV: to `string[][]` rows, or to a record
-    # array whose field names are taken from the header row. Binding is strict.
-    #
-    # + path - The source share-relative path
-    # + options - Optional download options (range, snapshot)
-    # + targetType - The type to bind the content to, `string[][]` or a record array
-    # + return - The bound value, or an `Error`
-    isolated remote function getFileCsv(string path, DownloadOptions? options = (),
-            typedesc<string[][]|record {}[]> targetType = <>) returns targetType|Error = @java:Method {
+    # + options - Optional retrieval options (range, snapshot, record binding format)
+    # + targetType - The form to retrieve the content in, inferred from the assignment target
+    # + return - The content in the requested form, or an `Error`
+    isolated remote function getFile(string path, GetFileOptions? options = (),
+            typedesc<RetrievableContent> targetType = <>) returns targetType|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
     } external;
 

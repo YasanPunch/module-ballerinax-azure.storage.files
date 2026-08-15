@@ -119,8 +119,7 @@ public isolated class Listener {
         }
 
         // One connection stack per listener: the Caller's Client also backs the poller.
-        Client fileClient = check new (shareName, clientConfig);
-        Caller caller = new (fileClient);
+        Caller caller = check new (shareName, clientConfig);
         return externInit(self, shareName, config, caller);
     }
 

@@ -15,57 +15,44 @@
 // under the License.
 
 import ballerina/file;
-import ballerina/io;
+import ballerina/log;
 
 import ballerinax/azure.storage.files;
 
 configurable string accountName = ?;
 configurable string accountKey = ?;
 configurable string shareName = "backup-example";
+configurable string watchedFolder = "backup";
 
-public function main() returns error? {
-    // Create the share if this is the first run.
-    files:AdminClient admin = check new (auth = {accountName, accountKey});
-    boolean shareExists = check admin->hasShare(shareName);
-    if !shareExists {
-        check admin->createShare(shareName);
-    }
+// The client the watcher backs files up through.
+final files:Client share = check new (shareName, auth = {accountName, accountKey});
 
-    files:Client share = check new (shareName, auth = {accountName, accountKey});
+// The watched folder is created on startup when absent, so the watcher below can bind to it.
+final boolean watchedFolderReady = check ensureWatchedFolder();
 
-    // Prepare a local folder with two files to back up.
-    if !(check file:test("data", file:EXISTS)) {
-        check file:createDir("data");
-    }
-    check io:fileWriteString("data/notes.txt", "Remember to rotate the account key.");
-    check io:fileWriteString("data/inventory.csv", "item,count\nkeyboard,12\nmonitor,7\n");
+// Watches the local folder; every file created in it is backed up to the share.
+listener file:Listener backupWatcher = new ({path: watchedFolder});
 
-    // Upload every file in the folder into a backup directory on the share.
-    boolean backupDirExists = check share->hasDirectory("/daily");
-    if !backupDirExists {
-        check share->createDirectory("/daily");
-    }
-    file:MetaData[] localEntries = check file:readDir("data");
-    foreach file:MetaData localEntry in localEntries {
-        if !localEntry.dir {
-            string name = check file:basename(localEntry.absPath);
-            check share->uploadFile(localEntry.absPath, string `/daily/${name}`);
-            io:println(string `Uploaded ${name}`);
+service on backupWatcher {
+
+    remote function onCreate(file:FileEvent event) {
+        error? backedUp = backUp(event.name);
+        if backedUp is error {
+            log:printError("backup failed", 'error = backedUp, localPath = event.name);
         }
     }
+}
 
-    // List everything on the share, recursively.
-    io:println("Share contents:");
-    stream<files:Entry, files:Error?> listing = check share->list("/", {recursive: true});
-    check listing.forEach(function(files:Entry entry) {
-        io:println("  " + entry.path);
-    });
+// Uploads one local file to the share under its own name.
+isolated function backUp(string localPath) returns error? {
+    string name = check file:basename(localPath);
+    check share->uploadFile(localPath, string `/${name}`);
+    log:printInfo("backed up", file = name, share = shareName);
+}
 
-    // Restore one file from the backup.
-    if check file:test("restored-notes.txt", file:EXISTS) {
-        check file:remove("restored-notes.txt");
+isolated function ensureWatchedFolder() returns boolean|error {
+    if !(check file:test(watchedFolder, file:EXISTS)) {
+        check file:createDir(watchedFolder);
     }
-    check share->downloadFile("/daily/notes.txt", "restored-notes.txt");
-    io:println("Restored content: ", check io:fileReadString("restored-notes.txt"));
-
+    return true;
 }

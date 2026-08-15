@@ -25,7 +25,14 @@ To use the Azure Files connector, you must have an Azure subscription and an Azu
 
     ![Create a storage account](https://raw.githubusercontent.com/ballerina-platform/module-ballerinax-azure.storage.files/main/docs/setup/resources/create-storage-account.png)
 
-3. On the **Basics** tab, select a subscription and resource group, provide a globally unique storage account name, and pick a region. The **Standard** performance tier is sufficient for SMB file shares; choose **Premium** with the **File shares** account type only if you need provisioned performance or NFS.
+3. On the **Basics** tab, provide the following:
+
+    | Input | Value |
+    |-------|-------|
+    | **Subscription** and **Resource group** | The subscription and group the account bills to. |
+    | **Storage account name** | A globally unique name. |
+    | **Region** | The region closest to your workload. |
+    | **Performance** | **Standard** is sufficient for SMB file shares; choose **Premium** with the **File shares** account type only for provisioned performance or NFS. |
 
     ![Storage account basics](https://raw.githubusercontent.com/ballerina-platform/module-ballerinax-azure.storage.files/main/docs/setup/resources/storage-account-basics.png)
 
@@ -35,7 +42,7 @@ To use the Azure Files connector, you must have an Azure subscription and an Azu
 
 1. Open the deployed storage account and navigate to **Data storage** > **File shares**.
 
-2. Click **+ File share**, provide a name, and click **Create**. The share name is what you pass to the connector's `Client` at initialization. For details, see the [Azure Files documentation](https://learn.microsoft.com/en-us/azure/storage/files/storage-how-to-create-file-share).
+2. Click **+ File share**, provide a name, and click **Create**. The share name is what you pass to the connector's `Client` at initialization.
 
     ![Create a file share](https://raw.githubusercontent.com/ballerina-platform/module-ballerinax-azure.storage.files/main/docs/setup/resources/create-file-share.png)
 
@@ -43,13 +50,18 @@ To use the Azure Files connector, you must have an Azure subscription and an Azu
 
 1. In the storage account, navigate to **Security + networking** > **Access keys**.
 
-2. Click **Show** next to **key1**, then copy the storage account name and the key value. These two values are the `accountName` and `accountKey` the connector's shared key authentication uses.
+2. Click **Show** next to **key1** and copy the following values:
+
+    | Value | Used as |
+    |-------|---------|
+    | Storage account name | `accountName` |
+    | key1 **Key** | `accountKey` |
 
     ![Copy the access key](https://raw.githubusercontent.com/ballerina-platform/module-ballerinax-azure.storage.files/main/docs/setup/resources/access-keys.png)
 
-The connector also accepts a SAS token or SAS URL (generated under **Security + networking** > **Shared access signature**), a connection string (shown alongside each access key), and Microsoft Entra ID credentials.
+3. Optionally, use one of the other credentials the connector accepts: a SAS token or SAS URL (generated under **Security + networking** > **Shared access signature**), a connection string (shown alongside each access key), or Microsoft Entra ID credentials.
 
-![Generate a SAS token](https://raw.githubusercontent.com/ballerina-platform/module-ballerinax-azure.storage.files/main/docs/setup/resources/generate-sas.png)
+    ![Generate a SAS token](https://raw.githubusercontent.com/ballerina-platform/module-ballerinax-azure.storage.files/main/docs/setup/resources/generate-sas.png)
 
 ## Quickstart
 
