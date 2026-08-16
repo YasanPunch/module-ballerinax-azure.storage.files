@@ -147,8 +147,7 @@ public final class SasOps {
                         "expiryTime and permissions must be set for a user delegation SAS", null);
             }
         } else if (identifier == null && (expiryValue == null || permissions == null)) {
-            throw FilesErrorCreator.clientError(
-                    "either identifier, or expiryTime and permissions, must be set", null);
+            throw FilesErrorCreator.clientError("either identifier, or expiryTime and permissions, must be set", null);
         }
         ShareServiceSasSignatureValues sdkValues;
         if (identifier != null) {

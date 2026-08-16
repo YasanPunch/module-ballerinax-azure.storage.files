@@ -446,7 +446,7 @@ A service declares at least one content handler, validated at compile time by th
 
 * **`onFile`**: the raw bytes catch all. Takes its content as `byte[]` or as `stream<byte[], error?>`.
 * **`onFileText`**: takes a `string`.
-* **`onFileJson`**: takes a `map<json>`, a record, a `map<json>[]`, or a record array. An object root binds the map and record forms (a record binds by projection); an array root binds the array forms element by element.
+* **`onFileJson`**: takes a `json`, a `map<json>`, a record, or an array of those forms. A `json` target receives any parsed root as is; an object root binds the map and record forms (a record binds by projection); an array root binds the array forms element by element.
 * **`onFileXml`**: takes an `xml` document or a record whose fields bind from the document's elements.
 * **`onFileCsv`**: takes a `string[][]`, a record array, a `stream<string[], error?>`, or a `stream<record {}, error?>`. The string forms yield every row of the file; the record forms map each row's fields through the file's first row, the header.
 

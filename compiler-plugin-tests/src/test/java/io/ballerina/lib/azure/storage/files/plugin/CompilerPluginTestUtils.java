@@ -42,10 +42,18 @@ import static org.testng.Assert.assertTrue;
  */
 final class CompilerPluginTestUtils {
 
-    static final Path RESOURCE_DIRECTORY = Paths.get("src", "test", "resources", "ballerina_sources")
-            .toAbsolutePath();
+    static final Path RESOURCE_DIRECTORY = resourceDirectory();
 
     private CompilerPluginTestUtils() {
+    }
+
+    private static Path resourceDirectory() {
+        String dir = System.getProperty("fixtures.dir");
+        if (dir == null || dir.isBlank()) {
+            throw new IllegalStateException(
+                    "set -Dfixtures.dir to the generated fixture directory (the gradle prepareTestFixtures task)");
+        }
+        return Paths.get(dir).toAbsolutePath();
     }
 
     static DiagnosticResult loadPackage(String path) {
@@ -78,8 +86,7 @@ final class CompilerPluginTestUtils {
             home = System.getenv("BALLERINA_HOME");
         }
         if (home == null || home.isBlank()) {
-            throw new IllegalStateException(
-                    "set -Dballerina.home (or BALLERINA_HOME) to the Ballerina distribution");
+            throw new IllegalStateException("set -Dballerina.home (or BALLERINA_HOME) to the Ballerina distribution");
         }
         Path path = Paths.get(home);
         if (!Files.exists(path)) {

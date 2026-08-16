@@ -157,8 +157,7 @@ public final class TypedReadOps {
     // record streams bind CSV rows through data.csv's own stream parser.
     private static Object streamTarget(Environment env, BObject clientObj, BString path, Object options,
                                        StreamType streamType) {
-        BObject generator = ValueCreator.createObjectValue(ModuleUtils.getModule(),
-                CONTENT_STREAM_GENERATOR_CLASS);
+        BObject generator = ValueCreator.createObjectValue(ModuleUtils.getModule(), CONTENT_STREAM_GENERATOR_CLASS);
         Object opened = TransferOps.openContentStream(env, clientObj, generator, path, options);
         if (opened instanceof BError) {
             return opened;
@@ -228,8 +227,7 @@ public final class TypedReadOps {
 
     private static Object decodeText(BArray byteArray) {
         try {
-            String text = StandardCharsets.UTF_8.newDecoder()
-                    .decode(ByteBuffer.wrap(byteArray.getBytes())).toString();
+            String text = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(byteArray.getBytes())).toString();
             return StringUtils.fromString(text);
         } catch (CharacterCodingException e) {
             return FilesErrorCreator.clientError(

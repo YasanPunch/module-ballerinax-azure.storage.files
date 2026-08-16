@@ -28,10 +28,7 @@ type Person record {|
     int age;
 |};
 
-listener files:Listener dropListener = new (shareName,
-    auth = {accountName, accountKey},
-    pollingInterval = 5
-);
+listener files:Listener dropListener = new (shareName, auth = {accountName, accountKey}, pollingInterval = 5);
 
 // Watches the share's /incoming folder: .json files go to onFileJson, everything else to onFile.
 service /incoming on dropListener {

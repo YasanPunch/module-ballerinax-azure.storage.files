@@ -197,14 +197,12 @@ function dispatch(string method, string[] segments, string comp, string restype,
     // restype=directory must win over the one-segment share fallback: a root-directory
     // listing addresses /{share}?restype=directory&comp=list with a single segment.
     if restype == "directory" {
-        return directoryDispatch(method, shareName, path, comp, include, prefix,
-                snapshotParam, headers);
+        return directoryDispatch(method, shareName, path, comp, include, prefix, snapshotParam, headers);
     }
     if restype == "share" || (segments.length() == 1 && comp != "") {
         return shareDispatch(method, shareName, comp, snapshotParam, headers, payload);
     }
-    return fileDispatch(method, shareName, path, comp, restype, snapshotParam,
-            prevSnapshotParam, headers, payload);
+    return fileDispatch(method, shareName, path, comp, restype, snapshotParam, prevSnapshotParam, headers, payload);
 }
 
 function extractTag(string body, string tag) returns string {
@@ -339,8 +337,7 @@ function shareDispatch(string method, string shareName, string comp, string snap
         if apply {
             share.leaseId = newLeaseId;
             if (headers["x-ms-lease-action"] ?: "") == "acquire" {
-                share.leaseDuration = (headers["x-ms-lease-duration"] ?: "-1") == "-1"
-                    ? "infinite" : "fixed";
+                share.leaseDuration = (headers["x-ms-lease-duration"] ?: "-1") == "-1" ? "infinite" : "fixed";
             }
         }
         return response;
@@ -444,8 +441,7 @@ function listSharesResponse(string prefix, string include) returns MockResponse 
             foreach [string, MockShare] [key, snapshotShare] in mockShareSnapshots.entries() {
                 string[] parts = re `\n`.split(key);
                 if parts[0] == name {
-                    entries += shareElement(name, snapshotShare, false,
-                            include.includes("metadata"), parts[1]);
+                    entries += shareElement(name, snapshotShare, false, include.includes("metadata"), parts[1]);
                 }
             }
         }
@@ -493,8 +489,7 @@ function directoryDispatch(string method, string shareName, string path, string 
         returns MockResponse {
     MockShare? resolved = resolveShare(shareName, snapshotParam);
     if resolved is () {
-        return errorResponse(404,
-                snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
+        return errorResponse(404, snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
     }
     MockShare share = resolved;
     if method == "PUT" && comp == "rename" {
@@ -617,8 +612,7 @@ function fileDispatch(string method, string shareName, string path, string comp,
         byte[] payload) returns MockResponse {
     MockShare? resolved = resolveShare(shareName, snapshotParam);
     if resolved is () {
-        return errorResponse(404,
-                snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
+        return errorResponse(404, snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
     }
     MockShare share = resolved;
     if restype == "hardlink" && method == "PUT" {
@@ -852,8 +846,7 @@ function leaseAction(string? current, map<string> headers) returns [MockResponse
     return [errorResponse(400, "InvalidHeaderValue"), (), false];
 }
 
-function downloadOrProps(string method, MockFile file, map<string> headers)
-        returns MockResponse {
+function downloadOrProps(string method, MockFile file, map<string> headers) returns MockResponse {
     map<string> responseHeaders = fileHeaders(file);
     if method == "HEAD" {
         // The listener recomputes Content-Length from the entity, so the properties response
@@ -877,8 +870,7 @@ function downloadOrProps(string method, MockFile file, map<string> headers)
     return {status: 206, headers: responseHeaders, body: slice};
 }
 
-function putRange(MockShare share, string path, map<string> headers, byte[] payload)
-        returns MockResponse {
+function putRange(MockShare share, string path, map<string> headers, byte[] payload) returns MockResponse {
     if !share.files.hasKey(path) {
         return errorResponse(404, "ResourceNotFound");
     }
@@ -965,8 +957,7 @@ function rangeDiffResponse(MockFile live, MockFile? baseline) returns MockRespon
             ranges += string `<Range><Start>${rangeStart}</Start><End>${i - 1}</End></Range>`;
         } else if liveByte == 0 && snapByte != 0 {
             int clearStart = i;
-            while i < live.size && live.content[i] == 0
-                    && (i < snapContent.length() ? snapContent[i] : 0) != 0 {
+            while i < live.size && live.content[i] == 0 && (i < snapContent.length() ? snapContent[i] : 0) != 0 {
                 i += 1;
             }
             clearRanges += string `<ClearRange><Start>${clearStart}</Start><End>${i - 1}</End></ClearRange>`;

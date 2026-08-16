@@ -113,8 +113,7 @@ public class OnErrorFunctionValidator {
     }
 
     private Optional<TypeSymbol> findModuleErrorTypeSymbol(SemanticModel semanticModel) {
-        Optional<Symbol> errorSymbol = semanticModel.types()
-                .getTypeByName(PACKAGE_ORG, PACKAGE_PREFIX, "", ERROR_TYPE);
+        Optional<Symbol> errorSymbol = semanticModel.types().getTypeByName(PACKAGE_ORG, PACKAGE_PREFIX, "", ERROR_TYPE);
         if (errorSymbol.isEmpty()) {
             return Optional.empty();
         }

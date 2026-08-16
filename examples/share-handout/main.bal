@@ -30,10 +30,7 @@ public function main() returns error? {
 
     // Mint a read-only shared access signature for that one file, expiring in 24 hours.
     time:Utc expiry = time:utcAddSeconds(time:utcNow(), 86400);
-    string sasToken = check share.generateSas("/q2-summary.txt", {
-        expiryTime: expiry,
-        permissions: {read: true}
-    });
+    string sasToken = check share.generateSas("/q2-summary.txt", {expiryTime: expiry, permissions: {read: true}});
 
     io:println("Hand out this URL; it grants read access to this file only, for 24 hours:");
     io:println(string `https://${accountName}.file.core.windows.net/${shareName}/q2-summary.txt?${sasToken}`);

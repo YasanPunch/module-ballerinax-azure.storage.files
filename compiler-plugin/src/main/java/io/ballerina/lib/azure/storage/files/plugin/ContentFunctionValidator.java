@@ -60,7 +60,7 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.reportErro
  * its first parameter must carry the handler's content type;
  * onFile: {@code byte[]} or a byte stream; 
  * onFileText: {@code string}; 
- * onFileJson: a {@code map<json>}, a record, or an array of them; 
+ * onFileJson: {@code json}, a {@code map<json>}, a record, or an array of them;
  * onFileXml: {@code xml} or a record; 
  * onFileCsv: {@code string[][]}, a record array, or a stream of {@code string[]} or records), 
  * 
@@ -123,13 +123,11 @@ public class ContentFunctionValidator {
             return;
         }
         if (!PluginUtils.validateFileInfoParameter(parameters.get(1), context)) {
-            reportErrorDiagnostic(context, INVALID_FILEINFO_PARAMETER, parameters.get(1).location(),
-                    contentMethodName);
+            reportErrorDiagnostic(context, INVALID_FILEINFO_PARAMETER, parameters.get(1).location(), contentMethodName);
             return;
         }
         if (!PluginUtils.validateCallerParameter(parameters.get(2), context)) {
-            reportErrorDiagnostic(context, INVALID_CALLER_PARAMETER, parameters.get(2).location(),
-                    contentMethodName);
+            reportErrorDiagnostic(context, INVALID_CALLER_PARAMETER, parameters.get(2).location(), contentMethodName);
         }
     }
 
@@ -138,7 +136,7 @@ public class ContentFunctionValidator {
      * 
      * Validates the declared type of the handler's first parameter (the content parameter)). 
      * Per handler: onFile → byte[], onFileText → string, onFileXml → xml,
-     * onFileCsv → string[][], onFileJson → map<json> | record | array of those.
+     * onFileCsv → string[][], onFileJson → json | map<json> | record | array of those.
      * 
      * @param parameterNode the parameter node
      * @return true if the content parameter is valid, false otherwise
@@ -162,7 +160,8 @@ public class ContentFunctionValidator {
     }
 
     private boolean isJsonObject(TypeSymbol typeSymbol, TypeDescKind typeKind) {
-        return isJsonMap(typeSymbol, typeKind) || typeKind == RECORD || isRecordTypeReference(typeSymbol);
+        return typeKind == JSON || isJsonMap(typeSymbol, typeKind) || typeKind == RECORD
+                || isRecordTypeReference(typeSymbol);
     }
 
     private boolean isJsonObjectArray(TypeSymbol typeSymbol, TypeDescKind typeKind) {
@@ -186,8 +185,7 @@ public class ContentFunctionValidator {
             return false;
         }
         TypeSymbol member = ((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor();
-        return member.typeKind() == ARRAY
-                && ((ArrayTypeSymbol) member).memberTypeDescriptor().typeKind() == STRING;
+        return member.typeKind() == ARRAY && ((ArrayTypeSymbol) member).memberTypeDescriptor().typeKind() == STRING;
     }
 
     private boolean isByteStream(TypeSymbol typeSymbol, TypeDescKind typeKind) {
@@ -215,8 +213,7 @@ public class ContentFunctionValidator {
         if (itemKind == RECORD || isRecordTypeReference(itemType)) {
             return true;
         }
-        return itemKind == ARRAY
-                && ((ArrayTypeSymbol) itemType).memberTypeDescriptor().typeKind() == STRING;
+        return itemKind == ARRAY && ((ArrayTypeSymbol) itemType).memberTypeDescriptor().typeKind() == STRING;
     }
 
     private boolean isRecordTypeReference(TypeSymbol typeSymbol) {
@@ -231,7 +228,7 @@ public class ContentFunctionValidator {
         return switch (contentMethodName) {
             case ON_FILE_FUNC -> "byte[] or stream<byte[], error?>";
             case ON_FILE_TEXT_FUNC -> "string";
-            case ON_FILE_JSON_FUNC -> "map<json>, a record, or an array of them";
+            case ON_FILE_JSON_FUNC -> "json, map<json>, a record, or an array of them";
             case ON_FILE_XML_FUNC -> "xml or a record";
             case ON_FILE_CSV_FUNC -> "string[][], record{}[], stream<string[], error?>, "
                     + "or stream<record{}, error?>";

@@ -255,10 +255,8 @@ public final class TransportConfigMapper {
         TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance("PKIX");
         if (validateRevocation) {
             CertPathBuilder certPathBuilder = CertPathBuilder.getInstance("PKIX");
-            PKIXRevocationChecker revocationChecker =
-                    (PKIXRevocationChecker) certPathBuilder.getRevocationChecker();
-            PKIXBuilderParameters pkixParameters =
-                    new PKIXBuilderParameters(trustStore, new X509CertSelector());
+            PKIXRevocationChecker revocationChecker = (PKIXRevocationChecker) certPathBuilder.getRevocationChecker();
+            PKIXBuilderParameters pkixParameters = new PKIXBuilderParameters(trustStore, new X509CertSelector());
             pkixParameters.addCertPathChecker(revocationChecker);
             trustManagerFactory.init(new CertPathTrustManagerParameters(pkixParameters));
         } else {
@@ -280,20 +278,17 @@ public final class TransportConfigMapper {
             String keyFile = keyRecord.getStringValue(KEY_FILE).getValue();
             requireFile(certFile, "key.certFile");
             requireFile(keyFile, "key.keyFile");
-            sslBuilder.keyManager(new File(certFile), new File(keyFile),
-                    ValueUtils.optString(keyRecord, KEY_PASSWORD));
+            sslBuilder.keyManager(new File(certFile), new File(keyFile), ValueUtils.optString(keyRecord, KEY_PASSWORD));
             return;
         }
         String password = keyRecord.getStringValue(PASSWORD).getValue();
         KeyStore keyStore = loadKeyStore(keyRecord.getStringValue(STORE_PATH).getValue(), password);
-        KeyManagerFactory keyManagerFactory =
-                KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
         keyManagerFactory.init(keyStore, password.toCharArray());
         sslBuilder.keyManager(keyManagerFactory);
     }
 
-    private static KeyStore loadKeyStore(String path, String password)
-            throws GeneralSecurityException, IOException {
+    private static KeyStore loadKeyStore(String path, String password) throws GeneralSecurityException, IOException {
         requireFile(path, "store path");
         for (String type : new String[] {"PKCS12", "JKS"}) {
             KeyStore store = KeyStore.getInstance(type);
@@ -327,8 +322,7 @@ public final class TransportConfigMapper {
 
     private static void requireFile(String path, String fieldName) {
         if (!new File(path).isFile()) {
-            throw FilesErrorCreator.clientError(
-                    fieldName + " does not point to a readable file: " + path, null);
+            throw FilesErrorCreator.clientError(fieldName + " does not point to a readable file: " + path, null);
         }
     }
 

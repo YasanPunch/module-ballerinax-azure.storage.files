@@ -95,8 +95,7 @@ public final class ContentStreams {
                 ValueCreator.createTypedescValue(TypeUtils.getReferredType(elementType)),
                 byteStream, laxDataBinding);
         if (iterator instanceof BError e) {
-            throw FilesErrorCreator.clientError(
-                    "CSV stream binding could not be created: " + e.getErrorMessage(), e);
+            throw FilesErrorCreator.clientError("CSV stream binding could not be created: " + e.getErrorMessage(), e);
         }
         StreamType streamType = TypeCreator.createStreamType(elementType,
                 TypeCreator.createUnionType(PredefinedTypes.TYPE_ERROR, PredefinedTypes.TYPE_NULL));

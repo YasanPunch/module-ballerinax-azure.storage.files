@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files.util;
+package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.core.credential.AzureNamedKeyCredential;
 import com.azure.core.credential.AzureSasCredential;
@@ -31,6 +31,10 @@ import com.azure.identity.WorkloadIdentityCredentialBuilder;
 import com.azure.storage.file.share.ShareServiceClient;
 import com.azure.storage.file.share.ShareServiceClientBuilder;
 import com.azure.storage.file.share.models.ShareTokenIntent;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
+import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
+import io.ballerina.lib.azure.storage.files.util.TransportConfigMapper;
+import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BError;
 import io.ballerina.runtime.api.values.BMap;

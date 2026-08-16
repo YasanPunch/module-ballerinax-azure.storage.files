@@ -25,11 +25,14 @@ accountKey = "<storage account key>"
 
 ## Run the example
 
+Create the watched folder if it does not exist, then run the example:
+
 ```bash
+mkdir -p backup
 bal run
 ```
 
-The program creates the watched folder when it is absent, starts watching it, and runs until you stop it with `Ctrl+C`.
+The program watches the folder and runs until you stop it with `Ctrl+C`.
 
 To see it work, copy a file into the watched folder; the sample under `resources/` is there to try:
 

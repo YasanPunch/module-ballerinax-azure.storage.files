@@ -35,8 +35,7 @@ import ballerina/time;
 @test:Config {}
 function testInitRejectsBadBase64Key() {
     Client|Error result = new ("share", auth = {accountName: "acct", accountKey: "not base64!!!"});
-    test:assertTrue(result is Error && result !is ServiceError,
-            "expected a client-side error for a non-base64 key");
+    test:assertTrue(result is Error && result !is ServiceError, "expected a client-side error for a non-base64 key");
 }
 
 @test:Config {}
@@ -57,8 +56,7 @@ function testInitRejectsBadServiceUrl() {
 @test:Config {}
 function testInitRejectsEmptyShareName() {
     Client|Error result = new ("", auth = {accountName: "acct", accountKey: MOCK_KEY});
-    test:assertTrue(result is Error && result !is ServiceError,
-            "expected a client-side error for an empty share name");
+    test:assertTrue(result is Error && result !is ServiceError, "expected a client-side error for an empty share name");
 }
 
 @test:Config {}
@@ -87,8 +85,7 @@ function testInitEntraIdModes() returns error? {
     // Every Entra credential kind builds locally; tokens are requested only on first use.
     _ = check new Client("share", auth = {kind: "default", accountName: "acct"});
 
-    _ = check new Client("share",
-            auth = {kind: "managed-identity", accountName: "acct", clientId: "mi-client"});
+    _ = check new Client("share", auth = {kind: "managed-identity", accountName: "acct", clientId: "mi-client"});
 
     _ = check new Client("share",
             auth = {accountName: "acct", tenantId: "tenant", clientId: "client", clientSecret: "s3cret"});
@@ -99,8 +96,7 @@ function testInitEntraIdModes() returns error? {
             auth = {accountName: "acct", tenantId: "tenant", clientId: "client", tokenFilePath: tokenFile});
 
     string certificateFile = "target/mock-entra-cert.pem";
-    check io:fileWriteString(certificateFile,
-            "-----BEGIN CERTIFICATE-----\nTUlJQg==\n-----END CERTIFICATE-----\n");
+    check io:fileWriteString(certificateFile, "-----BEGIN CERTIFICATE-----\nTUlJQg==\n-----END CERTIFICATE-----\n");
     _ = check new Client("share", auth = {
         accountName: "acct",
         tenantId: "tenant",
@@ -113,8 +109,7 @@ function testInitEntraIdModes() returns error? {
 function testInitEntraIdValidation() {
     Client|Error emptyTenant = new ("share",
             auth = {accountName: "acct", tenantId: " ", clientId: "client", clientSecret: "s3cret"});
-    test:assertTrue(emptyTenant is Error && emptyTenant !is ServiceError,
-            "expected a blank tenantId to fail");
+    test:assertTrue(emptyTenant is Error && emptyTenant !is ServiceError, "expected a blank tenantId to fail");
 
     Client|Error missingCertificate = new ("share", auth = {
         accountName: "acct",
@@ -126,8 +121,7 @@ function testInitEntraIdValidation() {
             "expected a missing certificate file to fail");
 
     Client|Error emptyAccount = new ("share", auth = {kind: "default", accountName: "  "});
-    test:assertTrue(emptyAccount is Error && emptyAccount !is ServiceError,
-            "expected a blank account name to fail");
+    test:assertTrue(emptyAccount is Error && emptyAccount !is ServiceError, "expected a blank account name to fail");
 }
 
 // Pinned to the mock: retry and proxy behavior only manifests against an endpoint that
@@ -202,8 +196,7 @@ function testSecondaryHostRetryReachesSecondaryHost() returns error? {
     mockFaultRemaining = 1;
     FileProperties|Error props = fileClient->getFileProperties("/read.txt");
     mockFaultRemaining = 0;
-    test:assertEquals((check props).contentLength, 7,
-            "the read must succeed through the secondary retry");
+    test:assertEquals((check props).contentLength, 7, "the read must succeed through the secondary retry");
 
     string[] reads = [];
     foreach string entry in mockRequestLog {
@@ -226,9 +219,7 @@ function testTransportTlsConfig() returns error? {
 
     // Trust material as a PKCS12 store.
     _ = check new Client("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
-            transportConfig = {
-                secureSocket: {cert: {path: "tests/resources/trust.p12", password: "ballerina"}}
-            });
+            transportConfig = {secureSocket: {cert: {path: "tests/resources/trust.p12", password: "ballerina"}}});
 
     // Client identity from a certificate and key pair, plus version and cipher pinning,
     // hostname-verification and session flags, and timeouts.
@@ -249,20 +240,15 @@ function testTransportTlsConfig() returns error? {
 
     // Revocation checking builds against PEM trust material.
     _ = check new Client("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
-            transportConfig = {
-                secureSocket: {cert: "tests/resources/cert.pem", validateRevocation: true}
-            });
+            transportConfig = {secureSocket: {cert: "tests/resources/cert.pem", validateRevocation: true}});
 
     // Broken TLS input fails at init with a clear error.
     Client|Error missingCert = new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
             transportConfig = {secureSocket: {cert: "tests/resources/absent.pem"}});
-    test:assertTrue(missingCert is Error && missingCert !is ServiceError,
-            "expected a missing cert file to fail");
+    test:assertTrue(missingCert is Error && missingCert !is ServiceError, "expected a missing cert file to fail");
 
     Client|Error wrongPassword = new ("share", auth = {accountName: "acct", accountKey: MOCK_KEY},
-            transportConfig = {
-                secureSocket: {cert: {path: "tests/resources/trust.p12", password: "wrong"}}
-            });
+            transportConfig = {secureSocket: {cert: {path: "tests/resources/trust.p12", password: "wrong"}}});
     test:assertTrue(wrongPassword is Error && wrongPassword !is ServiceError,
             "expected a wrong store password to fail");
 
@@ -362,8 +348,7 @@ function testSharePropertiesAndUsage() returns error? {
     if check isPremiumAccount() {
         // Premium shares carry provisioned throughput figures. (The tier label is not
         // asserted: classic accounts report Premium, provisioned v2 a legacy label.)
-        test:assertTrue(props.provisionedIops is int,
-                "expected provisioned IOPS on a premium share");
+        test:assertTrue(props.provisionedIops is int, "expected provisioned IOPS on a premium share");
     } else {
         test:assertEquals(props.accessTier, TRANSACTION_OPTIMIZED);
     }
@@ -462,8 +447,7 @@ function testFileLifecycle() returns error? {
     props = check fileClient->getFileProperties("/report.bin");
     test:assertEquals(props.metadata, {kind: "updated"});
 
-    check fileClient->setContentHeaders("/report.bin",
-            {contentType: "application/pdf", cacheControl: "max-age=60"});
+    check fileClient->setContentHeaders("/report.bin", {contentType: "application/pdf", cacheControl: "max-age=60"});
     props = check fileClient->getFileProperties("/report.bin");
     test:assertEquals(props.contentType, "application/pdf");
     test:assertEquals(props.cacheControl, "max-age=60");
@@ -618,8 +602,7 @@ function testUploadContentRecordFormatRefusals() returns error? {
     test:assertTrue(unresolved is Error && unresolved !is ServiceError,
             "record content to an extension-less format must fail client-side");
     if unresolved is Error {
-        test:assertTrue(unresolved.message().includes("fileFormat"),
-                "the error must point at the fileFormat override");
+        test:assertTrue(unresolved.message().includes("fileFormat"), "the error must point at the fileFormat override");
     }
 }
 
@@ -738,13 +721,11 @@ function testUploadFromStreamCoalescesSmallChunks() returns error? {
 
     int rangeWrites = 0;
     foreach string entry in mockRequestLog {
-        if entry.startsWith("PUT") && entry.includes(string `/${share}/coalesced.bin`)
-                && entry.includes("comp=range") {
+        if entry.startsWith("PUT") && entry.includes(string `/${share}/coalesced.bin`) && entry.includes("comp=range") {
             rangeWrites += 1;
         }
     }
-    test:assertEquals(rangeWrites, 2,
-            "a 5 MiB stream of 4 KiB chunks must coalesce into exactly two range writes");
+    test:assertEquals(rangeWrites, 2, "a 5 MiB stream of 4 KiB chunks must coalesce into exactly two range writes");
 }
 
 // Pinned to the mock: the range-write count is only observable through the request log.
@@ -776,13 +757,11 @@ function testUploadFromStreamSplitsOversizedChunk() returns error? {
 
     int rangeWrites = 0;
     foreach string entry in mockRequestLog {
-        if entry.startsWith("PUT") && entry.includes(string `/${share}/oversized.bin`)
-                && entry.includes("comp=range") {
+        if entry.startsWith("PUT") && entry.includes(string `/${share}/oversized.bin`) && entry.includes("comp=range") {
             rangeWrites += 1;
         }
     }
-    test:assertEquals(rangeWrites, 2,
-            "an oversized chunk must split into two service-compliant range writes");
+    test:assertEquals(rangeWrites, 2, "an oversized chunk must split into two service-compliant range writes");
 }
 
 // A byte stream whose close() calls are observable, for the error-path cleanup claims.
@@ -848,8 +827,7 @@ function testUploadFromStreamRejectsNegativeLength() returns error? {
     test:assertTrue(negative is Error && negative !is ServiceError,
             "a negative contentLength must fail client-side before any service call");
     if negative is Error {
-        test:assertTrue(negative.message().includes("contentLength"),
-                "the error must name contentLength");
+        test:assertTrue(negative.message().includes("contentLength"), "the error must name contentLength");
     }
 }
 
@@ -861,8 +839,7 @@ function testRangedDownload() returns error? {
     Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("0123456789", "/digits.txt");
 
-    stream<byte[], Error?> content =
-        check fileClient->getFile("/digits.txt", {range: {startByte: 2, endByte: 5}});
+    stream<byte[], Error?> content = check fileClient->getFile("/digits.txt", {range: {startByte: 2, endByte: 5}});
     test:assertEquals(check collectBytes(content), "2345".toBytes());
 }
 
@@ -888,8 +865,7 @@ function testListFlatAndRecursive() returns error? {
 
     stream<Entry, Error?> entryStream19 = check fileClient->list("/", {recursive: true});
     Entry[] deep = check collectEntries(entryStream19);
-    test:assertEquals(entryPaths(deep).sort(),
-            ["/a", "/a/b", "/a/b/two.txt", "/a/one.txt", "/root.txt"]);
+    test:assertEquals(entryPaths(deep).sort(), ["/a", "/a/b", "/a/b/two.txt", "/a/one.txt", "/root.txt"]);
 
     stream<Entry, Error?> entryStream20 = check fileClient->list("/a");
     Entry[] scoped = check collectEntries(entryStream20);
@@ -952,8 +928,7 @@ function testCopyFromUrl() returns error? {
     // The service fetches the source URL itself, so it carries a read SAS; the mock
     // ignores the token while live Azure verifies it.
     time:Utc sourceExpiry = time:utcAddSeconds(time:utcNow(), 3600);
-    string token = check fileClient.generateSas("/origin.txt",
-            {expiryTime: sourceExpiry, permissions: {read: true}});
+    string token = check fileClient.generateSas("/origin.txt", {expiryTime: sourceExpiry, permissions: {read: true}});
     string sourceUrl = string `${sasBaseUrl()}/${share}/origin.txt?${token}`;
     CopyInfo info = check fileClient->copyFileFromUrl(sourceUrl, "/copied.txt");
     test:assertTrue(info.copyId.length() > 0);
@@ -996,8 +971,7 @@ function testRangeWriteClearAndList() returns error? {
 
     // Writing past the pre-allocated size is rejected by the service.
     Error? overflow = fileClient->uploadRange("/ranges.bin", 4, "TOO LONG!".toBytes());
-    test:assertTrue(overflow is RangeNotSatisfiableError,
-            "expected InvalidRange to map to RangeNotSatisfiableError");
+    test:assertTrue(overflow is RangeNotSatisfiableError, "expected InvalidRange to map to RangeNotSatisfiableError");
 }
 
 // ---------------------------------------------------------------------------
@@ -1031,13 +1005,11 @@ function testErrorCodeMapping() returns error? {
 
     // The code Azure returns for an Entra ID identity lacking the required RBAC role.
     FileProperties|Error rbac = fileClient->getFileProperties("/__err-403-AuthorizationPermissionMismatch");
-    test:assertTrue(rbac is AuthorizationError,
-            "403 AuthorizationPermissionMismatch should map to AuthorizationError");
+    test:assertTrue(rbac is AuthorizationError, "403 AuthorizationPermissionMismatch should map to AuthorizationError");
 
     // A SAS used outside its permitted IP range.
     FileProperties|Error sasIp = fileClient->getFileProperties("/__err-403-AuthorizationSourceIPMismatch");
-    test:assertTrue(sasIp is AuthorizationError,
-            "403 AuthorizationSourceIPMismatch should map to AuthorizationError");
+    test:assertTrue(sasIp is AuthorizationError, "403 AuthorizationSourceIPMismatch should map to AuthorizationError");
 
     FileProperties|Error precondition = fileClient->getFileProperties("/__err-412-ConditionNotMet");
     test:assertTrue(precondition is PreconditionFailedError,
@@ -1049,14 +1021,12 @@ function testErrorCodeMapping() returns error? {
     test:assertTrue(leaseMissing is PreconditionFailedError,
             "412 LeaseIdMissing should map to PreconditionFailedError");
 
-    FileProperties|Error leaseMismatch =
-            fileClient->getFileProperties("/__err-412-LeaseIdMismatchWithFileOperation");
+    FileProperties|Error leaseMismatch = fileClient->getFileProperties("/__err-412-LeaseIdMismatchWithFileOperation");
     test:assertTrue(leaseMismatch is PreconditionFailedError,
             "412 LeaseIdMismatchWithFileOperation should map to PreconditionFailedError");
 
     FileProperties|Error leaseLost = fileClient->getFileProperties("/__err-412-LeaseLost");
-    test:assertTrue(leaseLost is PreconditionFailedError,
-            "412 LeaseLost should map to PreconditionFailedError");
+    test:assertTrue(leaseLost is PreconditionFailedError, "412 LeaseLost should map to PreconditionFailedError");
 
     FileProperties|Error sharing = fileClient->getFileProperties("/__err-409-SharingViolation");
     test:assertTrue(sharing is ConflictError, "409 SharingViolation should map to ConflictError");
@@ -1080,10 +1050,8 @@ function testClientSideErrorsCarryNoDetail() returns error? {
     Client|Error bad = new ("share", auth = {accountName: "acct", accountKey: "not base64!!!"});
     if bad is Error {
         test:assertTrue(bad !is ServiceError, "a client-side init failure must not be a ServiceError");
-        test:assertFalse(bad.detail().hasKey("errorCode"),
-                "a client-side error must not carry a fabricated errorCode");
-        test:assertFalse(bad.detail().hasKey("httpStatus"),
-                "a client-side error must not carry an httpStatus");
+        test:assertFalse(bad.detail().hasKey("errorCode"), "a client-side error must not carry a fabricated errorCode");
+        test:assertFalse(bad.detail().hasKey("httpStatus"), "a client-side error must not carry an httpStatus");
     } else {
         test:assertFail("expected a client-side error for a non-base64 key");
     }
@@ -1095,8 +1063,7 @@ function testClientSideErrorsCarryNoDetail() returns error? {
     byte[][] longChunks = ["abcdef".toBytes(), "ghijkl".toBytes()];
     Error? overflow = fileClient->uploadFromStream(longChunks.toStream(), 5, "/overflow.txt");
     if overflow is Error {
-        test:assertTrue(overflow !is ServiceError,
-                "a connector-raised error must not be a ServiceError");
+        test:assertTrue(overflow !is ServiceError, "a connector-raised error must not be a ServiceError");
         test:assertFalse(overflow.detail().hasKey("errorCode"),
                 "a connector-raised error must not carry a fabricated errorCode");
         test:assertFalse(overflow.detail().hasKey("httpStatus"),
@@ -1123,8 +1090,7 @@ function testShareLeaseLifecycle() returns error? {
     string|Error invalidHigh = fileClient->acquireShareLease(61);
     test:assertTrue(invalidHigh is Error && invalidHigh !is ServiceError, "expected an invalid duration to fail locally");
 
-    string leaseId = check fileClient->acquireShareLease(-1,
-            "11111111-1111-1111-1111-111111111111");
+    string leaseId = check fileClient->acquireShareLease(-1, "11111111-1111-1111-1111-111111111111");
     test:assertEquals(leaseId, "11111111-1111-1111-1111-111111111111");
 
     ShareProperties props = check fileClient->getShareProperties();
@@ -1138,8 +1104,7 @@ function testShareLeaseLifecycle() returns error? {
 
     check fileClient->renewShareLease(leaseId);
 
-    string changed = check fileClient->changeShareLease(leaseId,
-            "22222222-2222-2222-2222-222222222222");
+    string changed = check fileClient->changeShareLease(leaseId, "22222222-2222-2222-2222-222222222222");
     test:assertEquals(changed, "22222222-2222-2222-2222-222222222222");
 
     // The old id no longer works after the change.
@@ -1152,16 +1117,14 @@ function testShareLeaseLifecycle() returns error? {
 
     // Breaking with no lease in place conflicts.
     int|Error nothingToBreak = fileClient->breakShareLease();
-    test:assertTrue(nothingToBreak is ConflictError,
-            "expected breaking without a lease to conflict");
+    test:assertTrue(nothingToBreak is ConflictError, "expected breaking without a lease to conflict");
 
     // Break reports how long until the lease is gone; the service may round the
     // remaining time down.
     string reacquired = check fileClient->acquireShareLease(15);
     test:assertTrue(reacquired.length() > 0);
     int remaining = check fileClient->breakShareLease(5);
-    test:assertTrue(remaining >= 0 && remaining <= 5,
-            "expected the break period to be at most the requested 5s");
+    test:assertTrue(remaining >= 0 && remaining <= 5, "expected the break period to be at most the requested 5s");
 }
 
 @test:Config {}
@@ -1183,8 +1146,7 @@ function testFileLeaseLifecycle() returns error? {
     string|Error second = fileClient->acquireLease("/locked.txt");
     test:assertTrue(second is ConflictError, "expected LeaseAlreadyPresent to map to ConflictError");
 
-    string changed = check fileClient->changeLease("/locked.txt", leaseId,
-            "33333333-3333-3333-3333-333333333333");
+    string changed = check fileClient->changeLease("/locked.txt", leaseId, "33333333-3333-3333-3333-333333333333");
     test:assertEquals(changed, "33333333-3333-3333-3333-333333333333");
 
     // Releasing with the superseded id conflicts; the changed id releases.
@@ -1196,8 +1158,7 @@ function testFileLeaseLifecycle() returns error? {
     test:assertTrue(props.leaseState is ()|AVAILABLE, "expected no lease after release");
 
     // Break needs no id; the file is immediately leasable again.
-    string beforeBreak = check fileClient->acquireLease("/locked.txt",
-            "44444444-4444-4444-4444-444444444444");
+    string beforeBreak = check fileClient->acquireLease("/locked.txt", "44444444-4444-4444-4444-444444444444");
     test:assertEquals(beforeBreak, "44444444-4444-4444-4444-444444444444");
     check fileClient->breakLease("/locked.txt");
     string afterBreak = check fileClient->acquireLease("/locked.txt");
@@ -1228,8 +1189,7 @@ function testShareSnapshotLifecycle() returns error? {
     check fileClient->deleteFile("/snapdir/keep.txt");
 
     // Snapshot reads serve the frozen content; the live share serves the new content.
-    stream<byte[], Error?> old = check fileClient->getFile("/versioned.txt",
-            {snapshotId: snapshot.snapshotId});
+    stream<byte[], Error?> old = check fileClient->getFile("/versioned.txt", {snapshotId: snapshot.snapshotId});
     test:assertEquals(check collectBytes(old), "version one".toBytes());
     test:assertEquals(check readAll(fileClient, "/versioned.txt"), "version two!".toBytes());
 
@@ -1237,13 +1197,11 @@ function testShareSnapshotLifecycle() returns error? {
     if check file:test(localTarget, file:EXISTS) {
         check file:remove(localTarget);
     }
-    check fileClient->downloadFile("/versioned.txt", localTarget,
-            {snapshotId: snapshot.snapshotId});
+    check fileClient->downloadFile("/versioned.txt", localTarget, {snapshotId: snapshot.snapshotId});
     test:assertEquals(check io:fileReadString(localTarget), "version one");
 
     // Snapshot listing still sees the file deleted from the live share.
-    stream<Entry, Error?> snapEntries = check fileClient->list("/snapdir",
-            {snapshotId: snapshot.snapshotId});
+    stream<Entry, Error?> snapEntries = check fileClient->list("/snapdir", {snapshotId: snapshot.snapshotId});
     Entry[] frozen = check collectEntries(snapEntries);
     test:assertEquals(entryPaths(frozen), ["/snapdir/keep.txt"]);
     stream<Entry, Error?> liveEntries = check fileClient->list("/snapdir");
@@ -1264,8 +1222,7 @@ function testShareSnapshotLifecycle() returns error? {
     if check file:test(missTarget, file:EXISTS) {
         check file:remove(missTarget);
     }
-    Error? gone = fileClient->downloadFile("/versioned.txt", missTarget,
-            {snapshotId: snapshot.snapshotId});
+    Error? gone = fileClient->downloadFile("/versioned.txt", missTarget, {snapshotId: snapshot.snapshotId});
     test:assertTrue(gone is NotFoundError, "expected a deleted snapshot to read as NotFound");
 }
 
@@ -1316,8 +1273,7 @@ function testSetShareProperties() returns error? {
         Error? tierSet = fileClient->setShareProperties({accessTier: HOT});
         if tierSet is () {
             ShareProperties ignored = check fileClient->getShareProperties();
-            test:assertTrue(ignored.accessTier != HOT,
-                    "expected the tier change to be ignored on a premium share");
+            test:assertTrue(ignored.accessTier != HOT, "expected the tier change to be ignored on a premium share");
         }
         check fileClient->setShareProperties({quotaInGb: 50});
         ShareProperties premiumProps = check fileClient->getShareProperties();
@@ -1385,10 +1341,8 @@ function testSetDirectoryProperties() returns error? {
     check fileClient->setDirectoryProperties("/tuned",
             {smbProperties: {ntfsFileAttributes: [DIRECTORY, READ_ONLY, HIDDEN]}});
 
-    Error? withoutFlag = fileClient->setDirectoryProperties("/tuned",
-            {smbProperties: {ntfsFileAttributes: [HIDDEN]}});
-    test:assertTrue(withoutFlag is Error,
-            "expected an attribute set without Directory to be rejected on a directory");
+    Error? withoutFlag = fileClient->setDirectoryProperties("/tuned", {smbProperties: {ntfsFileAttributes: [HIDDEN]}});
+    test:assertTrue(withoutFlag is Error, "expected an attribute set without Directory to be rejected on a directory");
 
     Error? missing = fileClient->setDirectoryProperties("/no-such-dir", {});
     test:assertTrue(missing is NotFoundError, "expected a missing directory to fail");
@@ -1492,8 +1446,7 @@ function testSmbHandles() returns error? {
     test:assertEquals(closedOne.closedHandles, 1);
     test:assertEquals(closedOne.failedHandles, 0);
 
-    CloseHandlesInfo closedAll = check fileClient->forceCloseDirectoryHandles("/hdir",
-            recursive = true);
+    CloseHandlesInfo closedAll = check fileClient->forceCloseDirectoryHandles("/hdir", recursive = true);
     test:assertEquals(closedAll.closedHandles, 1);
 }
 
@@ -1607,8 +1560,7 @@ function testGenerateShareAndFileSas() returns error? {
     Client fileClient = check newShareClient(share);
     time:Utc expiry = check time:utcFromString("2026-08-01T00:00:00Z");
 
-    string shareSas = check fileClient.generateShareSas(
-            {expiryTime: expiry, permissions: {read: true, list: true}});
+    string shareSas = check fileClient.generateShareSas( {expiryTime: expiry, permissions: {read: true, list: true}});
     map<string> shareParams = sasParams(shareSas);
     test:assertEquals(shareParams["sp"], "rl");
     test:assertTrue(shareParams.hasKey("sig"), "expected a signature");
@@ -1633,8 +1585,7 @@ function testGenerateShareAndFileSas() returns error? {
     Client sasClient = check new (share, auth = {
         sasUrl: string `${sasBaseUrl()}?sv=2025-05-05&sp=rl&se=2026-08-01T00%3A00%3A00Z&sig=ZmFrZQ%3D%3D`
     });
-    string|Error denied = sasClient.generateShareSas(
-            {expiryTime: expiry, permissions: {read: true}});
+    string|Error denied = sasClient.generateShareSas( {expiryTime: expiry, permissions: {read: true}});
     test:assertTrue(denied is Error && denied !is ServiceError,
             "expected SAS generation without an account key to fail");
 }
@@ -1665,8 +1616,7 @@ function testSasGenerationRequiresIdentifierOrExpiryAndPermissions() returns err
     test:assertTrue(neither is Error && neither !is ServiceError,
             "expected SAS generation with no identifier, expiry, or permissions to fail client-side");
     if neither is Error {
-        test:assertEquals(neither.message(),
-                "either identifier, or expiryTime and permissions, must be set");
+        test:assertEquals(neither.message(), "either identifier, or expiryTime and permissions, must be set");
     }
 
     string|Error expiryOnly = fileClient.generateSas("/data.txt", {expiryTime: expiry});
@@ -1689,8 +1639,7 @@ function testGenerateUserDelegationSas() returns error? {
     check admin->createShare(share);
     Client fileClient = check newShareClient(share);
     time:Utc keyStart = [time:utcNow()[0], 0];
-    UserDelegationKey key = check keyAdmin->getUserDelegationKey(keyStart,
-            time:utcAddSeconds(keyStart, 86400));
+    UserDelegationKey key = check keyAdmin->getUserDelegationKey(keyStart, time:utcAddSeconds(keyStart, 86400));
     time:Utc expiry = time:utcAddSeconds(keyStart, 3600);
 
     string shareToken = check fileClient.generateShareUserDelegationSas(
@@ -1725,8 +1674,7 @@ function testUserDelegationSasRejectsIdentifierAndRequiresExplicitValues() retur
     };
     time:Utc expiry = time:utcAddSeconds(keyStart, 3600);
 
-    string|Error identifierOnly = fileClient.generateShareUserDelegationSas(
-            {identifier: "backup-policy"}, key);
+    string|Error identifierOnly = fileClient.generateShareUserDelegationSas( {identifier: "backup-policy"}, key);
     test:assertTrue(identifierOnly is Error && identifierOnly !is ServiceError,
             "expected a user delegation SAS with an identifier to fail client-side");
     if identifierOnly is Error {
@@ -1739,13 +1687,11 @@ function testUserDelegationSasRejectsIdentifierAndRequiresExplicitValues() retur
     test:assertTrue(identifierAlongside is Error && identifierAlongside !is ServiceError,
             "expected an identifier alongside explicit values to fail client-side");
 
-    string|Error expiryOnly = fileClient.generateShareUserDelegationSas(
-            {expiryTime: expiry}, key);
+    string|Error expiryOnly = fileClient.generateShareUserDelegationSas( {expiryTime: expiry}, key);
     test:assertTrue(expiryOnly is Error && expiryOnly !is ServiceError,
             "expected a user delegation SAS without permissions to fail client-side");
     if expiryOnly is Error {
-        test:assertEquals(expiryOnly.message(),
-                "expiryTime and permissions must be set for a user delegation SAS");
+        test:assertEquals(expiryOnly.message(), "expiryTime and permissions must be set for a user delegation SAS");
     }
 }
 
@@ -1893,13 +1839,11 @@ function testStreamFailurePaths() returns error? {
     Client fileClient = check newShareClient(share);
 
     stream<Entry, Error?>|Error missingDirectory = fileClient->list("/no-such-dir");
-    test:assertTrue(missingDirectory is NotFoundError,
-            "expected listing a missing directory to fail");
+    test:assertTrue(missingDirectory is NotFoundError, "expected listing a missing directory to fail");
 
     stream<byte[], Error?>|Error missingContent = fileClient->getFile("/absent.txt");
     if missingContent is Error {
-        test:assertTrue(missingContent is NotFoundError,
-                "expected opening a missing file to fail as NotFound");
+        test:assertTrue(missingContent is NotFoundError, "expected opening a missing file to fail as NotFound");
     } else {
         byte[]|error collected = collectBytes(missingContent);
         test:assertTrue(collected is error, "expected reading a missing file to fail");
@@ -1958,8 +1902,7 @@ function testSasRoundtrip() returns error? {
     if liveRun {
         // SasConfig derives its endpoint from the account name, so it can only target
         // the real service.
-        Client sasClient = check new (share,
-                auth = {accountName: liveAccountName, sasToken: token});
+        Client sasClient = check new (share, auth = {accountName: liveAccountName, sasToken: token});
         check sasClient->deleteFile("/sas-probe.txt");
     }
 }
@@ -2006,8 +1949,7 @@ function testLiveEntraAuth() returns error? {
 function testLiveEntraDefaultChainAuth() returns error? {
     // A NotFound answer for a nonexistent share proves the token was both authenticated
     // and authorized; a missing role surfaces as an authorization error instead.
-    Client entraClient = check new ("entra-probe-share",
-            auth = {kind: "default", accountName: liveAccountName});
+    Client entraClient = check new ("entra-probe-share", auth = {kind: "default", accountName: liveAccountName});
     FileProperties|Error result = entraClient->getFileProperties("/probe.txt");
     if result is FileProperties {
         test:assertFail("expected NotFound for a nonexistent share, but got file properties");
@@ -2133,8 +2075,7 @@ function testGetFileJsonTargets() returns error? {
     TypedReadMetric asRecord = check fileClient->getFile("/metrics.json");
     test:assertEquals(asRecord, {quarter: "q1", revenue: 1250000});
 
-    check fileClient->uploadContent("[{\"name\":\"a\",\"qty\":1},{\"name\":\"b\",\"qty\":2}]",
-            "/rows.json");
+    check fileClient->uploadContent("[{\"name\":\"a\",\"qty\":1},{\"name\":\"b\",\"qty\":2}]", "/rows.json");
     TypedReadRow[] asArray = check fileClient->getFile("/rows.json");
     test:assertEquals(asArray, [{name: "a", qty: 1}, {name: "b", qty: 2}]);
 
@@ -2147,8 +2088,7 @@ function testGetFileJsonTargets() returns error? {
 
     check fileClient->uploadContent("{not json", "/broken.json");
     json|Error broken = fileClient->getFile("/broken.json");
-    test:assertTrue(broken is Error && broken !is ServiceError,
-            "malformed JSON must fail the typed read client-side");
+    test:assertTrue(broken is Error && broken !is ServiceError, "malformed JSON must fail the typed read client-side");
     if broken is Error {
         test:assertTrue(broken.message().startsWith("the file content does not bind"),
                 "the binding error must state the content does not bind");
@@ -2246,8 +2186,7 @@ function testGetFileFormatOverrideAndRefusal() returns error? {
     test:assertTrue(unresolved is Error && unresolved !is ServiceError,
             "a record target with an unresolvable format must fail client-side");
     if unresolved is Error {
-        test:assertTrue(unresolved.message().includes("fileFormat"),
-                "the error must point at the fileFormat override");
+        test:assertTrue(unresolved.message().includes("fileFormat"), "the error must point at the fileFormat override");
     }
 
     // The explicit override resolves it.

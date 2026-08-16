@@ -114,8 +114,7 @@ public final class ListOps {
                 ShareFileItem item = current.items.next();
                 BMap<BString, Object> entry = RecordMapper.entry(item, current.path);
                 if (item.isDirectory() && recursive) {
-                    String childPath = current.path.isEmpty()
-                            ? item.getName() : current.path + "/" + item.getName();
+                    String childPath = current.path.isEmpty() ? item.getName() : current.path + "/" + item.getName();
                     frames.push(new Frame(childPath, listing(childPath)));
                 }
                 return entry;

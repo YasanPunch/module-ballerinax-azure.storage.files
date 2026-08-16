@@ -224,24 +224,20 @@ isolated function createPollService(Listener l) returns task:Service {
 
 isolated function externInit(Listener listenerObj, string shareName, ListenerConfiguration config,
         Caller caller) returns Error? = @java:Method {
-    name: "initListener",
-    'class: "io.ballerina.lib.azure.storage.files.server.Listener"
+    name: "initListener", 'class: "io.ballerina.lib.azure.storage.files.server.Listener"
 } external;
 
 isolated function externAttach(Listener listenerObj, Service serviceRef, string[]|string? name)
         returns error? = @java:Method {
-    name: "attachService",
-    'class: "io.ballerina.lib.azure.storage.files.server.Listener"
+    name: "attachService", 'class: "io.ballerina.lib.azure.storage.files.server.Listener"
 } external;
 
 isolated function externDetach(Listener listenerObj, Service serviceRef) returns error? = @java:Method {
-    name: "detachService",
-    'class: "io.ballerina.lib.azure.storage.files.server.Listener"
+    name: "detachService", 'class: "io.ballerina.lib.azure.storage.files.server.Listener"
 } external;
 
 isolated function externStop(Listener listenerObj) returns error? = @java:Method {
-    name: "stopListener",
-    'class: "io.ballerina.lib.azure.storage.files.server.Listener"
+    name: "stopListener", 'class: "io.ballerina.lib.azure.storage.files.server.Listener"
 } external;
 
 isolated function poll(Listener listenerObj) returns error? = @java:Method {

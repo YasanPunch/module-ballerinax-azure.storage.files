@@ -74,8 +74,7 @@ public final class ValueUtils {
     public static OffsetDateTime fromUtc(BArray utc) {
         // A time:Utc value is always the [int, decimal] tuple.
         long seconds = utc.getInt(0);
-        long nanos = ((BDecimal) utc.get(1)).decimalValue()
-                .multiply(BigDecimal.valueOf(1_000_000_000)).longValue();
+        long nanos = ((BDecimal) utc.get(1)).decimalValue().multiply(BigDecimal.valueOf(1_000_000_000)).longValue();
         return Instant.ofEpochSecond(seconds, nanos).atOffset(ZoneOffset.UTC);
     }
 

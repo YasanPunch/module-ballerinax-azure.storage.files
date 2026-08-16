@@ -46,8 +46,7 @@ isolated function serializeRecord(record {} content, string destinationPath,
     if format is XML {
         xml|xmldata:Error document = xmldata:toXml(content);
         if document is xmldata:Error {
-            return error Error("record {} content could not be serialized as XML: "
-                    + document.message(), document);
+            return error Error("record {} content could not be serialized as XML: " + document.message(), document);
         }
         return document.toString();
     }

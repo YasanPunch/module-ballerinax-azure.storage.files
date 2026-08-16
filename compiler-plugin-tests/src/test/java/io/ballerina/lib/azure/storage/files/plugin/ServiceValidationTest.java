@@ -69,17 +69,15 @@ public class ServiceValidationTest {
     }
 
     @Test
-    public void testInvalidOnFileJsonJsonArray() {
-        DiagnosticResult result = loadPackage("invalid_on_file_json_json_array");
-        assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileJson");
+    public void testValidTypedJsonBareArrayService() {
+        DiagnosticResult result = loadPackage("valid_on_file_json_json_array");
+        assertEquals(result.errorCount(), 0);
     }
 
     @Test
-    public void testInvalidOnFileJsonBareJson() {
-        DiagnosticResult result = loadPackage("invalid_on_file_json_bare");
-        assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileJson");
+    public void testValidTypedJsonBareService() {
+        DiagnosticResult result = loadPackage("valid_on_file_json_bare");
+        assertEquals(result.errorCount(), 0);
     }
 
     @Test

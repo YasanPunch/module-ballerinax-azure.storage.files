@@ -77,8 +77,7 @@ public final class FileOps {
     }
 
     /** Updates a file's size, content headers, SMB, and POSIX properties. */
-    public static Object setFileProperties(Environment env, BObject self, BString path,
-            BMap<BString, Object> options) {
+    public static Object setFileProperties(Environment env, BObject self, BString path, BMap<BString, Object> options) {
         return BallerinaAzureClient.invoke(env, () -> {
             ShareFileClient client = fileClient(self, path);
             Object newSize = options.get(NEW_FILE_SIZE_BYTES);
@@ -111,8 +110,7 @@ public final class FileOps {
     }
 
     /** Replaces a file's user-defined metadata. */
-    public static Object setFileMetadata(Environment env, BObject self, BString path,
-                                         BMap<BString, BString> metadata) {
+    public static Object setFileMetadata(Environment env, BObject self, BString path, BMap<BString, BString> metadata) {
         return BallerinaAzureClient.invoke(env, () -> {
             fileClient(self, path).setMetadata(ValueUtils.toStringMap(metadata));
             return null;
@@ -120,8 +118,7 @@ public final class FileOps {
     }
 
     /** Replaces a file's HTTP content headers, keeping its current size. */
-    public static Object setContentHeaders(Environment env, BObject self, BString path,
-                                           BMap<BString, Object> headers) {
+    public static Object setContentHeaders(Environment env, BObject self, BString path, BMap<BString, Object> headers) {
         return BallerinaAzureClient.invoke(env, () -> {
             ShareFileClient client = fileClient(self, path);
             long currentSize = client.getProperties().getContentLength();

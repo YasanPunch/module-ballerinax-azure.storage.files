@@ -113,8 +113,7 @@ public isolated client class Client {
     # + directoryPath - The share-relative path of the directory to list
     # + options - Optional listing options (prefix, recursion, extended info)
     # + return - A stream of `Entry`, or an `Error`
-    isolated remote function list(string directoryPath, ListOptions? options = ())
-            returns stream<Entry, Error?>|Error {
+    isolated remote function list(string directoryPath, ListOptions? options = ()) returns stream<Entry, Error?>|Error {
         EntryStreamGenerator generator = new;
         Error? result = newEntryIterator(self, generator, directoryPath, options ?: {});
         if result is Error {
@@ -225,18 +224,19 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
 
-    # Uploads in-memory content to the bound share. A `byte[]` is written as-is, a `string`
-    # as raw text, an `xml` value as its textual form, and a `string[][]` as CSV rows.
-    # A record (which includes any map of `anydata` members) or a record array is serialized
-    # per the format inferred from the destination path's extension or set with
-    # `UploadContentOptions.fileFormat`: a record becomes a JSON or an XML document (never
-    # CSV), and a record array becomes CSV rows headed by the first record's field names.
+    # Uploads in-memory content to the bound share.
     #
     # ```ballerina
     # check fileClient->uploadContent({"revenue": 1250000, "growth": 0.12}, "/2026/q1/metrics.json");
     # ```
     #
-    # + content - The content to upload
+    # + content - The content to upload: a `byte[]` is written as-is, a `string` as raw text,
+    #             an `xml` value as its textual form, and a `string[][]` as CSV rows. A record
+    #             (which includes any map of `anydata` members) or a record array is serialized
+    #             per the format inferred from the destination path's extension or set with
+    #             `UploadContentOptions.fileFormat`: a record becomes a JSON or an XML document
+    #             (never CSV), and a record array becomes CSV rows headed by the first record's
+    #             field names
     # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, permission, SMB properties, format override)
     # + return - An `Error` if the upload failed, otherwise `()`
@@ -353,12 +353,7 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
 
-    # Retrieves a file's content in the form the target type selects: raw bytes, UTF-8
-    # text, a JSON or XML value, CSV rows, a record or record array, a lazy byte stream,
-    # or a lazy stream of CSV-bound records. Binding is strict: content that does not
-    # match the target type fails with a client-side `Error`. A record or record array
-    # target binds per the format resolved from `GetFileOptions.fileFormat` when set,
-    # else from the path's extension (`.json`, `.xml`, `.csv`).
+    # Retrieves a file's content in the form the target type selects.
     #
     # ```ballerina
     # byte[] raw = check fileClient->getFile("/2026/q1/report.pdf");
@@ -368,7 +363,14 @@ public isolated client class Client {
     #
     # + path - The source share-relative path
     # + options - Optional retrieval options (range, snapshot, record binding format)
-    # + targetType - The form to retrieve the content in, inferred from the assignment target
+    # + targetType - The form to retrieve the content in, inferred from the assignment target:
+    #                raw bytes (`byte[]`), UTF-8 text (`string`), a `json` or `xml` value, CSV rows
+    #                (`string[][]`), a record or record array, a lazy byte stream
+    #                (`stream<byte[], error?>`), or a lazy stream of CSV-bound records. Binding is
+    #                strict: content that does not match the target fails with a client-side
+    #                `Error`. A record or record array target binds per the format resolved from
+    #                `GetFileOptions.fileFormat` when set, else from the path's extension
+    #                (`.json`, `.xml`, `.csv`)
     # + return - The content in the requested form, or an `Error`
     isolated remote function getFile(string path, GetFileOptions? options = (),
             typedesc<RetrievableContent> targetType = <>) returns targetType|Error = @java:Method {
@@ -613,8 +615,7 @@ public isolated client class Client {
     #
     # + directoryPath - The share-relative path of the directory
     # + return - The open handles, or an `Error`
-    isolated remote function listDirectoryHandles(string directoryPath)
-            returns HandleInfo[]|Error = @java:Method {
+    isolated remote function listDirectoryHandles(string directoryPath) returns HandleInfo[]|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.HandleOps"
     } external;
 
@@ -640,8 +641,7 @@ public isolated client class Client {
     #
     # + options - The properties to change; only what is set is changed
     # + return - An `Error` if the properties could not be changed, otherwise `()`
-    isolated remote function setShareProperties(ShareSetPropertiesOptions options)
-            returns Error? = @java:Method {
+    isolated remote function setShareProperties(ShareSetPropertiesOptions options) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.ShareOps"
     } external;
 
@@ -681,8 +681,7 @@ public isolated client class Client {
     #
     # + identifiers - The complete set of policies the share should carry
     # + return - An `Error` if the policies could not be set, otherwise `()`
-    isolated remote function setShareAccessPolicy(SignedIdentifier[] identifiers)
-            returns Error? = @java:Method {
+    isolated remote function setShareAccessPolicy(SignedIdentifier[] identifiers) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.PolicyOps"
     } external;
 
@@ -715,8 +714,7 @@ public isolated client class Client {
     #
     # + values - What the SAS grants: validity window and permissions, or a stored policy reference
     # + return - The SAS token, or an `Error`
-    public isolated function generateShareSas(ShareSasSignatureValues values)
-            returns string|Error = @java:Method {
+    public isolated function generateShareSas(ShareSasSignatureValues values) returns string|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.SasOps"
     } external;
 

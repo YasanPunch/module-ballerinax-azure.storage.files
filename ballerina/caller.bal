@@ -39,20 +39,22 @@ public isolated client class Caller {
         return self.'client->downloadFile(sourcePath, destinationPath, options);
     }
 
-    # Retrieves a file's content in the form the target type selects: raw bytes, UTF-8
-    # text, a JSON or XML value, CSV rows, a record or record array, a lazy byte stream,
-    # or a lazy stream of CSV-bound records. Binding is strict. A record or record array
-    # target binds per the format resolved from `GetFileOptions.fileFormat` when set,
-    # else from the path's extension (`.json`, `.xml`, `.csv`).
+    # Retrieves a file's content in the form the target type selects.
     #
     # + path - The source share-relative path
     # + options - Optional retrieval options (range, snapshot, record binding format)
-    # + targetType - The form to retrieve the content in, inferred from the assignment target
+    # + targetType - The form to retrieve the content in, inferred from the assignment target:
+    #                raw bytes (`byte[]`), UTF-8 text (`string`), a `json` or `xml` value, CSV rows
+    #                (`string[][]`), a record or record array, a lazy byte stream
+    #                (`stream<byte[], error?>`), or a lazy stream of CSV-bound records. Binding is
+    #                strict: content that does not match the target fails with a client-side
+    #                `Error`. A record or record array target binds per the format resolved from
+    #                `GetFileOptions.fileFormat` when set, else from the path's extension
+    #                (`.json`, `.xml`, `.csv`)
     # + return - The content in the requested form, or an `Error`
     isolated remote function getFile(string path, GetFileOptions? options = (),
             typedesc<RetrievableContent> targetType = <>) returns targetType|Error = @java:Method {
-        name: "callerGetFile",
-        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
+        name: "callerGetFile", 'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
     } external;
 
     # Uploads a local file to the watched share.
@@ -66,13 +68,15 @@ public isolated client class Caller {
         return self.'client->uploadFile(sourcePath, destinationPath, options);
     }
 
-    # Uploads in-memory content to the watched share. A `byte[]` is written as-is, a `string`
-    # as raw text, `xml` as its textual form, and a `string[][]` as CSV rows. A record (which
-    # includes any map of `anydata` members) or a record array is serialized per the format
-    # inferred from the destination path's extension or set with `UploadContentOptions.fileFormat`:
-    # a record becomes a JSON or an XML document (never CSV), and a record array becomes CSV rows.
+    # Uploads in-memory content to the watched share.
     #
-    # + content - The content to upload
+    # + content - The content to upload: a `byte[]` is written as-is, a `string` as raw text,
+    #             an `xml` value as its textual form, and a `string[][]` as CSV rows. A record
+    #             (which includes any map of `anydata` members) or a record array is serialized
+    #             per the format inferred from the destination path's extension or set with
+    #             `UploadContentOptions.fileFormat`: a record becomes a JSON or an XML document
+    #             (never CSV), and a record array becomes CSV rows headed by the first record's
+    #             field names
     # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, permission, SMB properties, format override)
     # + return - An `Error` if the upload failed, otherwise `()`
@@ -154,8 +158,7 @@ public isolated client class Caller {
     # + directoryPath - The share-relative path of the directory to list
     # + options - Optional listing options (prefix, recursion, extended info)
     # + return - A stream of `Entry`, or an `Error`
-    isolated remote function list(string directoryPath, ListOptions? options = ())
-            returns stream<Entry, Error?>|Error {
+    isolated remote function list(string directoryPath, ListOptions? options = ()) returns stream<Entry, Error?>|Error {
         return self.'client->list(directoryPath, options);
     }
 }

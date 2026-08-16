@@ -203,8 +203,7 @@ public final class RecordMapper {
         }
         ShareProtocols protocols = p.getProtocols();
         if (protocols != null) {
-            BArray array = ValueCreator.createArrayValue(
-                    TypeCreator.createArrayType(PredefinedTypes.TYPE_STRING));
+            BArray array = ValueCreator.createArrayValue(TypeCreator.createArrayType(PredefinedTypes.TYPE_STRING));
             if (protocols.isSmbEnabled()) {
                 array.append(StringUtils.fromString(PROTOCOL_SMB));
             }
@@ -391,8 +390,7 @@ public final class RecordMapper {
         String eTag = item.getProperties() == null || item.getProperties().getETag() == null
                 ? "" : item.getProperties().getETag();
         record.put(FILE_INFO_E_TAG, StringUtils.fromString(eTag));
-        OffsetDateTime lastModified = item.getProperties() == null
-                ? null : item.getProperties().getLastModified();
+        OffsetDateTime lastModified = item.getProperties() == null ? null : item.getProperties().getLastModified();
         record.put(FILE_INFO_LAST_MODIFIED, ValueUtils.toUtc(lastModified == null
                 ? OffsetDateTime.now(ZoneOffset.UTC) : lastModified));
         return record;
@@ -419,8 +417,7 @@ public final class RecordMapper {
     }
 
     /** Builds a {@code ShareSnapshotInfo} record. */
-    public static BMap<BString, Object> shareSnapshotInfo(String snapshotId, String eTag,
-            OffsetDateTime lastModified) {
+    public static BMap<BString, Object> shareSnapshotInfo(String snapshotId, String eTag, OffsetDateTime lastModified) {
         BMap<BString, Object> record = newRecord(RECORD_SHARE_SNAPSHOT_INFO);
         record.put(OptionsReader.SNAPSHOT_ID, StringUtils.fromString(snapshotId));
         record.put(E_TAG, StringUtils.fromString(eTag == null ? "" : eTag));
@@ -605,8 +602,7 @@ public final class RecordMapper {
         BMap<BString, Object> smbRecord = newRecord(RECORD_SMB_PROPERTIES);
         EnumSet<NtfsFileAttributes> attributes = smb.getNtfsFileAttributes();
         if (attributes != null) {
-            BArray array = ValueCreator.createArrayValue(
-                    TypeCreator.createArrayType(PredefinedTypes.TYPE_STRING));
+            BArray array = ValueCreator.createArrayValue(TypeCreator.createArrayType(PredefinedTypes.TYPE_STRING));
             for (NtfsFileAttributes attribute : attributes) {
                 array.append(StringUtils.fromString(ntfsAttributeValue(attribute)));
             }

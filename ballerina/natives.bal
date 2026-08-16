@@ -20,22 +20,20 @@ import ballerina/jballerina.java;
 // Client lifecycle
 // ---------------------------------------------------------------------------
 
-isolated function initAdminClient(AdminClient adminClient, ClientConfiguration config)
-        returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.util.ClientInit"
+isolated function initAdminClient(AdminClient adminClient, ClientConfiguration config) returns Error? = @java:Method {
+    'class: "io.ballerina.lib.azure.storage.files.client.ClientInit"
 } external;
 
 isolated function initClient(Client fileClient, string shareName, ClientConfiguration config)
         returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.util.ClientInit"
+    'class: "io.ballerina.lib.azure.storage.files.client.ClientInit"
 } external;
 
 // Writes already-serialized upload content; record content is serialized in Ballerina
 // before reaching this call (see Client.uploadContent).
 isolated function externUploadContent(Client fileClient, byte[]|string|xml|string[][] content,
         string destinationPath, UploadContentOptions? options) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.client.TransferOps",
-    name: "uploadContent"
+    name: "uploadContent", 'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;
 
 // ---------------------------------------------------------------------------

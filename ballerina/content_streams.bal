@@ -69,12 +69,10 @@ class ContentCsvStream {
         if targetType !is typedesc<record {}> {
             options.header = ();
         }
-        stream<record {}|string[], error?>|csv:Error parsed =
-            csv:parseToStream(byteStream, options, targetType);
+        stream<record {}|string[], error?>|csv:Error parsed = csv:parseToStream(byteStream, options, targetType);
         if parsed is csv:Error {
             closeByteStreamQuietly(byteStream);
-            return error Error("CSV stream binding could not be created: "
-                    + parsed.message(), parsed);
+            return error Error("CSV stream binding could not be created: " + parsed.message(), parsed);
         }
         self.csvStream = parsed;
     }
@@ -92,8 +90,7 @@ class ContentCsvStream {
         if nextEntry is error {
             self.isClosed = true;
             closeRowStreamQuietly(self.csvStream);
-            return error Error("CSV content does not bind to the declared row type: "
-                    + nextEntry.message(), nextEntry);
+            return error Error("CSV content does not bind to the declared row type: " + nextEntry.message(), nextEntry);
         }
         return nextEntry;
     }
@@ -129,13 +126,10 @@ isolated function closeRowStreamQuietly(stream<record {}|string[], error?> rowSt
     }
 }
 
-isolated function externStreamIterator(ContentByteStream iterator)
-        returns ContentStreamEntry|error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.server.ContentStreams",
-    name: "streamIterator"
+isolated function externStreamIterator(ContentByteStream iterator) returns ContentStreamEntry|error? = @java:Method {
+    name: "streamIterator", 'class: "io.ballerina.lib.azure.storage.files.server.ContentStreams"
 } external;
 
 isolated function externByteStreamClose(ContentByteStream iterator) returns error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.server.ContentStreams",
-    name: "close"
+    name: "close", 'class: "io.ballerina.lib.azure.storage.files.server.ContentStreams"
 } external;

@@ -202,8 +202,7 @@ public final class TransferOps {
     }
 
     private static void closeQuietly(BObject generator) {
-        StorageFileInputStream stream =
-                (StorageFileInputStream) generator.getNativeData(NATIVE_INPUT_STREAM);
+        StorageFileInputStream stream = (StorageFileInputStream) generator.getNativeData(NATIVE_INPUT_STREAM);
         if (stream != null) {
             generator.addNativeData(NATIVE_INPUT_STREAM, null);
             stream.close();

@@ -127,8 +127,7 @@ public final class Listener {
             "content does not bind to the '" + ON_FILE_JSON + "' handler's declared type";
     private static final String XML_BIND_CONTEXT =
             "content does not bind to the '" + ON_FILE_XML + "' handler's declared type";
-    private static final String XML_PARSE_CONTEXT =
-            "content is not valid XML for the '" + ON_FILE_XML + "' handler";
+    private static final String XML_PARSE_CONTEXT = "content is not valid XML for the '" + ON_FILE_XML + "' handler";
 
     private Listener() {
     }
@@ -187,8 +186,7 @@ public final class Listener {
     public static Object attachService(BObject listenerObj, BObject service, Object name) {
         ListenerContext ctx = context(listenerObj);
         if (ctx.service != null) {
-            return FilesErrorCreator.clientError(
-                    "Only one service can be attached to a files:Listener", null);
+            return FilesErrorCreator.clientError("Only one service can be attached to a files:Listener", null);
         }
         try {
             ctx.serviceContext = parseService(service, name);
@@ -363,8 +361,7 @@ public final class Listener {
         // The minimum-age filter skips files that may still be being written.
         if (serviceContext.minFileAgeSeconds() != null && item.getProperties() != null
                 && item.getProperties().getLastModified() != null) {
-            long age = Duration.between(item.getProperties().getLastModified().toInstant(), Instant.now())
-                    .getSeconds();
+            long age = Duration.between(item.getProperties().getLastModified().toInstant(), Instant.now()).getSeconds();
             if (age < serviceContext.minFileAgeSeconds()) {
                 return;
             }
@@ -694,8 +691,7 @@ public final class Listener {
             handlers.put(methodName, new HandlerConfig(methodName, routing, afterProcess, afterError,
                     params.length, secondIsCaller, contentType));
         }
-        return new ServiceContext(watchedPath, recursive, fileNamePattern, minFileAgeSeconds,
-                handlers, onErrorArity);
+        return new ServiceContext(watchedPath, recursive, fileNamePattern, minFileAgeSeconds, handlers, onErrorArity);
     }
 
     // Resolves the watched path from the service's attach point: a resource path's segments
