@@ -306,7 +306,7 @@ public isolated client class Client {
         }
         if offset + buffer.length() != contentLength {
             int actual = offset + buffer.length();
-            return error Error(string `the source stream ended at ${actual} bytes but contentLength is ${contentLength}`);
+            return error Error(string `source stream ended at ${actual} bytes but contentLength is ${contentLength}`);
         }
         if buffer.length() > 0 {
             check writeStreamChunk(self, destinationPath, offset, buffer);
@@ -341,9 +341,15 @@ public isolated client class Client {
     #
     # + path - The source share-relative path
     # + options - Optional retrieval options (range, snapshot, record binding format)
-    # + targetType - The type the content binds to, inferred from the assignment target. Accepts
-    #                `byte[]`, `string`, `json`, `xml`, records, record arrays, and byte or CSV record streams
-    # + return - The content in the requested form, or an `Error`
+    # + targetType - Expected return type (to be used for automatic data binding).
+    #                Supported types:
+    #                - Raw bytes (`byte[]`) or UTF-8 text (`string`)
+    #                - A `json` or `xml` value
+    #                - Custom records (e.g., `Person`, `Person[]`), bound per `GetFileOptions.fileFormat`,
+    #                  else the path's extension (`.json`, `.xml`, `.csv`)
+    #                - A lazy byte stream (`stream<byte[], error?>`)
+    #                - A lazy stream of CSV-bound records (e.g., `stream<Person, error?>`)
+    # + return - The content in the requested form, or an `Error` on a failed retrieval or a data binding failure
     isolated remote function getFile(string path, GetFileOptions? options = (),
             typedesc<RetrievableType> targetType = <>) returns targetType|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
