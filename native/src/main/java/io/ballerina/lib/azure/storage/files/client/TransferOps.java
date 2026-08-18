@@ -66,7 +66,7 @@ public final class TransferOps {
     private static final int READ_CHUNK_BYTES = 64 * 1024;
 
     /** Uploads a local file to the share, creating the destination at the source's size. */
-    public static Object uploadFile(Environment env, BObject self, BString sourcePath,
+    public static Object uploadFromFile(Environment env, BObject self, BString sourcePath,
                                     BString destinationPath, Object options) {
         return BallerinaAzureClient.invoke(env, () -> {
             Path localPath = Path.of(sourcePath.getValue());
@@ -90,7 +90,7 @@ public final class TransferOps {
      * Uploads in-memory content (bytes, text, an XML document, or CSV rows) as a new file.
      * Record content never reaches this call: it is serialized on the Ballerina side first.
      */
-    public static Object uploadContent(Environment env, BObject self, Object content,
+    public static Object upload(Environment env, BObject self, Object content,
                                        BString destinationPath, Object options) {
         return BallerinaAzureClient.invoke(env, () -> {
             byte[] bytes = contentBytes(content);
@@ -135,7 +135,7 @@ public final class TransferOps {
     }
 
     /** Downloads a share file (or a range of it) to a local file. */
-    public static Object downloadFile(Environment env, BObject self, BString sourcePath,
+    public static Object download(Environment env, BObject self, BString sourcePath,
                                       BString destinationPath, Object options) {
         return BallerinaAzureClient.invoke(env, () -> {
             OptionsReader.DownloadArgs args = OptionsReader.downloadArgs(options);

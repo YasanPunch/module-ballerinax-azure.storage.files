@@ -35,7 +35,7 @@ service on backupWatcher {
     remote function onCreate(file:FileEvent event) {
         do {
             string name = check file:basename(event.name);
-            check share->uploadFile(event.name, string `/${name}`);
+            check share->uploadFromFile(event.name, string `/${name}`);
             log:printInfo("backed up", file = name, share = shareName);
         } on fail error e {
             log:printError("backup failed", 'error = e, localPath = event.name);

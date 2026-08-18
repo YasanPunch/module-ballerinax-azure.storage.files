@@ -26,7 +26,7 @@ configurable string shareName = "handout-example";
 public function main() returns error? {
     // Upload the report to hand out.
     files:Client share = check new (shareName, auth = {accountName, accountKey});
-    check share->uploadContent("Quarterly revenue is up 14%.", "/q2-summary.txt");
+    check share->upload("Quarterly revenue is up 14%.", "/q2-summary.txt");
 
     // Mint a read-only shared access signature for that one file, expiring in 24 hours.
     time:Utc expiry = time:utcAddSeconds(time:utcNow(), 86400);

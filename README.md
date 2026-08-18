@@ -90,7 +90,7 @@ Now, utilize the available connector operations.
 #### Upload a file
 
 ```ballerina
-check fileClient->uploadFile("./local/q1.pdf", "/reports/q1.pdf");
+check fileClient->uploadFromFile("./local/q1.pdf", "/reports/q1.pdf");
 ```
 
 #### Get the properties of a file

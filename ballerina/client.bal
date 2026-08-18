@@ -196,14 +196,14 @@ public isolated client class Client {
     #
     # ```ballerina
     # // ./reports/q1.pdf (local disk) --> /2026/q1/report.pdf (on the share)
-    # check fileClient->uploadFile("./reports/q1.pdf", "/2026/q1/report.pdf");
+    # check fileClient->uploadFromFile("./reports/q1.pdf", "/2026/q1/report.pdf");
     # ```
     #
     # + sourcePath - The path of the local file to upload, including the file name
     # + destinationPath - The share-relative path the file is written to, including the file name
     # + options - Optional upload options (headers, metadata)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadFile(string sourcePath, string destinationPath,
+    isolated remote function uploadFromFile(string sourcePath, string destinationPath,
             UploadOptions? options = ()) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
@@ -211,7 +211,7 @@ public isolated client class Client {
     # Uploads in-memory content to the bound share.
     #
     # ```ballerina
-    # check fileClient->uploadContent(<map<json>>{"revenue": 1250000, "growth": 0.12}, "/2026/q1/metrics.json");
+    # check fileClient->upload(<map<json>>{"revenue": 1250000, "growth": 0.12}, "/2026/q1/metrics.json");
     # ```
     #
     # + content - The content to upload. A record, a record array, or another `json` value is
@@ -219,7 +219,7 @@ public isolated client class Client {
     # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, format override)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadContent(UploadContent content,
+    isolated remote function upload(UploadContent content,
             string destinationPath, UploadContentOptions? options = ()) returns Error? {
         byte[]|string|xml|string[][] payload;
         if content is record {} {
@@ -233,12 +233,11 @@ public isolated client class Client {
             // both are handled above, so the residual json value is cast-safe.
             payload = check serializeJson(<json>content, destinationPath, options?.fileFormat);
         }
-        return externUploadContent(self, payload, destinationPath, options);
+        return externUpload(self, payload, destinationPath, options);
     }
 
     # Uploads a byte stream to the bound share. The total content length is required. There
-    # is no record stream upload, so collect records into a `record {}[]` and use
-    # `uploadContent`.
+    # is no record stream upload, so collect records into a `record {}[]` and use `upload`.
     #
     # + content - The byte stream to upload
     # + contentLength - The total length of the content, in bytes
@@ -320,14 +319,14 @@ public isolated client class Client {
     #
     # ```ballerina
     # // /2026/q1/report.pdf (on the share) --> ./reports/q1.pdf (local disk)
-    # check fileClient->downloadFile("/2026/q1/report.pdf", "./reports/q1.pdf");
+    # check fileClient->download("/2026/q1/report.pdf", "./reports/q1.pdf");
     # ```
     #
     # + sourcePath - The share-relative path of the file to download, including the file name
     # + destinationPath - The local path to write the downloaded file to (must not exist)
     # + options - Optional download options (range)
     # + return - An `Error` if the download failed, otherwise `()`
-    isolated remote function downloadFile(string sourcePath, string destinationPath,
+    isolated remote function download(string sourcePath, string destinationPath,
             DownloadOptions? options = ()) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;

@@ -34,9 +34,9 @@ public isolated client class Caller {
     # + destinationPath - The local path to write the downloaded file to (must not exist)
     # + options - Optional download options (range)
     # + return - An `Error` if the download failed, otherwise `()`
-    isolated remote function downloadFile(string sourcePath, string destinationPath,
+    isolated remote function download(string sourcePath, string destinationPath,
             DownloadOptions? options = ()) returns Error? {
-        return self.'client->downloadFile(sourcePath, destinationPath, options);
+        return self.'client->download(sourcePath, destinationPath, options);
     }
 
     # Retrieves a file's content in the form the target type selects.
@@ -57,9 +57,9 @@ public isolated client class Caller {
     # + destinationPath - The share-relative path the file is written to, including the file name
     # + options - Optional upload options (headers, metadata)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadFile(string sourcePath, string destinationPath,
+    isolated remote function uploadFromFile(string sourcePath, string destinationPath,
             UploadOptions? options = ()) returns Error? {
-        return self.'client->uploadFile(sourcePath, destinationPath, options);
+        return self.'client->uploadFromFile(sourcePath, destinationPath, options);
     }
 
     # Uploads in-memory content to the watched share.
@@ -69,9 +69,9 @@ public isolated client class Caller {
     # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, format override)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadContent(UploadContent content,
+    isolated remote function upload(UploadContent content,
             string destinationPath, UploadContentOptions? options = ()) returns Error? {
-        return self.'client->uploadContent(content, destinationPath, options);
+        return self.'client->upload(content, destinationPath, options);
     }
 
     # Deletes a file from the watched share.

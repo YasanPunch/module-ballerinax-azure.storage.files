@@ -110,7 +110,7 @@ public type CreateOptions record {|
     map<string> metadata?;
 |};
 
-# Options for the upload operations (`uploadFile`, `uploadContent`, `uploadFromStream`).
+# Options for the upload operations (`uploadFromFile`, `upload`, `uploadFromStream`).
 public type UploadOptions record {|
     # Content headers to set on the file, such as `Content-Type` and `Cache-Control`
     ContentHeaders contentHeaders?;
@@ -118,7 +118,7 @@ public type UploadOptions record {|
     map<string> metadata?;
 |};
 
-# The content forms accepted by `uploadContent`: raw bytes, text, a JSON or XML value,
+# The content forms accepted by `upload`: raw bytes, text, a JSON or XML value,
 # and records or record arrays serialized per the resolved `FileFormat`.
 public type UploadContent byte[]|string|json|xml|record {}|record {}[];
 
@@ -143,7 +143,7 @@ public enum FileFormat {
     CSV
 }
 
-# Options for `uploadContent`, extending the upload options with the content
+# Options for `upload`, extending the upload options with the content
 # serialization format.
 public type UploadContentOptions record {|
     *UploadOptions;
@@ -153,7 +153,7 @@ public type UploadContentOptions record {|
     FileFormat fileFormat?;
 |};
 
-# Options for the download operations (`downloadFile`, `getFileContent`).
+# Options for the download operations (`download`, `getFile`).
 public type DownloadOptions record {|
     # Download only this byte range instead of the whole file
     Range range?;

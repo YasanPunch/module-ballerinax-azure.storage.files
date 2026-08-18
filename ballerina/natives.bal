@@ -26,10 +26,10 @@ isolated function initClient(Client fileClient, string shareName, ClientConfigur
 } external;
 
 // Writes already-serialized upload content; record content is serialized in Ballerina
-// before reaching this call (see Client.uploadContent).
-isolated function externUploadContent(Client fileClient, byte[]|string|xml|string[][] content,
+// before reaching this call (see Client.upload).
+isolated function externUpload(Client fileClient, byte[]|string|xml|string[][] content,
         string destinationPath, UploadContentOptions? options) returns Error? = @java:Method {
-    name: "uploadContent", 'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
+    name: "upload", 'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;
 
 // The Azure Files Put Range cap: one range write is at most 4 MiB, HTTP 413 above it
@@ -88,7 +88,7 @@ isolated function closeEntryIterator(EntryStreamGenerator generator) returns Err
     'class: "io.ballerina.lib.azure.storage.files.client.ListOps"
 } external;
 
-# Backs the lazy byte stream returned by `Client.getFileContent`.
+# Backs the lazy byte stream a `Client.getFile` stream target returns.
 isolated class ContentStreamGenerator {
 
     # Reads the next chunk of the file content.

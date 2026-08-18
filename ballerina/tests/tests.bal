@@ -144,7 +144,7 @@ function testRetryAndTransportConfig() returns error? {
         retryDelaySeconds: 1,
         maxRetryDelaySeconds: 2
     });
-    check retryClient->uploadContent("with retry", "/retry.txt");
+    check retryClient->upload("with retry", "/retry.txt");
     test:assertEquals(check readAll(retryClient, "/retry.txt"), "with retry".toBytes());
 
     // A custom transport (connection pool + timeouts) still round-trips content.
@@ -160,7 +160,7 @@ function testRetryAndTransportConfig() returns error? {
             readTimeoutSeconds: 30
         }
     });
-    check pooledClient->uploadContent("pooled", "/pooled.txt");
+    check pooledClient->upload("pooled", "/pooled.txt");
     test:assertEquals(check readAll(pooledClient, "/pooled.txt"), "pooled".toBytes());
 
     // A proxy is honored: pointing at a dead port fails the request, not the init.
@@ -169,7 +169,7 @@ function testRetryAndTransportConfig() returns error? {
         accountKey: MOCK_KEY,
         serviceUrl: string `http://localhost:${MOCK_PORT}`
     }, transportConfig = {proxy: {proxyType: HTTP, host: "localhost", port: 39999}});
-    Error? throughDeadProxy = proxied->uploadContent("x", "/proxied.txt");
+    Error? throughDeadProxy = proxied->upload("x", "/proxied.txt");
     test:assertTrue(throughDeadProxy is Error && throughDeadProxy !is ServiceError,
             "expected a request through an unreachable proxy to fail");
 }
@@ -190,7 +190,7 @@ function testSecondaryHostRetryReachesSecondaryHost() returns error? {
         maxTries: 2,
         secondaryHostUrl: string `http://127.0.0.1:${MOCK_PORT}`
     });
-    check fileClient->uploadContent("payload", "/read.txt");
+    check fileClient->upload("payload", "/read.txt");
 
     mockRequestLog = [];
     mockFaultRemaining = 1;
@@ -360,7 +360,7 @@ function testSharePropertiesAndUsage() returns error? {
 
     int actionResult15 = check fileClient->getShareUsage();
     test:assertEquals(actionResult15, 0);
-    check fileClient->uploadContent("12345", "/usage.txt");
+    check fileClient->upload("12345", "/usage.txt");
     // Share statistics can lag recent writes.
     check await(function() returns boolean|error {
         int usage = check fileClient->getShareUsage();
@@ -415,7 +415,7 @@ function testDeleteNonEmptyDirectoryConflicts() returns error? {
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->createDirectory("/keep");
-    check fileClient->uploadContent("x", "/keep/file.txt");
+    check fileClient->upload("x", "/keep/file.txt");
     Error? result = fileClient->deleteDirectory("/keep");
     test:assertTrue(result is ConflictError, "expected DirectoryNotEmpty to map to ConflictError");
 }
@@ -477,14 +477,14 @@ function testUploadContentVariantsAndDownloadStream() returns error? {
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
-    check fileClient->uploadContent("hello mock", "/text.txt");
+    check fileClient->upload("hello mock", "/text.txt");
     test:assertEquals(check readAll(fileClient, "/text.txt"), "hello mock".toBytes());
 
     byte[] binary = [1, 2, 3, 4, 5];
-    check fileClient->uploadContent(binary, "/binary.bin");
+    check fileClient->upload(binary, "/binary.bin");
     test:assertEquals(check readAll(fileClient, "/binary.bin"), binary);
 
-    check fileClient->uploadContent(<map<json>>{"metric": 42}, "/data.json");
+    check fileClient->upload(<map<json>>{"metric": 42}, "/data.json");
     byte[] jsonBytes = check readAll(fileClient, "/data.json");
     test:assertEquals(jsonBytes, "{\"metric\":42}".toBytes());
     // The downloaded bytes parse back to the value that was uploaded.
@@ -493,7 +493,7 @@ function testUploadContentVariantsAndDownloadStream() returns error? {
     test:assertEquals(reparsedJson, <json>{metric: 42});
 
     xml document = xml `<report><value>1</value></report>`;
-    check fileClient->uploadContent(document, "/doc.xml");
+    check fileClient->upload(document, "/doc.xml");
     byte[] xmlBytes = check readAll(fileClient, "/doc.xml");
     test:assertEquals(xmlBytes, document.toString().toBytes());
     xml reparsedXml = check xml:fromString(check string:fromBytes(xmlBytes));
@@ -530,7 +530,7 @@ function testUploadContentRecordAsJson() returns error? {
     Client fileClient = check newShareClient(share);
 
     UploadMetric metric = {quarter: "q1", revenue: 1250000};
-    check fileClient->uploadContent(metric, "/metrics.json");
+    check fileClient->upload(metric, "/metrics.json");
     test:assertEquals(check readAll(fileClient, "/metrics.json"), metric.toJsonString().toBytes());
 
     // The uploaded document binds back to the same open record.
@@ -546,7 +546,7 @@ function testUploadContentRecordAsXml() returns error? {
     Client fileClient = check newShareClient(share);
 
     UploadMetric metric = {quarter: "q2", revenue: 7};
-    check fileClient->uploadContent(metric, "/metrics.xml");
+    check fileClient->upload(metric, "/metrics.xml");
     UploadMetric bound = check fileClient->getFile("/metrics.xml");
     test:assertEquals(bound, metric);
 }
@@ -560,7 +560,7 @@ function testUploadContentRecordArrayAsCsv() returns error? {
 
     // A field containing a comma exercises the quoting-aware CSV writer.
     UploadPlayer[] players = [{name: "alice", score: 12}, {name: "bob, jr", score: 7}];
-    check fileClient->uploadContent(players, "/players.csv");
+    check fileClient->upload(players, "/players.csv");
     UploadPlayer[] bound = check fileClient->getFile("/players.csv");
     test:assertEquals(bound, players);
     // The header row derives from the records' field names.
@@ -569,7 +569,7 @@ function testUploadContentRecordArrayAsCsv() returns error? {
 
     // Nil members become empty cells.
     UploadRanked[] ranked = [{name: "a", rank: 1}, {name: "b", rank: ()}];
-    check fileClient->uploadContent(ranked, "/ranked.csv");
+    check fileClient->upload(ranked, "/ranked.csv");
     string csvText = check string:fromBytes(check readAll(fileClient, "/ranked.csv"));
     test:assertEquals(csvText, "name,rank\na,1\nb,");
 }
@@ -584,7 +584,7 @@ function testUploadContentRecordArrayHeaderUnion() returns error? {
     // The header row is the union of every record's field names in first-seen order,
     // so an optional field absent from the first record still gets its column.
     UploadBonus[] squad = [{name: "a", score: 1}, {name: "b", score: 2, bonus: 5}];
-    check fileClient->uploadContent(squad, "/squad.csv");
+    check fileClient->upload(squad, "/squad.csv");
     string csvText = check string:fromBytes(check readAll(fileClient, "/squad.csv"));
     test:assertEquals(csvText, "name,score,bonus\na,1,\nb,2,5");
 }
@@ -600,7 +600,7 @@ function testUploadContentRecordFormatRefusals() returns error? {
     UploadPlayer[] players = [{name: "a", score: 1}];
 
     // A single record is never CSV.
-    Error? recordAsCsv = fileClient->uploadContent(metric, "/m.csv");
+    Error? recordAsCsv = fileClient->upload(metric, "/m.csv");
     test:assertTrue(recordAsCsv is Error && recordAsCsv !is ServiceError,
             "record content to a .csv destination must fail client-side");
     if recordAsCsv is Error {
@@ -609,7 +609,7 @@ function testUploadContentRecordFormatRefusals() returns error? {
     }
 
     // A record array is only CSV.
-    Error? arrayAsJson = fileClient->uploadContent(players, "/p.json");
+    Error? arrayAsJson = fileClient->upload(players, "/p.json");
     test:assertTrue(arrayAsJson is Error && arrayAsJson !is ServiceError,
             "record array content to a .json destination must fail client-side");
     if arrayAsJson is Error {
@@ -618,7 +618,7 @@ function testUploadContentRecordFormatRefusals() returns error? {
     }
 
     // No override and no format-bearing extension: the format is unresolvable.
-    Error? unresolved = fileClient->uploadContent(metric, "/m.txt");
+    Error? unresolved = fileClient->upload(metric, "/m.txt");
     test:assertTrue(unresolved is Error && unresolved !is ServiceError,
             "record content to an extension-less format must fail client-side");
     if unresolved is Error {
@@ -635,13 +635,13 @@ function testUploadContentFileFormatOverride() returns error? {
 
     // The explicit format beats the destination extension, on the write and the read.
     UploadPlayer[] players = [{name: "cara", score: 3}];
-    check fileClient->uploadContent(players, "/data.json", {fileFormat: CSV});
+    check fileClient->upload(players, "/data.json", {fileFormat: CSV});
     test:assertEquals(check string:fromBytes(check readAll(fileClient, "/data.json")), "name,score\ncara,3");
     UploadPlayer[] rows = check fileClient->getFile("/data.json", {fileFormat: CSV});
     test:assertEquals(rows, players);
 
     UploadMetric metric = {quarter: "q4", revenue: 9};
-    check fileClient->uploadContent(metric, "/notes.txt", {fileFormat: JSON});
+    check fileClient->upload(metric, "/notes.txt", {fileFormat: JSON});
     test:assertEquals(check readAll(fileClient, "/notes.txt"), metric.toJsonString().toBytes());
 }
 
@@ -655,7 +655,7 @@ function testUploadContentStringRowsRefused() returns error? {
     // String matrices and tuple rows are json subtypes, so the calls still compile, but
     // CSV serialization takes record arrays only.
     string[][] rows = [["k1", "v1"], ["k2", "v2"]];
-    Error? matrixRefused = fileClient->uploadContent(rows, "/rows.csv");
+    Error? matrixRefused = fileClient->upload(rows, "/rows.csv");
     test:assertTrue(matrixRefused is Error && matrixRefused !is ServiceError,
             "string[][] content to a .csv destination must fail client-side");
     if matrixRefused is Error {
@@ -664,7 +664,7 @@ function testUploadContentStringRowsRefused() returns error? {
     }
 
     [string, string][] pairs = [["k1", "v1"]];
-    Error? tupleRefused = fileClient->uploadContent(pairs, "/pairs.csv");
+    Error? tupleRefused = fileClient->upload(pairs, "/pairs.csv");
     test:assertTrue(tupleRefused is Error && tupleRefused !is ServiceError,
             "tuple rows to a .csv destination must fail client-side");
 }
@@ -678,26 +678,26 @@ function testUploadContentBareJson() returns error? {
 
     // A json array serializes as a JSON document and reads back as json.
     json values = [1, "two", true, ()];
-    check fileClient->uploadContent(values, "/values.json");
+    check fileClient->upload(values, "/values.json");
     test:assertEquals(check readAll(fileClient, "/values.json"), values.toJsonString().toBytes());
     json bound = check fileClient->getFile("/values.json");
     test:assertEquals(bound, values);
 
     // Scalars and nil are json values too.
     json answer = 42;
-    check fileClient->uploadContent(answer, "/answer.json");
+    check fileClient->upload(answer, "/answer.json");
     test:assertEquals(check string:fromBytes(check readAll(fileClient, "/answer.json")), "42");
     json nil = ();
-    check fileClient->uploadContent(nil, "/null.json");
+    check fileClient->upload(nil, "/null.json");
     test:assertEquals(check string:fromBytes(check readAll(fileClient, "/null.json")), "null");
 
     // A json string is text and passes through unquoted.
     json text = "plain";
-    check fileClient->uploadContent(text, "/text.json");
+    check fileClient->upload(text, "/text.json");
     test:assertEquals(check string:fromBytes(check readAll(fileClient, "/text.json")), "plain");
 
     // The explicit override serializes json to a destination without a format extension.
-    check fileClient->uploadContent(values, "/values.dat", {fileFormat: JSON});
+    check fileClient->upload(values, "/values.dat", {fileFormat: JSON});
     test:assertEquals(check readAll(fileClient, "/values.dat"), values.toJsonString().toBytes());
 }
 
@@ -711,7 +711,7 @@ function testUploadContentJsonFormatRefusals() returns error? {
     json values = [1, 2, 3];
 
     // json is never CSV.
-    Error? asCsv = fileClient->uploadContent(values, "/v.csv");
+    Error? asCsv = fileClient->upload(values, "/v.csv");
     test:assertTrue(asCsv is Error && asCsv !is ServiceError,
             "json content to a .csv destination must fail client-side");
     if asCsv is Error {
@@ -720,7 +720,7 @@ function testUploadContentJsonFormatRefusals() returns error? {
     }
 
     // A json array or scalar has no XML form.
-    Error? asXml = fileClient->uploadContent(values, "/v.xml");
+    Error? asXml = fileClient->upload(values, "/v.xml");
     test:assertTrue(asXml is Error && asXml !is ServiceError,
             "json content to an .xml destination must fail client-side");
     if asXml is Error {
@@ -729,7 +729,7 @@ function testUploadContentJsonFormatRefusals() returns error? {
     }
 
     // No override and no format-bearing extension: the format is unresolvable.
-    Error? unresolved = fileClient->uploadContent(values, "/v.txt");
+    Error? unresolved = fileClient->upload(values, "/v.txt");
     test:assertTrue(unresolved is Error && unresolved !is ServiceError,
             "json content to an extension-less format must fail client-side");
     if unresolved is Error {
@@ -737,7 +737,7 @@ function testUploadContentJsonFormatRefusals() returns error? {
     }
 
     json scalar = 42;
-    Error? scalarAsCsv = fileClient->uploadContent(scalar, "/n.csv");
+    Error? scalarAsCsv = fileClient->upload(scalar, "/n.csv");
     test:assertTrue(scalarAsCsv is Error && scalarAsCsv !is ServiceError,
             "a json scalar to a .csv destination must fail client-side");
 }
@@ -756,18 +756,18 @@ function testUploadAndDownloadLocalFile() returns error? {
         check file:remove(localDestination);
     }
 
-    check fileClient->uploadFile(localSource, "/roundtrip.txt");
+    check fileClient->uploadFromFile(localSource, "/roundtrip.txt");
     boolean actionResult14 = check fileClient->hasFile("/roundtrip.txt");
     test:assertTrue(actionResult14);
 
-    check fileClient->downloadFile("/roundtrip.txt", localDestination);
+    check fileClient->download("/roundtrip.txt", localDestination);
     test:assertEquals(check io:fileReadString(localDestination), "round trip payload");
 
     // The destination must not already exist (CREATE_NEW contract).
-    Error? again = fileClient->downloadFile("/roundtrip.txt", localDestination);
+    Error? again = fileClient->download("/roundtrip.txt", localDestination);
     test:assertTrue(again is Error && again !is ServiceError, "expected an existing local file to fail the download");
 
-    Error? missingLocal = fileClient->uploadFile("target/does-not-exist.txt", "/x.txt");
+    Error? missingLocal = fileClient->uploadFromFile("target/does-not-exist.txt", "/x.txt");
     test:assertTrue(missingLocal is Error && missingLocal !is ServiceError, "expected a missing local file to fail the upload");
 }
 
@@ -941,7 +941,7 @@ function testRangedDownload() returns error? {
     string share = testShare("range-read");
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("0123456789", "/digits.txt");
+    check fileClient->upload("0123456789", "/digits.txt");
 
     stream<byte[], Error?> content = check fileClient->getFile("/digits.txt", {range: {startByte: 2, endByte: 5}});
     test:assertEquals(check collectBytes(content), "2345".toBytes());
@@ -959,9 +959,9 @@ function testListFlatAndRecursive() returns error? {
     Client fileClient = check newShareClient(share);
     check fileClient->createDirectory("/a");
     check fileClient->createDirectory("/a/b");
-    check fileClient->uploadContent("1", "/root.txt");
-    check fileClient->uploadContent("2", "/a/one.txt");
-    check fileClient->uploadContent("3", "/a/b/two.txt");
+    check fileClient->upload("1", "/root.txt");
+    check fileClient->upload("2", "/a/one.txt");
+    check fileClient->upload("3", "/a/b/two.txt");
 
     stream<Entry, Error?> entryStream18 = check fileClient->list("/");
     Entry[] flat = check collectEntries(entryStream18);
@@ -993,7 +993,7 @@ function testCopyWithinShare() returns error? {
     string share = testShare("copy");
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("copy me", "/source.txt");
+    check fileClient->upload("copy me", "/source.txt");
 
     CopyInfo info = check fileClient->copyFile("/source.txt", "/target.txt");
     test:assertTrue(info.copyId.length() > 0);
@@ -1027,7 +1027,7 @@ function testCopyFromUrl() returns error? {
     string share = testShare("copy-url");
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("via url", "/origin.txt");
+    check fileClient->upload("via url", "/origin.txt");
 
     // The service fetches the source URL itself, so it carries a read SAS; the mock
     // ignores the token while live Azure verifies it.
@@ -1191,16 +1191,16 @@ function testShareSnapshotLifecycle() returns error? {
     string share = testShare("snap");
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("version one", "/versioned.txt");
+    check fileClient->upload("version one", "/versioned.txt");
     check fileClient->createDirectory("/snapdir");
-    check fileClient->uploadContent("stay", "/snapdir/keep.txt");
+    check fileClient->upload("stay", "/snapdir/keep.txt");
 
     ShareSnapshotInfo snapshot = check fileClient->createShareSnapshot({label: "baseline"});
     test:assertTrue(snapshot.snapshotId.length() > 0);
     test:assertTrue(snapshot.eTag.length() > 0);
 
     // Mutate the live share after the snapshot.
-    check fileClient->uploadContent("version two!", "/versioned.txt");
+    check fileClient->upload("version two!", "/versioned.txt");
     check fileClient->deleteFile("/snapdir/keep.txt");
 
     // Snapshot reads serve the frozen content; the live share serves the new content.
@@ -1212,7 +1212,7 @@ function testShareSnapshotLifecycle() returns error? {
     if check file:test(localTarget, file:EXISTS) {
         check file:remove(localTarget);
     }
-    check fileClient->downloadFile("/versioned.txt", localTarget, {snapshotId: snapshot.snapshotId});
+    check fileClient->download("/versioned.txt", localTarget, {snapshotId: snapshot.snapshotId});
     test:assertEquals(check io:fileReadString(localTarget), "version one");
 
     // Snapshot listing still sees the file deleted from the live share.
@@ -1237,7 +1237,7 @@ function testShareSnapshotLifecycle() returns error? {
     if check file:test(missTarget, file:EXISTS) {
         check file:remove(missTarget);
     }
-    Error? gone = fileClient->downloadFile("/versioned.txt", missTarget, {snapshotId: snapshot.snapshotId});
+    Error? gone = fileClient->download("/versioned.txt", missTarget, {snapshotId: snapshot.snapshotId});
     test:assertTrue(gone is NotFoundError, "expected a deleted snapshot to read as NotFound");
 }
 
@@ -1554,8 +1554,8 @@ function testRenameReplaceIfExists() returns error? {
     string share = testShare("rename");
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("new", "/incoming.txt");
-    check fileClient->uploadContent("old", "/settled.txt");
+    check fileClient->upload("new", "/incoming.txt");
+    check fileClient->upload("old", "/settled.txt");
 
     // An existing destination conflicts unless replaceIfExists is set.
     Error? clash = fileClient->renameFile("/incoming.txt", "/settled.txt");
@@ -1577,7 +1577,7 @@ function testLargeUploadSplitsIntoRanges() returns error? {
     // 4 MiB is the service's maximum single-range size, so this upload must split.
     final int rangeCap = 4 * 1024 * 1024;
     string big = "".padStart(rangeCap, "A") + "TAIL";
-    check fileClient->uploadContent(big, "/large.bin");
+    check fileClient->upload(big, "/large.bin");
 
     FileProperties props = check fileClient->getFileProperties("/large.bin");
     test:assertEquals(props.contentLength, rangeCap + 4);
@@ -1594,7 +1594,7 @@ function testEarlyStreamClose() returns error? {
     string share = testShare("close");
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("0123456789", "/close.txt");
+    check fileClient->upload("0123456789", "/close.txt");
     check fileClient->createDirectory("/somedir");
 
     stream<byte[], Error?> content = check fileClient->getFile("/close.txt");
@@ -1664,7 +1664,7 @@ function testConnectionStringClientOps() returns error? {
     string share = testShare("cs");
     check createTestShare(admin, share);
     Client fileClient = check new (share, auth = {connectionString: testConnectionString()});
-    check fileClient->uploadContent("via connection string", "/cs.txt");
+    check fileClient->upload("via connection string", "/cs.txt");
     test:assertEquals(check readAll(fileClient, "/cs.txt"), "via connection string".toBytes());
 }
 
@@ -1678,7 +1678,7 @@ function testSasRoundtrip() returns error? {
     string share = testShare("sas-roundtrip");
     check createTestShare(admin, share);
     Client keyClient = check newShareClient(share);
-    check keyClient->uploadContent("sas readable", "/sas-probe.txt");
+    check keyClient->upload("sas readable", "/sas-probe.txt");
 
     time:Utc expiry = time:utcAddSeconds(time:utcNow(), 3600);
     string token = check keyClient.generateShareSas(
@@ -1817,11 +1817,11 @@ function testGetFileStringTarget() returns error? {
     string share = testShare("typed-text");
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("hello typed text", "/hello.txt");
+    check fileClient->upload("hello typed text", "/hello.txt");
     string full = check fileClient->getFile("/hello.txt");
     test:assertEquals(full, "hello typed text");
 
-    check fileClient->uploadContent("0123456789", "/digits.txt");
+    check fileClient->upload("0123456789", "/digits.txt");
     string ranged = check fileClient->getFile("/digits.txt", {range: {startByte: 2, endByte: 5}});
     test:assertEquals(ranged, "2345");
 }
@@ -1833,7 +1833,7 @@ function testGetFileRejectsInvalidUtf8() returns error? {
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     byte[] invalid = [0xC3, 0x28, 0xFF, 0xFE, 0x80];
-    check fileClient->uploadContent(invalid, "/binary.bin");
+    check fileClient->upload(invalid, "/binary.bin");
     string|Error text = fileClient->getFile("/binary.bin");
     test:assertTrue(text is Error && text !is ServiceError,
             "content that is not UTF-8 must fail the text read client-side");
@@ -1850,24 +1850,24 @@ function testGetFileJsonTargets() returns error? {
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
-    check fileClient->uploadContent(<map<json>>{"quarter": "q1", "revenue": 1250000}, "/metrics.json");
+    check fileClient->upload(<map<json>>{"quarter": "q1", "revenue": 1250000}, "/metrics.json");
     json asJson = check fileClient->getFile("/metrics.json");
     test:assertEquals(asJson, {quarter: "q1", revenue: 1250000});
     TypedReadMetric asRecord = check fileClient->getFile("/metrics.json");
     test:assertEquals(asRecord, {quarter: "q1", revenue: 1250000});
 
-    check fileClient->uploadContent("[{\"name\":\"a\",\"qty\":1},{\"name\":\"b\",\"qty\":2}]", "/rows.json");
+    check fileClient->upload("[{\"name\":\"a\",\"qty\":1},{\"name\":\"b\",\"qty\":2}]", "/rows.json");
     TypedReadRow[] asArray = check fileClient->getFile("/rows.json");
     test:assertEquals(asArray, [{name: "a", qty: 1}, {name: "b", qty: 2}]);
 
     // An OPEN record array (the language default) binds too; it is not a json subtype,
     // so the target typedesc must admit record {}[] directly.
-    check fileClient->uploadContent(
+    check fileClient->upload(
             "[{\"quarter\":\"q1\",\"revenue\":1},{\"quarter\":\"q2\",\"revenue\":2}]", "/qs.json");
     UploadMetric[] asOpenArray = check fileClient->getFile("/qs.json");
     test:assertEquals(asOpenArray, [{quarter: "q1", revenue: 1}, {quarter: "q2", revenue: 2}]);
 
-    check fileClient->uploadContent("{not json", "/broken.json");
+    check fileClient->upload("{not json", "/broken.json");
     json|Error broken = fileClient->getFile("/broken.json");
     test:assertTrue(broken is Error && broken !is ServiceError, "malformed JSON must fail the typed read client-side");
     if broken is Error {
@@ -1884,13 +1884,13 @@ function testGetFileXmlTargets() returns error? {
     Client fileClient = check newShareClient(share);
 
     xml note = xml `<note><to>ops</to><body>rotate the key</body></note>`;
-    check fileClient->uploadContent(note, "/note.xml");
+    check fileClient->upload(note, "/note.xml");
     xml asXml = check fileClient->getFile("/note.xml");
     test:assertEquals(asXml.toString(), note.toString());
     TypedReadNote asRecord = check fileClient->getFile("/note.xml");
     test:assertEquals(asRecord, {to: "ops", body: "rotate the key"});
 
-    check fileClient->uploadContent("<open", "/broken.xml");
+    check fileClient->upload("<open", "/broken.xml");
     xml|Error broken = fileClient->getFile("/broken.xml");
     test:assertTrue(broken is Error && broken !is ServiceError, "malformed XML must fail the typed read");
 }
@@ -1902,7 +1902,7 @@ function testGetFileCsvTargets() returns error? {
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
-    check fileClient->uploadContent("name,qty\na,1\nb,2", "/items.csv");
+    check fileClient->upload("name,qty\na,1\nb,2", "/items.csv");
     // A string matrix target compiles (it is a json subtype) but CSV binds record arrays only.
     string[][]|Error asRows = fileClient->getFile("/items.csv");
     test:assertTrue(asRows is Error && asRows !is ServiceError,
@@ -1914,7 +1914,7 @@ function testGetFileCsvTargets() returns error? {
     TypedReadRow[] asRecords = check fileClient->getFile("/items.csv");
     test:assertEquals(asRecords, [{name: "a", qty: 1}, {name: "b", qty: 2}]);
 
-    check fileClient->uploadContent("name,qty\na,notanint", "/broken.csv");
+    check fileClient->upload("name,qty\na,notanint", "/broken.csv");
     TypedReadRow[]|Error broken = fileClient->getFile("/broken.csv");
     test:assertTrue(broken is Error && broken !is ServiceError, "a CSV row that cannot bind must fail the typed read");
 }
@@ -1927,7 +1927,7 @@ function testGetFileByteTarget() returns error? {
     Client fileClient = check newShareClient(share);
 
     byte[] payload = [0, 1, 2, 251, 252, 253];
-    check fileClient->uploadContent(payload, "/blob.bin");
+    check fileClient->upload(payload, "/blob.bin");
     // A byte[] target materializes the raw content in one call, no format involved.
     byte[] raw = check fileClient->getFile("/blob.bin");
     test:assertEquals(raw, payload);
@@ -1945,15 +1945,15 @@ function testGetFileRecordFormatByExtension() returns error? {
 
     // The same record binds from all three formats; the extension selects the parser.
     UploadMetric metric = {quarter: "q1", revenue: 7};
-    check fileClient->uploadContent(metric, "/m.json");
-    check fileClient->uploadContent(metric, "/m.xml");
+    check fileClient->upload(metric, "/m.json");
+    check fileClient->upload(metric, "/m.xml");
     UploadMetric fromJson = check fileClient->getFile("/m.json");
     test:assertEquals(fromJson, metric);
     UploadMetric fromXml = check fileClient->getFile("/m.xml");
     test:assertEquals(fromXml, metric);
 
     UploadMetric[] metrics = [{quarter: "q1", revenue: 1}, {quarter: "q2", revenue: 2}];
-    check fileClient->uploadContent(metrics, "/m.csv");
+    check fileClient->upload(metrics, "/m.csv");
     UploadMetric[] fromCsv = check fileClient->getFile("/m.csv");
     test:assertEquals(fromCsv, metrics);
 }
@@ -1966,7 +1966,7 @@ function testGetFileFormatOverrideAndRefusal() returns error? {
     Client fileClient = check newShareClient(share);
 
     UploadMetric metric = {quarter: "q9", revenue: 3};
-    check fileClient->uploadContent(metric.toJsonString(), "/metric.dat");
+    check fileClient->upload(metric.toJsonString(), "/metric.dat");
 
     // A record target with no format-bearing extension and no override is refused.
     UploadMetric|Error unresolved = fileClient->getFile("/metric.dat");
@@ -1988,7 +1988,7 @@ function testGetFileCsvRowStream() returns error? {
     check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
-    check fileClient->uploadContent("name,qty\na,1\nb,2\nc,3", "/rows.csv");
+    check fileClient->upload("name,qty\na,1\nb,2\nc,3", "/rows.csv");
     stream<TypedReadRow, error?> rows = check fileClient->getFile("/rows.csv");
     TypedReadRow[] collected = [];
     record {|TypedReadRow value;|}|error? entry = rows.next();
@@ -2000,7 +2000,7 @@ function testGetFileCsvRowStream() returns error? {
     test:assertEquals(collected, [{name: "a", qty: 1}, {name: "b", qty: 2}, {name: "c", qty: 3}]);
 
     // A malformed row surfaces as the error entry of that next() call.
-    check fileClient->uploadContent("name,qty\nok,1\nbad,notanint", "/badrows.csv");
+    check fileClient->upload("name,qty\nok,1\nbad,notanint", "/badrows.csv");
     stream<TypedReadRow, error?> badRows = check fileClient->getFile("/badrows.csv");
     record {|TypedReadRow value;|}|error? first = badRows.next();
     test:assertTrue(first is record {|TypedReadRow value;|}, "the valid first row must bind");
@@ -2021,7 +2021,7 @@ function testUploadContentCsvRoundTrip() returns error? {
         {name: "gamma", note: "line1\nline2"},
         {name: "delta", note: "back\\slash"}
     ];
-    check fileClient->uploadContent(rows, "/tricky.csv");
+    check fileClient->upload(rows, "/tricky.csv");
     CsvTricky[] roundTripped = check fileClient->getFile("/tricky.csv");
     test:assertEquals(roundTripped, rows);
 
@@ -2032,6 +2032,6 @@ function testUploadContentCsvRoundTrip() returns error? {
             "name,note\nalpha,\"a,b\"\nbeta,\"say \\\"hi\\\"\"\ngamma,\"line1\nline2\"\ndelta,\"back\\\\slash\"");
 
     CsvTricky[] empty = [];
-    check fileClient->uploadContent(empty, "/empty.csv");
+    check fileClient->upload(empty, "/empty.csv");
     test:assertEquals(check readAll(fileClient, "/empty.csv"), <byte[]>[]);
 }

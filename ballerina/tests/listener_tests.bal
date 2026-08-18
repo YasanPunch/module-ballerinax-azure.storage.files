@@ -81,7 +81,7 @@ function testListenerOnFileDispatch() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-onfile");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("payload-onfile", "/incoming/note.dat");
+    check shareClient->upload("payload-onfile", "/incoming/note.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -167,7 +167,7 @@ function testTypedJsonRouting() returns error? {
     Client shareClient = setup[0];
     string share = setup[1];
     map<json> document = {name: "widget", qty: 5};
-    check shareClient->uploadContent(document, "/incoming/item.json");
+    check shareClient->upload(document, "/incoming/item.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -196,7 +196,7 @@ function testUnmappedExtensionFallsBackToOnFile() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-fallback");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("raw-bytes", "/incoming/blob.bin");
+    check shareClient->upload("raw-bytes", "/incoming/blob.bin");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -227,7 +227,7 @@ function testMalformedJsonTriggersAfterError() returns error? {
     string share = setup[1];
     // Not parseable JSON, so binding fails: a content-binding error, which triggers
     // afterError (here a DELETE), and never falls through to onFile.
-    check shareClient->uploadContent("this is not json", "/incoming/broken.json");
+    check shareClient->upload("this is not json", "/incoming/broken.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -267,7 +267,7 @@ function testOnFileJsonRecordBinding() returns error? {
     Client shareClient = setup[0];
     string share = setup[1];
     map<json> document = {sku: "A1", qty: 5};
-    check shareClient->uploadContent(document, "/incoming/order.json");
+    check shareClient->upload(document, "/incoming/order.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -293,7 +293,7 @@ function testOnFileJsonArrayRootBindingError() returns error? {
     string share = setup[1];
     // A JSON array at the root parses, but binding to a record target fails: a content-binding
     // error, which triggers afterError (here a DELETE), and never falls through to onFile.
-    check shareClient->uploadContent("[1, 2, 3]", "/incoming/list.json");
+    check shareClient->upload("[1, 2, 3]", "/incoming/list.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -327,7 +327,7 @@ function testOnFileJsonBareJsonBinding() returns error? {
     Client shareClient = setup[0];
     string share = setup[1];
     // An array root binds no record form; a bare json target admits it.
-    check shareClient->uploadContent("[1, 2, 3]", "/incoming/counts.json");
+    check shareClient->upload("[1, 2, 3]", "/incoming/counts.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -351,7 +351,7 @@ function testFunctionConfigDeleteConsumes() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-delete");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("consume-me", "/incoming/temp.dat");
+    check shareClient->upload("consume-me", "/incoming/temp.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -379,7 +379,7 @@ function testFunctionConfigMoveConsumes() returns error? {
     string share = setup[1];
     // The post-process Move creates the destination directory if it is absent, so it is not
     // pre-created here.
-    check shareClient->uploadContent("move-me", "/incoming/report.dat");
+    check shareClient->upload("move-me", "/incoming/report.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -406,7 +406,7 @@ function testCallerOperations() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-caller");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("trigger", "/incoming/go.dat");
+    check shareClient->upload("trigger", "/incoming/go.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -415,10 +415,10 @@ function testCallerOperations() returns error? {
             recorder.put("shareName", info.shareName);
 
             check caller->createDirectory("/work");
-            check caller->uploadContent("alpha", "/work/a.txt");
+            check caller->upload("alpha", "/work/a.txt");
 
             // The Caller mirrors the Client's record upload contract by delegation.
-            check caller->uploadContent(<map<json>>{"kind": "caller"}, "/work/meta.json");
+            check caller->upload(<map<json>>{"kind": "caller"}, "/work/meta.json");
             string metaJson = check caller->getFile("/work/meta.json");
             recorder.put("recordUpload", metaJson);
             check caller->deleteFile("/work/meta.json");
@@ -479,7 +479,7 @@ function testCallerFileTransfer() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-transfer");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("go", "/incoming/start.dat");
+    check shareClient->upload("go", "/incoming/start.dat");
 
     string tempDir = check file:createTempDir();
     string localUpload = check file:joinPath(tempDir, "upload.txt");
@@ -493,8 +493,8 @@ function testCallerFileTransfer() returns error? {
     Service svc = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             check caller->createDirectory("/work");
-            check caller->uploadFile(localUploadPath, "/work/uploaded.txt");
-            check caller->downloadFile("/work/uploaded.txt", localDownloadPath);
+            check caller->uploadFromFile(localUploadPath, "/work/uploaded.txt");
+            check caller->download("/work/uploaded.txt", localDownloadPath);
             recorder.put("roundtrip", check io:fileReadString(localDownloadPath));
             check caller->deleteFile("/work/uploaded.txt");
             check caller->deleteFile(info.path);
@@ -515,7 +515,7 @@ function testTypedTextRouting() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-text");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("hello text", "/incoming/note.txt");
+    check shareClient->upload("hello text", "/incoming/note.txt");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -539,7 +539,7 @@ function testTypedXmlRouting() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-xml");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("<doc><v>7</v></doc>", "/incoming/item.xml");
+    check shareClient->upload("<doc><v>7</v></doc>", "/incoming/item.xml");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -563,7 +563,7 @@ function testTypedCsvRouting() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-csv");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("name,age\nalice,30\nbob,25", "/incoming/rows.csv");
+    check shareClient->upload("name,age\nalice,30\nbob,25", "/incoming/rows.csv");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -591,7 +591,7 @@ function testMinFileAgeSkipsYoungFiles() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-minage");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("too young", "/incoming/young.dat");
+    check shareClient->upload("too young", "/incoming/young.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -618,8 +618,8 @@ function testNonRecursiveIgnoresSubdirectories() returns error? {
     Client shareClient = setup[0];
     string share = setup[1];
     check shareClient->createDirectory("/incoming/sub");
-    check shareClient->uploadContent("nested", "/incoming/sub/nested.dat");
-    check shareClient->uploadContent("top", "/incoming/top.dat");
+    check shareClient->upload("nested", "/incoming/sub/nested.dat");
+    check shareClient->upload("top", "/incoming/top.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -646,8 +646,8 @@ function testServiceFileNamePatternFilters() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-svcpattern");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("wanted", "/incoming/match.dat");
-    check shareClient->uploadContent("unwanted", "/incoming/skip.dat");
+    check shareClient->upload("wanted", "/incoming/match.dat");
+    check shareClient->upload("unwanted", "/incoming/skip.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -676,7 +676,7 @@ function testFunctionConfigPatternOverridesExtension() returns error? {
     string share = setup[1];
     // .dat maps to no typed handler, so without the per-handler pattern this file would land in
     // onFile; the pattern must route it to onFileText instead.
-    check shareClient->uploadContent("routed-by-pattern", "/incoming/note.dat");
+    check shareClient->upload("routed-by-pattern", "/incoming/note.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -706,7 +706,7 @@ function testRoutingPatternPrecedenceCanonical() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-routeorder");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("alpha", "/incoming/report.dat");
+    check shareClient->upload("alpha", "/incoming/report.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -753,8 +753,8 @@ function testMoveOntoExistingFileReplaces() returns error? {
     Client shareClient = setup[0];
     string share = setup[1];
     check shareClient->createDirectory("/processed");
-    check shareClient->uploadContent("occupied", "/processed/report.dat");
-    check shareClient->uploadContent("mover", "/incoming/report.dat");
+    check shareClient->upload("occupied", "/processed/report.dat");
+    check shareClient->upload("mover", "/incoming/report.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -788,7 +788,7 @@ function testMovePreserveSubDirsFalseFlattens() returns error? {
     Client shareClient = setup[0];
     string share = setup[1];
     check shareClient->createDirectory("/incoming/sub");
-    check shareClient->uploadContent("deep", "/incoming/sub/deep.dat");
+    check shareClient->upload("deep", "/incoming/sub/deep.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -819,7 +819,7 @@ function testUnmappedFileSkippedWithoutOnFile() returns error? {
     string share = setup[1];
     // .txt maps to onFileText, which is undeclared; with no onFile catch-all either, the file is
     // skipped (and logged) rather than dispatched, and stays in place.
-    check shareClient->uploadContent("{}", "/incoming/note.txt");
+    check shareClient->upload("{}", "/incoming/note.txt");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -844,7 +844,7 @@ function testUnconsumedFileRedelivers() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-redeliver");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("try again", "/incoming/retry.dat");
+    check shareClient->upload("try again", "/incoming/retry.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -969,7 +969,7 @@ function testPollFailureRecoversOnNextPoll() returns error? {
 
     // Polling keeps its fixed cadence: the very next poll scans again, and a cleared fault
     // means it succeeds and dispatches immediately, with no cool-down to wait out.
-    check shareClient->uploadContent("recovered", "/incoming/recover.dat");
+    check shareClient->upload("recovered", "/incoming/recover.dat");
     error? recovered = poll(lsn);
     test:assertTrue(recovered is (), "the poll after the fault clears must succeed");
     check await(() => recorder.count("dispatch") >= 1);
@@ -1047,7 +1047,7 @@ function testOnErrorFiresOnBindingFailure() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-onerr-bind");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("{not-json", "/incoming/broken.json");
+    check shareClient->upload("{not-json", "/incoming/broken.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1086,7 +1086,7 @@ function testOnErrorReceivesCaller() returns error? {
         }
 
         remote function onError(Error err, Caller caller) returns error? {
-            check caller->uploadContent("probe", "/onerror-probe.txt");
+            check caller->upload("probe", "/onerror-probe.txt");
             recorder.hit("onerror-caller");
         }
     };
@@ -1108,7 +1108,7 @@ function testOnErrorNotFiredOnHandlerError() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-onerr-handler");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("handler fails", "/incoming/fail.dat");
+    check shareClient->upload("handler fails", "/incoming/fail.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1139,7 +1139,7 @@ function testBindingFailureAfterErrorInteraction() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-onerr-after");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("{still-not-json", "/incoming/broken.json");
+    check shareClient->upload("{still-not-json", "/incoming/broken.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1173,7 +1173,7 @@ function testOnErrorErrorReturnIsSwallowed() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-onerr-swallow");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("{bad", "/incoming/bad.json");
+    check shareClient->upload("{bad", "/incoming/bad.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1197,7 +1197,7 @@ function testOnErrorErrorReturnIsSwallowed() returns error? {
     check lsn.'start();
     check await(() => recorder.count("onerror") >= 1);
     // A failing onError must not disturb the listener: a later file still dispatches.
-    check shareClient->uploadContent("plain payload", "/incoming/next.dat");
+    check shareClient->upload("plain payload", "/incoming/next.dat");
     check await(() => recorder.count("onfile") >= 1);
     check lsn.gracefulStop();
     check lsn.detach(svc);
@@ -1239,7 +1239,7 @@ function testJsonRecordStrictBindingRejectsAbsentField() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-strict-json");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent(string `{"id": 1}`, "/incoming/row.json");
+    check shareClient->upload(string `{"id": 1}`, "/incoming/row.json");
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
@@ -1268,7 +1268,7 @@ function testJsonRecordLaxBindingProjects() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-lax-json");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent(string `{"id": 2}`, "/incoming/row.json");
+    check shareClient->upload(string `{"id": 2}`, "/incoming/row.json");
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
@@ -1293,7 +1293,7 @@ function testXmlRecordBinding() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-xml-rec");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("<XmlDoc><v>7</v></XmlDoc>", "/incoming/doc.xml");
+    check shareClient->upload("<XmlDoc><v>7</v></XmlDoc>", "/incoming/doc.xml");
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
@@ -1317,7 +1317,7 @@ function testXmlRecordLaxBinding() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-xml-lax");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("<XmlOpen><v>9</v><extra>x</extra></XmlOpen>", "/incoming/doc.xml");
+    check shareClient->upload("<XmlOpen><v>9</v><extra>x</extra></XmlOpen>", "/incoming/doc.xml");
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
@@ -1342,7 +1342,7 @@ function testCsvRecordArrayBindingUsesHeaderRow() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-csv-rec");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("name,age\nalice,30\nbob,25", "/incoming/people.csv");
+    check shareClient->upload("name,age\nalice,30\nbob,25", "/incoming/people.csv");
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
@@ -1371,7 +1371,7 @@ function testCsvLaxBindingRecordArray() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-csv-lax");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("name\ncara", "/incoming/people.csv");
+    check shareClient->upload("name\ncara", "/incoming/people.csv");
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
@@ -1402,7 +1402,7 @@ function testCsvMalformedRowFailsBinding() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-failsafe-off");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("name,age\ndana,notanint", "/incoming/strict.csv");
+    check shareClient->upload("name,age\ndana,notanint", "/incoming/strict.csv");
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1);
@@ -1448,7 +1448,7 @@ function testOnFileByteStreamDeliversContent() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-bytestream");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("stream-payload", "/incoming/data.bin");
+    check shareClient->upload("stream-payload", "/incoming/data.bin");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1478,7 +1478,7 @@ function testOnFileByteStreamLargeFileChunks() returns error? {
     foreach int i in 0 ..< 20000 {
         big.push(<byte>(i % 256));
     }
-    check shareClient->uploadContent(big, "/incoming/big.bin");
+    check shareClient->upload(big, "/incoming/big.bin");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1517,7 +1517,7 @@ function testStreamHandlerAfterProcessOnReturn() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-stream-after");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("consume me", "/incoming/done.bin");
+    check shareClient->upload("consume me", "/incoming/done.bin");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1547,7 +1547,7 @@ function testStreamPartialDrainThenClose() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-stream-close");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("partial read", "/incoming/partial.bin");
+    check shareClient->upload("partial read", "/incoming/partial.bin");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1593,7 +1593,7 @@ function testCsvStreamRecords() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-csvstream-rec");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("name,age\nalice,30\nbob,25", "/incoming/people.csv");
+    check shareClient->upload("name,age\nalice,30\nbob,25", "/incoming/people.csv");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1627,7 +1627,7 @@ function testCsvStreamLaxBinding() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-csvstream-lax");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("name\ncara", "/incoming/sparse.csv");
+    check shareClient->upload("name\ncara", "/incoming/sparse.csv");
 
     final Recorder recorder = new;
     Listener lsn = check new (share, auth = testAuth(), pollingInterval = 1, laxDataBinding = true);
@@ -1660,7 +1660,7 @@ function testCsvStreamBindingErrorMidStream() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-csvstream-err");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("name,age\nalice,30\nbob,notanint\ncara,22", "/incoming/people.csv");
+    check shareClient->upload("name,age\nalice,30\nbob,notanint\ncara,22", "/incoming/people.csv");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1736,7 +1736,7 @@ function testStreamHandlerErrorTriggersAfterError() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-stream-herr");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("some bytes", "/incoming/herr.bin");
+    check shareClient->upload("some bytes", "/incoming/herr.bin");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1783,8 +1783,8 @@ function testDetachThenReattachUsesNewServiceConfig() returns error? {
     // The conditional lives in the helper: an if statement before the anonymous annotated
     // services would trip the compiler's annotation-dropping defect (see the file header note).
     check ensureTestDirectory(shareClient, "/second");
-    check shareClient->uploadContent("first watch", "/incoming/first.dat");
-    check shareClient->uploadContent("second watch", "/second/second.dat");
+    check shareClient->upload("first watch", "/incoming/first.dat");
+    check shareClient->upload("second watch", "/second/second.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1821,7 +1821,7 @@ function testAttachPointPathWatches() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-attachpath");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("by attach point", "/incoming/point.dat");
+    check shareClient->upload("by attach point", "/incoming/point.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1846,7 +1846,7 @@ function testAttachPointResourcePathForm() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-attachres");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("by resource path", "/incoming/res.dat");
+    check shareClient->upload("by resource path", "/incoming/res.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1871,7 +1871,7 @@ function testAttachPointNormalization() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-attachnorm");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("normalized", "/incoming/norm.dat");
+    check shareClient->upload("normalized", "/incoming/norm.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1900,7 +1900,7 @@ function testAbsentPathDefaultsToShareRoot() returns error? {
         check createTestShare(admin, share);
     }
     Client shareClient = check newShareClient(share);
-    check shareClient->uploadContent("at the root", "/root.dat");
+    check shareClient->upload("at the root", "/root.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1929,7 +1929,7 @@ function testEmptyAttachPointDefaultsToShareRoot() returns error? {
         check createTestShare(admin, share);
     }
     Client shareClient = check newShareClient(share);
-    check shareClient->uploadContent("empty means root", "/empty.dat");
+    check shareClient->upload("empty means root", "/empty.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -1976,8 +1976,8 @@ function testAnnotationFiltersApplyWithAttachPoint() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-attachfilter");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("should match", "/incoming/match.one");
-    check shareClient->uploadContent("should not", "/incoming/skip.two");
+    check shareClient->upload("should match", "/incoming/match.one");
+    check shareClient->upload("should not", "/incoming/skip.two");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -2035,8 +2035,8 @@ function testDispatchRunsHandlersConcurrently() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-concurrent");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("one", "/incoming/c1.dat");
-    check shareClient->uploadContent("two", "/incoming/c2.dat");
+    check shareClient->upload("one", "/incoming/c1.dat");
+    check shareClient->upload("two", "/incoming/c2.dat");
 
     final Recorder recorder = new;
     final Gauge gauge = new;
@@ -2062,7 +2062,7 @@ function testOverwriteDuringHandlingSerializesPerPath() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-pathguard");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("version one", "/incoming/hot.dat");
+    check shareClient->upload("version one", "/incoming/hot.dat");
 
     final Recorder recorder = new;
     final Gauge gauge = new;
@@ -2086,7 +2086,7 @@ function testOverwriteDuringHandlingSerializesPerPath() returns error? {
     check await(() => recorder.count("dispatch") >= 1, intervalSeconds = 0.2);
     // Overwrite while the first dispatch is still handling the old version: the new version
     // must wait for that handling to finish, then arrive on a later poll.
-    check shareClient->uploadContent("version two", "/incoming/hot.dat");
+    check shareClient->upload("version two", "/incoming/hot.dat");
     check await(() => recorder.payload("lastETag") != ""
             && recorder.payload("lastETag") != recorder.payload("firstETag"));
     check lsn.immediateStop();
@@ -2100,7 +2100,7 @@ function testOverwriteDuringHandlingNotConsumedUnseen() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-consumeguard");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("version one", "/incoming/hot.dat");
+    check shareClient->upload("version one", "/incoming/hot.dat");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
@@ -2120,7 +2120,7 @@ function testOverwriteDuringHandlingNotConsumedUnseen() returns error? {
     check await(() => recorder.count("dispatch") >= 1, intervalSeconds = 0.2);
     // Overwrite while the first dispatch is still handling: the finishing dispatch's
     // afterProcess must not consume the version it never saw.
-    check shareClient->uploadContent("version two", "/incoming/hot.dat");
+    check shareClient->upload("version two", "/incoming/hot.dat");
     check await(() => recorder.count("dispatch") >= 2);
     test:assertEquals(recorder.payload("last"), "version two",
             "the overwritten content must be dispatched before any consume");
@@ -2139,7 +2139,7 @@ function testImmediateStopDuringScanIsPrompt() returns error? {
     Client shareClient = setup[0];
     string share = setup[1];
     foreach int i in 0 ..< 24 {
-        check shareClient->uploadContent(string `payload-${i}`, string `/incoming/s${i}.dat`);
+        check shareClient->upload(string `payload-${i}`, string `/incoming/s${i}.dat`);
     }
 
     final Recorder recorder = new;
@@ -2171,7 +2171,7 @@ function testCallerTypedRead() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-typedread");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent(<map<json>>{"kind": "probe", "value": 7}, "/incoming/data.json");
+    check shareClient->upload(<map<json>>{"kind": "probe", "value": 7}, "/incoming/data.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);

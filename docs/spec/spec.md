@@ -211,21 +211,21 @@ check entries.forEach(function(files:Entry entry) {
 
 ### 4.5 Transfer Operations
 
-* `uploadFile(sourcePath, destinationPath, options)`: copies a local file to the share. Neither this nor `downloadFile` deletes its source, and both take full paths including the file name, the local path first for the upload.
-* `uploadContent(content, destinationPath, options)`: uploads in-memory content (section 4.5.1).
+* `uploadFromFile(sourcePath, destinationPath, options)`: copies a local file to the share. Neither this nor `download` deletes its source, and both take full paths including the file name, the local path first for the upload.
+* `upload(content, destinationPath, options)`: uploads in-memory content (section 4.5.1).
 * `uploadFromStream(content, contentLength, destinationPath, options)`: uploads a byte stream (section 4.5.2).
-* `downloadFile(sourcePath, destinationPath, options)`: copies a share file to a local path, the share path first. The download fails with a client side `Error` when a local file already exists at the destination.
+* `download(sourcePath, destinationPath, options)`: copies a share file to a local path, the share path first. The download fails with a client side `Error` when a local file already exists at the destination.
 * `getFile(path, options, targetType)`: retrieves the file's content in the form the caller directed target type selects (section 4.5.3).
 
-The upload options carry content headers and metadata; `uploadContent` additionally accepts the `fileFormat` override described below. The retrieval options carry a byte `range`, a `snapshotId` to read from a share snapshot (section 4.8), and the `fileFormat` override for record shaped targets.
+The upload options carry content headers and metadata; `upload` additionally accepts the `fileFormat` override described below. The retrieval options carry a byte `range`, a `snapshotId` to read from a share snapshot (section 4.8), and the `fileFormat` override for record shaped targets.
 
 #### 4.5.1 In-Memory Content
 
-`uploadContent` takes its content as the `UploadContent` union. A `byte[]` is written as is, a `string` as raw text, and an `xml` value in its textual form.
+`upload` takes its content as the `UploadContent` union. A `byte[]` is written as is, a `string` as raw text, and an `xml` value in its textual form.
 
 A record (which includes any map of `anydata` members), a record array, or any other `json` value is serialized per a resolved format: the explicit `UploadContentOptions.fileFormat` override wins, else the destination path's extension (`.json`, `.xml`, `.csv`) decides. A record becomes a JSON or an XML document; a record array becomes CSV rows headed by the union of the records' field names in first seen order, with nil or absent members as empty cells and fields containing a comma, quote, backslash, or line break quoted in the dialect the CSV reads bind back; any other `json` value (an array, a scalar, or nil) becomes a JSON document. A record directed to CSV, a record array directed to a non CSV format, a non mapping `json` value directed to a non JSON format, and a format that resolves to neither an override nor a known extension are each refused with a client side `Error`.
 
-There is no record stream upload, because the service pre-allocates a file at its full size before content is written; collect records into a `record {}[]` and upload them with `uploadContent`, or use `uploadFromStream` for a byte stream of known length. CSV serialization takes record arrays only; to write positional or headerless rows, serialize them with your own code and upload the text.
+There is no record stream upload, because the service pre-allocates a file at its full size before content is written; collect records into a `record {}[]` and upload them with `upload`, or use `uploadFromStream` for a byte stream of known length. CSV serialization takes record arrays only; to write positional or headerless rows, serialize them with your own code and upload the text.
 
 ###### Example: Uploading Records
 
@@ -236,11 +236,11 @@ type Metric record {
 };
 
 // The .json extension selects the JSON serialization.
-check fileShare->uploadContent(<Metric>{quarter: "q1", revenue: 1250000}, "/2026/q1/metrics.json");
+check fileShare->upload(<Metric>{quarter: "q1", revenue: 1250000}, "/2026/q1/metrics.json");
 
 // A record array is CSV; the override beats the extension when they disagree.
 Metric[] quarters = [{quarter: "q1", revenue: 1250000}, {quarter: "q2", revenue: 1310000}];
-check fileShare->uploadContent(quarters, "/2026/summary.dat", {fileFormat: files:CSV});
+check fileShare->upload(quarters, "/2026/summary.dat", {fileFormat: files:CSV});
 ```
 
 #### 4.5.2 Streaming Uploads
@@ -257,7 +257,7 @@ A source stream failure, a stream whose length does not match `contentLength`, a
 * `string`: the content decoded as UTF-8 text; content that is not valid UTF-8 fails with a client side `Error`.
 * `json`: the content parsed as a JSON document.
 * `xml`: the content parsed as an XML document.
-* `record {}` or `record {}[]`: the content bound to the record shape per a resolved format. The explicit `GetFileOptions.fileFormat` override wins, else the path's extension (`.json`, `.xml`, `.csv`) decides. A single record binds from JSON or XML (never CSV), a record array binds from a JSON array or CSV rows (never XML), and a format that resolves to neither an override nor a known extension is refused with a client side `Error`, mirroring the `uploadContent` refusals.
+* `record {}` or `record {}[]`: the content bound to the record shape per a resolved format. The explicit `GetFileOptions.fileFormat` override wins, else the path's extension (`.json`, `.xml`, `.csv`) decides. A single record binds from JSON or XML (never CSV), a record array binds from a JSON array or CSV rows (never XML), and a format that resolves to neither an override nor a known extension is refused with a client side `Error`, mirroring the `upload` refusals.
 * `stream<byte[], error?>`: a lazy byte stream, so memory stays bounded for any file size.
 * `stream<record {}, error?>`: CSV rows bound lazily, one record per pull; a row that fails to bind surfaces as the error entry of that pull.
 
@@ -276,11 +276,11 @@ stream<byte[], error?> chunks = check fileShare->getFile("/2026/q1/large.bin");
 ###### Example: Working with Files
 
 ```ballerina
-check fileShare->uploadFile("./invoice-2026-07.pdf", "/2026/07/invoice.pdf");
+check fileShare->uploadFromFile("./invoice-2026-07.pdf", "/2026/07/invoice.pdf");
 
 string text = check fileShare->getFile("/2026/07/notes.txt");
 
-check fileShare->downloadFile("/2026/07/invoice.pdf", "./copies/invoice.pdf");
+check fileShare->download("/2026/07/invoice.pdf", "./copies/invoice.pdf");
 ```
 
 ### 4.6 Copy Operations
@@ -305,7 +305,7 @@ Copies are asynchronous: inspect the returned `CopyInfo.copyStatus` and, if pend
 * `deleteShareSnapshot(snapshotId)`: deletes one snapshot.
 * `listRangesDiff(path, previousSnapshotId, options)`: reports which of a file's ranges were written and which were cleared since a baseline snapshot, for incremental backup on top of snapshots.
 
-Snapshot contents are read through the regular read operations: pass the snapshot id in the options of `downloadFile` or `getFile`, or the list options of `list`, to resolve the same paths inside the snapshot instead of the live share. The three snapshot management operations need account level credentials (an account key, a connection string carrying one, or an account SAS); a share scoped SAS is not sufficient.
+Snapshot contents are read through the regular read operations: pass the snapshot id in the options of `download` or `getFile`, or the list options of `list`, to resolve the same paths inside the snapshot instead of the live share. The three snapshot management operations need account level credentials (an account key, a connection string carrying one, or an account SAS); a share scoped SAS is not sufficient.
 
 ### 4.9 SAS Generation
 
@@ -360,7 +360,7 @@ listener files:Listener invoiceListener = check new ("invoices",
 
 service /incoming on invoiceListener {
     remote function onFile(byte[] content, files:FileInfo file, files:Caller caller) returns error? {
-        check caller->downloadFile(file.path, "./processed/" + file.name);
+        check caller->download(file.path, "./processed/" + file.name);
         // Consume the file so it does not fire again on the next poll.
         check caller->deleteFile(file.path);
     }
@@ -435,7 +435,7 @@ A file overwritten in the short window between a poll's listing and its content 
 
 ### 5.7 The Caller
 
-A `Caller` is passed to each handler so it can act on the event's file without constructing a separate client; it cannot be created by user code. It forwards a curated share scoped subset of the `Client`: `getFile`, `downloadFile`, `uploadFile`, `uploadContent`, `deleteFile`, `copyFile`, `checkCopyStatus`, `abortCopy`, `renameFile`, `createDirectory`, `deleteDirectory`, and `list`, each with the semantics of its `Client` counterpart. Handlers pass the event's path explicitly, for example `caller->deleteFile(file.path)`, and read the share's name from `FileInfo.shareName`.
+A `Caller` is passed to each handler so it can act on the event's file without constructing a separate client; it cannot be created by user code. It forwards a curated share scoped subset of the `Client`: `getFile`, `download`, `uploadFromFile`, `upload`, `deleteFile`, `copyFile`, `checkCopyStatus`, `abortCopy`, `renameFile`, `createDirectory`, `deleteDirectory`, and `list`, each with the semantics of its `Client` counterpart. Handlers pass the event's path explicitly, for example `caller->deleteFile(file.path)`, and read the share's name from `FileInfo.shareName`.
 
 ## 6. Errors
 
