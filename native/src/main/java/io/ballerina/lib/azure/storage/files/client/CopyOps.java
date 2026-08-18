@@ -20,7 +20,6 @@ package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.core.util.polling.SyncPoller;
 import com.azure.storage.file.share.ShareFileClient;
-import com.azure.storage.file.share.models.PermissionCopyModeType;
 import com.azure.storage.file.share.models.ShareFileCopyInfo;
 import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.options.ShareFileCopyOptions;
@@ -43,9 +42,6 @@ import java.time.OffsetDateTime;
  * observed via {@code checkCopyStatus}.
  */
 public final class CopyOps {
-
-    // The Ballerina PermissionCopyMode enum value selecting an explicit permission.
-    private static final String PERMISSION_COPY_MODE_OVERRIDE = "override";
 
     private CopyOps() {
     }
@@ -86,15 +82,7 @@ public final class CopyOps {
         if (options != null) {
             @SuppressWarnings("unchecked")
             BMap<BString, Object> record = (BMap<BString, Object>) options;
-            sdkOptions.setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA))
-                    .setFilePermission(ValueUtils.optString(record, OptionsReader.FILE_PERMISSION))
-                    .setSmbProperties(OptionsReader.smbProperties(record.get(OptionsReader.SMB_PROPERTIES)))
-                    .setIgnoreReadOnly(record.getBooleanValue(OptionsReader.IGNORE_READ_ONLY));
-            String copyMode = ValueUtils.optString(record, OptionsReader.PERMISSION_COPY_MODE);
-            if (copyMode != null) {
-                sdkOptions.setPermissionCopyModeType(PERMISSION_COPY_MODE_OVERRIDE.equals(copyMode)
-                        ? PermissionCopyModeType.OVERRIDE : PermissionCopyModeType.SOURCE);
-            }
+            sdkOptions.setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA));
         }
         SyncPoller<ShareFileCopyInfo, Void> poller =
                 destination.beginCopy(sourceUrl, sdkOptions, Duration.ofSeconds(1));

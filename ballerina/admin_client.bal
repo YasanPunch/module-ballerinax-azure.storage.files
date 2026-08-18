@@ -74,10 +74,6 @@ public isolated client class AdminClient {
         'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
-    // -----------------------------------------------------------------------
-    // Service configuration
-    // -----------------------------------------------------------------------
-
     # Reads the account's file-service configuration (metrics and CORS rules).
     #
     # + return - The `ServiceProperties`, or an `Error`
@@ -93,10 +89,6 @@ public isolated client class AdminClient {
     isolated remote function setServiceProperties(ServiceProperties properties) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
-
-    // -----------------------------------------------------------------------
-    // SAS
-    // -----------------------------------------------------------------------
 
     # Gets a user-delegation key for signing user-delegation SAS tokens. Requires Microsoft
     # Entra ID credentials with the `Storage File Delegator` role.

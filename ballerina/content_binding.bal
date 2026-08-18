@@ -19,17 +19,14 @@ import ballerina/data.csv;
 // natives directly (TypedReadOps and ContentBinder), with no Ballerina-side reference.
 import ballerina/data.jsondata as _;
 
-// Binds CSV file content to the declared handler type through the data.csv module. Invoked from
-// the native dispatcher, which supplies the handler's declared parameter type as the typedesc.
-// Each record maps its fields through the header row (the file's first row), which the
-// data.csv default consumes.
+// Binds CSV file content to the handler's declared record array type through data.csv;
+// each record maps its fields through the file's header row.
 isolated function bindCsvContent(byte[] content, typedesc<record {}[]> targetType,
         boolean laxDataBinding) returns record {}[]|error {
     return csv:parseBytes(content, csvParseOptions(laxDataBinding), targetType);
 }
 
-// The CSV parse options shared by the materialized and stream binding paths: only the data
-// projection toggle is set, everything else keeps the data.csv defaults.
+// The CSV parse options shared by the materialized and stream binding paths.
 isolated function csvParseOptions(boolean laxDataBinding) returns csv:ParseOptions {
     if laxDataBinding {
         return {allowDataProjection: {nilAsOptionalField: true, absentAsNilableType: true}};

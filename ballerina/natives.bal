@@ -16,10 +16,6 @@
 
 import ballerina/jballerina.java;
 
-// ---------------------------------------------------------------------------
-// Client lifecycle
-// ---------------------------------------------------------------------------
-
 isolated function initAdminClient(AdminClient adminClient, ClientConfiguration config) returns Error? = @java:Method {
     'class: "io.ballerina.lib.azure.storage.files.client.ClientInit"
 } external;
@@ -36,13 +32,8 @@ isolated function externUploadContent(Client fileClient, byte[]|string|xml|strin
     name: "uploadContent", 'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;
 
-// ---------------------------------------------------------------------------
-// Stream upload plumbing
-// ---------------------------------------------------------------------------
-
-// The Azure Files service caps one range write at 4 MiB — Put Range returns HTTP 413 above
-// it (learn.microsoft.com/rest/api/storageservices/put-range) and the SDK exposes no public
-// constant for it (mirrored by TransferOps.MAX_RANGE_BYTES). Buffered source chunks flush
+// The Azure Files Put Range cap: one range write is at most 4 MiB, HTTP 413 above it
+// (learn.microsoft.com/rest/api/storageservices/put-range). Buffered source chunks flush
 // at this size.
 const int MAX_RANGE_BYTES = 4 * 1024 * 1024;
 
@@ -55,10 +46,6 @@ isolated function writeStreamChunk(Client fileClient, string destinationPath, in
         byte[] chunk) returns Error? = @java:Method {
     'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;
-
-// ---------------------------------------------------------------------------
-// Entry listing stream
-// ---------------------------------------------------------------------------
 
 # One entry of the listing stream returned by `Client.list`.
 type ListStreamEntry record {|
@@ -100,10 +87,6 @@ isolated function nextEntry(EntryStreamGenerator generator) returns Entry|Error?
 isolated function closeEntryIterator(EntryStreamGenerator generator) returns Error? = @java:Method {
     'class: "io.ballerina.lib.azure.storage.files.client.ListOps"
 } external;
-
-// ---------------------------------------------------------------------------
-// Content download stream
-// ---------------------------------------------------------------------------
 
 # Backs the lazy byte stream returned by `Client.getFileContent`.
 isolated class ContentStreamGenerator {

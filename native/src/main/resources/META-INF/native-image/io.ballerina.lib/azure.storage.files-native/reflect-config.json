@@ -34,19 +34,11 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.implementation.models.HandleItem",
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.implementation.models.KeyInfo",
     "allDeclaredMethods": true
   },
   {
     "name": "com.azure.storage.file.share.implementation.models.ListFilesAndDirectoriesSegmentResponse",
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.ListHandlesResponse",
     "allDeclaredMethods": true
   },
   {
@@ -58,15 +50,7 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.implementation.models.SharePermission",
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.implementation.models.SharePropertiesInternal",
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.ShareSignedIdentifierWrapper",
     "allDeclaredMethods": true
   },
   {
@@ -94,15 +78,7 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.models.HandleItem",
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.models.Range",
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.models.ShareAccessPolicy",
     "allDeclaredMethods": true
   },
   {
@@ -146,10 +122,6 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.models.ShareSignedIdentifier",
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.models.ShareSmbSettings",
     "allDeclaredMethods": true
   },
@@ -178,12 +150,6 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.implementation.models.DirectoriesForceCloseHandlesHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.implementation.models.DirectoriesGetPropertiesHeaders",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
@@ -191,12 +157,6 @@
   },
   {
     "name": "com.azure.storage.file.share.implementation.models.DirectoriesListFilesAndDirectoriesSegmentHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.DirectoriesListHandlesHeaders",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
     "allDeclaredMethods": true
@@ -214,49 +174,13 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.implementation.models.DirectoriesSetPropertiesHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.implementation.models.FilesAbortCopyHeaders",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.implementation.models.FilesAcquireLeaseHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.FilesBreakLeaseHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.FilesChangeLeaseHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.FilesCreateHardLinkHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.implementation.models.FilesCreateHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.FilesCreateSymbolicLinkHeaders",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
     "allDeclaredMethods": true
@@ -274,12 +198,6 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.implementation.models.FilesForceCloseHandlesHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.implementation.models.FilesGetPropertiesHeaders",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
@@ -287,24 +205,6 @@
   },
   {
     "name": "com.azure.storage.file.share.implementation.models.FilesGetRangeListHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.FilesGetSymbolicLinkHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.FilesListHandlesHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.FilesReleaseLeaseHeaders",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
     "allDeclaredMethods": true
@@ -376,31 +276,7 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.implementation.models.SharesAcquireLeaseHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.SharesBreakLeaseHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.SharesChangeLeaseHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.implementation.models.SharesCreateHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.SharesCreatePermissionHeaders",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
     "allDeclaredMethods": true
@@ -418,18 +294,6 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.implementation.models.SharesGetAccessPolicyHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.SharesGetPermissionHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.implementation.models.SharesGetPropertiesHeaders",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
@@ -442,37 +306,13 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.implementation.models.SharesReleaseLeaseHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.SharesRenewLeaseHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.implementation.models.SharesRestoreHeaders",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
     "allDeclaredMethods": true
   },
   {
-    "name": "com.azure.storage.file.share.implementation.models.SharesSetAccessPolicyHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.azure.storage.file.share.implementation.models.SharesSetMetadataHeaders",
-    "allDeclaredConstructors": true,
-    "allDeclaredFields": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.implementation.models.SharesSetPropertiesHeaders",
     "allDeclaredConstructors": true,
     "allDeclaredFields": true,
     "allDeclaredMethods": true
@@ -509,11 +349,6 @@
   },
   {
     "name": "com.azure.storage.file.share.models.FilePropertySemantics",
-    "allDeclaredConstructors": true,
-    "allDeclaredMethods": true
-  },
-  {
-    "name": "com.azure.storage.file.share.models.NfsFileType",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true
   },

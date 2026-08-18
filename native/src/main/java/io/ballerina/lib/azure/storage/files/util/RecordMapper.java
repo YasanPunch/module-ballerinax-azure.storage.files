@@ -18,17 +18,11 @@
 
 package io.ballerina.lib.azure.storage.files.util;
 
-import com.azure.storage.file.share.FileSmbProperties;
 import com.azure.storage.file.share.models.ClearRange;
-import com.azure.storage.file.share.models.CloseHandlesInfo;
-import com.azure.storage.file.share.models.FilePosixProperties;
 import com.azure.storage.file.share.models.FileRange;
-import com.azure.storage.file.share.models.HandleItem;
 import com.azure.storage.file.share.models.LeaseDurationType;
 import com.azure.storage.file.share.models.LeaseStateType;
 import com.azure.storage.file.share.models.LeaseStatusType;
-import com.azure.storage.file.share.models.NtfsFileAttributes;
-import com.azure.storage.file.share.models.ShareAccessPolicy;
 import com.azure.storage.file.share.models.ShareCorsRule;
 import com.azure.storage.file.share.models.ShareDirectoryProperties;
 import com.azure.storage.file.share.models.ShareFileItem;
@@ -41,7 +35,6 @@ import com.azure.storage.file.share.models.ShareProperties;
 import com.azure.storage.file.share.models.ShareProtocols;
 import com.azure.storage.file.share.models.ShareRetentionPolicy;
 import com.azure.storage.file.share.models.ShareServiceProperties;
-import com.azure.storage.file.share.models.ShareSignedIdentifier;
 import com.azure.storage.file.share.models.UserDelegationKey;
 import io.ballerina.runtime.api.creators.TypeCreator;
 import io.ballerina.runtime.api.creators.ValueCreator;
@@ -56,7 +49,6 @@ import io.ballerina.runtime.api.values.BString;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
-import java.util.EnumSet;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -77,22 +69,14 @@ public final class RecordMapper {
     public static final String RECORD_COPY_STATUS_INFO = "CopyStatusInfo";
     public static final String RECORD_ENTRY = "Entry";
     public static final String RECORD_RANGE = "Range";
-    public static final String RECORD_SMB_PROPERTIES = "SmbProperties";
-    public static final String RECORD_POSIX_PROPERTIES = "PosixProperties";
     public static final String RECORD_SHARE_SNAPSHOT_INFO = "ShareSnapshotInfo";
     public static final String RECORD_RANGE_DIFF = "RangeDiff";
-    public static final String RECORD_SIGNED_IDENTIFIER = "SignedIdentifier";
-    public static final String RECORD_ACCESS_POLICY = "AccessPolicy";
-    public static final String RECORD_HANDLE_INFO = "HandleInfo";
-    public static final String RECORD_CLOSE_HANDLES_INFO = "CloseHandlesInfo";
     public static final String RECORD_SERVICE_PROPERTIES = "ServiceProperties";
     public static final String RECORD_METRICS = "Metrics";
     public static final String RECORD_CORS_RULE = "CorsRule";
     public static final String RECORD_PROTOCOL_SETTINGS = "ProtocolSettings";
     public static final String RECORD_USER_DELEGATION_KEY = "UserDelegationKey";
-    // The `FileInfo` listener payload record and its own field vocabulary. FileInfo is a
-    // distinct record schema, so it keeps its own field constants even where a spelling
-    // coincides with another record's field.
+    // The FileInfo listener payload record and its field vocabulary (a distinct record schema).
     public static final String RECORD_FILE_INFO = "FileInfo";
     public static final BString FILE_INFO_SHARE_NAME = StringUtils.fromString("shareName");
     public static final BString FILE_INFO_PATH = StringUtils.fromString("path");
@@ -135,13 +119,6 @@ public final class RecordMapper {
     public static final BString END_BYTE = StringUtils.fromString("endByte");
     public static final BString RANGES = StringUtils.fromString("ranges");
     public static final BString CLEAR_RANGES = StringUtils.fromString("clearRanges");
-    public static final BString HANDLE_ID = StringUtils.fromString("handleId");
-    public static final BString SESSION_ID = StringUtils.fromString("sessionId");
-    public static final BString CLIENT_IP = StringUtils.fromString("clientIp");
-    public static final BString OPEN_TIME = StringUtils.fromString("openTime");
-    public static final BString LAST_RECONNECT_TIME = StringUtils.fromString("lastReconnectTime");
-    public static final BString CLOSED_HANDLES = StringUtils.fromString("closedHandles");
-    public static final BString FAILED_HANDLES = StringUtils.fromString("failedHandles");
     public static final BString HOUR_METRICS = StringUtils.fromString("hourMetrics");
     public static final BString MINUTE_METRICS = StringUtils.fromString("minuteMetrics");
     public static final BString CORS = StringUtils.fromString("cors");
@@ -162,9 +139,6 @@ public final class RecordMapper {
     public static final BString SIGNED_SERVICE = StringUtils.fromString("signedService");
     public static final BString SIGNED_VERSION = StringUtils.fromString("signedVersion");
     public static final BString VALUE = StringUtils.fromString("value");
-    public static final BString ACCESS_POLICY = StringUtils.fromString("accessPolicy");
-    public static final BString STARTS_ON = StringUtils.fromString("startsOn");
-    public static final BString EXPIRES_ON = StringUtils.fromString("expiresOn");
     public static final BString PERMISSIONS = StringUtils.fromString("permissions");
 
     private RecordMapper() {
@@ -236,8 +210,6 @@ public final class RecordMapper {
             record.put(OptionsReader.METADATA, ValueUtils.toBStringMap(p.getMetadata()));
         }
         record.put(IS_SERVER_ENCRYPTED, p.isServerEncrypted());
-        putSmbProperties(record, p.getSmbProperties());
-        putPosixProperties(record, p.getPosixProperties());
         return record;
     }
 
@@ -277,8 +249,6 @@ public final class RecordMapper {
         if (progress != null) {
             record.put(COPY_PROGRESS, progress);
         }
-        putSmbProperties(record, p.getSmbProperties());
-        putPosixProperties(record, p.getPosixProperties());
         return record;
     }
 
@@ -488,57 +458,6 @@ public final class RecordMapper {
         return record;
     }
 
-    /** Maps one SDK SMB-handle item to a {@code HandleInfo} record. */
-    public static BMap<BString, Object> handleInfo(HandleItem item) {
-        BMap<BString, Object> record = newRecord(RECORD_HANDLE_INFO);
-        record.put(HANDLE_ID, StringUtils.fromString(item.getHandleId()));
-        record.put(PATH, StringUtils.fromString("/" + (item.getPath() == null ? "" : item.getPath())));
-        if (item.getFileId() != null) {
-            record.put(OptionsReader.FILE_ID, StringUtils.fromString(item.getFileId()));
-        }
-        if (item.getSessionId() != null) {
-            record.put(SESSION_ID, StringUtils.fromString(item.getSessionId()));
-        }
-        if (item.getClientIp() != null) {
-            record.put(CLIENT_IP, StringUtils.fromString(item.getClientIp()));
-        }
-        if (item.getOpenTime() != null) {
-            record.put(OPEN_TIME, ValueUtils.toUtc(item.getOpenTime()));
-        }
-        if (item.getLastReconnectTime() != null) {
-            record.put(LAST_RECONNECT_TIME, ValueUtils.toUtc(item.getLastReconnectTime()));
-        }
-        return record;
-    }
-
-    /** Maps the SDK close-handles result to a {@code CloseHandlesInfo} record. */
-    public static BMap<BString, Object> closeHandlesInfo(CloseHandlesInfo info) {
-        BMap<BString, Object> record = newRecord(RECORD_CLOSE_HANDLES_INFO);
-        record.put(CLOSED_HANDLES, (long) info.getClosedHandles());
-        record.put(FAILED_HANDLES, (long) info.getFailedHandles());
-        return record;
-    }
-
-    /** Maps one SDK stored-access-policy identifier to a {@code SignedIdentifier} record. */
-    public static BMap<BString, Object> signedIdentifier(ShareSignedIdentifier identifier) {
-        BMap<BString, Object> record = newRecord(RECORD_SIGNED_IDENTIFIER);
-        record.put(ID, StringUtils.fromString(identifier.getId()));
-        BMap<BString, Object> policy = newRecord(RECORD_ACCESS_POLICY);
-        ShareAccessPolicy sdkPolicy = identifier.getAccessPolicy();
-        if (sdkPolicy != null) {
-            policy.put(PERMISSIONS,
-                    StringUtils.fromString(sdkPolicy.getPermissions() == null ? "" : sdkPolicy.getPermissions()));
-            if (sdkPolicy.getStartsOn() != null) {
-                policy.put(STARTS_ON, ValueUtils.toUtc(sdkPolicy.getStartsOn()));
-            }
-            if (sdkPolicy.getExpiresOn() != null) {
-                policy.put(EXPIRES_ON, ValueUtils.toUtc(sdkPolicy.getExpiresOn()));
-            }
-        }
-        record.put(ACCESS_POLICY, policy);
-        return record;
-    }
-
     /** Maps the SDK range-diff listing to a {@code RangeDiff} record. */
     public static BMap<BString, Object> rangeDiff(ShareFileRangeList list) {
         BMap<BString, Object> record = newRecord(RECORD_RANGE_DIFF);
@@ -587,88 +506,5 @@ public final class RecordMapper {
         if (duration != null) {
             record.put(LEASE_DURATION, StringUtils.fromString(duration.toString()));
         }
-    }
-
-    private static void putSmbProperties(BMap<BString, Object> record, FileSmbProperties smb) {
-        if (smb == null) {
-            return;
-        }
-        boolean hasContent = smb.getNtfsFileAttributes() != null || smb.getFilePermissionKey() != null
-                || smb.getFileCreationTime() != null || smb.getFileLastWriteTime() != null
-                || smb.getFileChangeTime() != null || smb.getFileId() != null || smb.getParentId() != null;
-        if (!hasContent) {
-            return;
-        }
-        BMap<BString, Object> smbRecord = newRecord(RECORD_SMB_PROPERTIES);
-        EnumSet<NtfsFileAttributes> attributes = smb.getNtfsFileAttributes();
-        if (attributes != null) {
-            BArray array = ValueCreator.createArrayValue(TypeCreator.createArrayType(PredefinedTypes.TYPE_STRING));
-            for (NtfsFileAttributes attribute : attributes) {
-                array.append(StringUtils.fromString(ntfsAttributeValue(attribute)));
-            }
-            smbRecord.put(OptionsReader.NTFS_FILE_ATTRIBUTES, array);
-        }
-        if (smb.getFilePermissionKey() != null) {
-            smbRecord.put(OptionsReader.FILE_PERMISSION_KEY, StringUtils.fromString(smb.getFilePermissionKey()));
-        }
-        if (smb.getFileCreationTime() != null) {
-            smbRecord.put(OptionsReader.FILE_CREATION_TIME, ValueUtils.toUtc(smb.getFileCreationTime()));
-        }
-        if (smb.getFileLastWriteTime() != null) {
-            smbRecord.put(OptionsReader.FILE_LAST_WRITE_TIME, ValueUtils.toUtc(smb.getFileLastWriteTime()));
-        }
-        if (smb.getFileChangeTime() != null) {
-            smbRecord.put(OptionsReader.FILE_CHANGE_TIME, ValueUtils.toUtc(smb.getFileChangeTime()));
-        }
-        if (smb.getFileId() != null) {
-            smbRecord.put(OptionsReader.FILE_ID, StringUtils.fromString(smb.getFileId()));
-        }
-        if (smb.getParentId() != null) {
-            smbRecord.put(OptionsReader.PARENT_ID, StringUtils.fromString(smb.getParentId()));
-        }
-        record.put(OptionsReader.SMB_PROPERTIES, smbRecord);
-    }
-
-    private static void putPosixProperties(BMap<BString, Object> record, FilePosixProperties posix) {
-        if (posix == null) {
-            return;
-        }
-        boolean hasContent = posix.getOwner() != null || posix.getGroup() != null
-                || posix.getFileMode() != null || posix.getFileType() != null || posix.getLinkCount() != null;
-        if (!hasContent) {
-            return;
-        }
-        BMap<BString, Object> posixRecord = newRecord(RECORD_POSIX_PROPERTIES);
-        if (posix.getOwner() != null) {
-            posixRecord.put(OptionsReader.OWNER, StringUtils.fromString(posix.getOwner()));
-        }
-        if (posix.getGroup() != null) {
-            posixRecord.put(OptionsReader.GROUP, StringUtils.fromString(posix.getGroup()));
-        }
-        if (posix.getFileMode() != null) {
-            posixRecord.put(OptionsReader.FILE_MODE, StringUtils.fromString(posix.getFileMode()));
-        }
-        if (posix.getFileType() != null) {
-            posixRecord.put(OptionsReader.FILE_TYPE, StringUtils.fromString(posix.getFileType().toString()));
-        }
-        if (posix.getLinkCount() != null) {
-            posixRecord.put(OptionsReader.LINK_COUNT, posix.getLinkCount());
-        }
-        record.put(OptionsReader.POSIX_PROPERTIES, posixRecord);
-    }
-
-    private static String ntfsAttributeValue(NtfsFileAttributes attribute) {
-        return switch (attribute) {
-            case READ_ONLY -> OptionsReader.ATTRIBUTE_READ_ONLY;
-            case HIDDEN -> OptionsReader.ATTRIBUTE_HIDDEN;
-            case SYSTEM -> OptionsReader.ATTRIBUTE_SYSTEM;
-            case NORMAL -> OptionsReader.ATTRIBUTE_NONE;
-            case DIRECTORY -> OptionsReader.ATTRIBUTE_DIRECTORY;
-            case ARCHIVE -> OptionsReader.ATTRIBUTE_ARCHIVE;
-            case TEMPORARY -> OptionsReader.ATTRIBUTE_TEMPORARY;
-            case OFFLINE -> OptionsReader.ATTRIBUTE_OFFLINE;
-            case NOT_CONTENT_INDEXED -> OptionsReader.ATTRIBUTE_NOT_CONTENT_INDEXED;
-            case NO_SCRUB_DATA -> OptionsReader.ATTRIBUTE_NO_SCRUB_DATA;
-        };
     }
 }

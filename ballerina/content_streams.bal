@@ -29,9 +29,7 @@ type CsvRowEntry record {|
     record {} value;
 |};
 
-// Backs a stream content handler's byte stream: each next() reads one chunk of the watched
-// file from the service, and the underlying source closes at the end of the file or on an
-// explicit close(). A handler that abandons the stream early should call close().
+// Backs a stream content handler's byte stream: each next() reads one chunk from the service.
 class ContentByteStream {
 
     private boolean isClosed = false;
@@ -52,10 +50,8 @@ class ContentByteStream {
     }
 }
 
-// Backs a CSV stream content handler: wraps the file's byte stream in a data.csv row stream
-// that yields one bound row per next(). A row that fails to bind surfaces as the error entry
-// of that next() call, after which the stream is closed; the stream also closes itself at the
-// end of the file.
+// Backs a CSV stream content handler: a data.csv row stream over the file's byte stream. A row
+// that fails to bind surfaces as that next() call's error entry, after which the stream closes.
 class ContentCsvStream {
 
     private boolean isClosed = false;
@@ -100,9 +96,8 @@ class ContentCsvStream {
     }
 }
 
-// Constructs the CSV row stream backing on a real strand: the data.csv stream construction
-// runs Ballerina code, so the native dispatcher calls in here through the runtime rather than
-// constructing the object on a plain dispatch thread.
+// The data.csv stream construction runs Ballerina code, so the native dispatcher must call in
+// through the runtime on a real strand.
 isolated function newContentCsvStream(typedesc<record {}> targetType,
         stream<byte[], error?> byteStream, boolean laxDataBinding) returns ContentCsvStream|error {
     return new (targetType, byteStream, csvParseOptions(laxDataBinding));

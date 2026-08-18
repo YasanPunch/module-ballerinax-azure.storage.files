@@ -147,11 +147,8 @@ public final class Listener {
     public static Object initListener(BObject listenerObj, BString shareName,
                                       BMap<BString, Object> config, BObject caller) {
         try {
-            // Every poll parses XML (directory-listing responses). azure-xml's XmlReader picks its
-            // StAX parser once per process, on whichever thread first touches the class, through a
-            // context-classloader lookup; a failure there is permanent (the class stays unusable).
-            // Parse one element here so that one-shot setup runs on the init thread, and any
-            // failure surfaces as an immediate typed init error instead of a dead poll loop.
+            // azure-xml's XmlReader picks its StAX parser once per process and a failure there is
+            // permanent; warming it up here surfaces that as a typed init error, not a dead poll loop.
             try (XmlReader ignored = XmlReader.fromString("<x/>")) {
                 // initialization only
             } catch (XMLStreamException | RuntimeException | Error e) {
@@ -247,14 +244,8 @@ public final class Listener {
         });
     }
 
-    /**
-     * Invokes the service's optional {@code onError} handler with the given error, on a
-     * virtual thread. onError is a notification hook: its own failure is printed and swallowed,
-     * and it never alters the listener's consume behavior or polling cadence.
-     *
-     * @param ctx   the listener context
-     * @param error the error to hand to the handler
-     */
+    // Invokes the optional onError handler on a virtual thread. onError is a notification
+    // hook: its own failure is printed and swallowed.
     private static void invokeOnError(ListenerContext ctx, BError error) {
         BObject service = ctx.service;
         ServiceContext serviceContext = ctx.serviceContext;
@@ -302,16 +293,8 @@ public final class Listener {
         return null;
     }
 
-    /**
-     * Scans the watched path for files. The service lists one directory per call (no recursive
-     * listing exists on the wire), so recursive watching requires client-side traversal:
-     * iterative DFS with an explicit deque, listing with extended info, timestamps, and ETags.
-     * Checks {@code ctx.stopped} each iteration so a stop ends a long traversal early.
-     *
-     * @param listenerObj    the Ballerina listener object
-     * @param ctx            the listener context
-     * @param serviceContext the attached service's watch configuration
-     */
+    // Scans the watched path (client-side DFS; the wire has no recursive listing), checking
+    // ctx.stopped each iteration so a stop ends a long traversal early.
     private static void scan(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext) {
         ShareClient share = BallerinaAzureClient.getShareClient(listenerObj);
         Deque<String> pending = new ArrayDeque<>();
@@ -341,17 +324,8 @@ public final class Listener {
         }
     }
 
-    /**
-     * Considers a file for dispatching: applies the service's file name pattern and minimum
-     * file age filters, then dispatches on a virtual thread unless the file is already being
-     * processed (delivery is at-least-once; a skipped file re-fires on a later poll).
-     *
-     * @param listenerObj    the Ballerina listener object
-     * @param ctx            the listener context
-     * @param serviceContext the attached service's watch configuration
-     * @param item           the file item
-     * @param path           the file path
-     */
+    // Applies the pattern and age filters, then dispatches on a virtual thread unless the file
+    // is already in flight (at-least-once: a skipped file re-fires on a later poll).
     private static void consider(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext,
                                  ShareFileItem item, String path) {
         String name = item.getName();
@@ -375,17 +349,8 @@ public final class Listener {
         Thread.startVirtualThread(() -> dispatch(listenerObj, ctx, serviceContext, item, path));
     }
 
-    /**
-     * Dispatches a file to its handler: downloads or opens the content, binds it to the
-     * handler's declared type, invokes the handler, and applies the configured post-process
-     * action.
-     *
-     * @param listenerObj    the Ballerina listener object
-     * @param ctx            the listener context
-     * @param serviceContext the attached service's watch configuration and handler set
-     * @param item           the file item
-     * @param path           the file path
-     */
+    // Downloads or opens the content, binds it to the handler's declared type, invokes the
+    // handler, and applies the configured post-process action.
     private static void dispatch(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext,
                                  ShareFileItem item, String path) {
         try {
@@ -576,10 +541,9 @@ public final class Listener {
         }
         try {
             ShareClient share = BallerinaAzureClient.getShareClient(listenerObj);
-            // A file overwritten while its handler ran holds content no dispatch has seen;
-            // consuming it here would lose that version, so a changed entity tag leaves the
-            // file for the next poll. Azure Files has no conditional deletes or renames, so
-            // the moment between this check and the action stays unguarded.
+            // A changed entity tag means content no dispatch has seen; leave the file for the
+            // next poll. Azure Files has no conditional deletes or renames, so the moment
+            // between this check and the action stays unguarded.
             if (expectedETag != null) {
                 String currentETag = share.getFileClient(path).getProperties().getETag();
                 if (!unquoteETag(expectedETag).equals(unquoteETag(currentETag))) {
@@ -634,16 +598,8 @@ public final class Listener {
         return out.toByteArray();
     }
 
-    /**
-     * Parses the attached service's watch configuration and handler set. The watched path is
-     * the service's attach point, carried in {@code name} (a string, a resource path's segment
-     * array, or nil); a service with no attach point watches the share root. The optional
-     * {@code @files:ServiceConfig} annotation supplies only the filters.
-     *
-     * @param service the service being attached
-     * @param name    the service's attach point
-     * @return the immutable per-attach service context
-     */
+    // Parses the attached service's watch configuration and handler set; the watched path is
+    // the service's attach point (nil watches the share root).
     private static ServiceContext parseService(BObject service, Object name) {
         String watchedPath = watchedPathFrom(name);
         ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
@@ -694,10 +650,8 @@ public final class Listener {
         return new ServiceContext(watchedPath, recursive, fileNamePattern, minFileAgeSeconds, handlers, onErrorArity);
     }
 
-    // Resolves the watched path from the service's attach point: a resource path's segments
-    // join with a slash, a string normalizes (trimmed, double slashes collapsed, leading and
-    // trailing slashes stripped to the internal share-relative form), and nil or an empty
-    // value is the share root.
+    // Resolves the watched path from the attach point: segments join with a slash, strings
+    // normalize to the internal share-relative form, nil or empty is the share root.
     private static String watchedPathFrom(Object name) {
         if (name instanceof BArray segments) {
             StringBuilder joined = new StringBuilder();
@@ -821,10 +775,8 @@ public final class Listener {
                                   int onErrorArity) {
     }
 
-    // One content handler: its resolved routing pattern, post-process actions, the shape of its
-    // parameter list (how many it declares, and whether a two-parameter handler's second parameter
-    // is the Caller rather than the FileInfo), and its declared content parameter type (used to
-    // bind typed content, e.g. a map<json>, a record, or an array of them for onFileJson).
+    // One content handler: its routing pattern, post-process actions, parameter-list shape,
+    // and declared content parameter type.
     private record HandlerConfig(String methodName, Pattern routingPattern,
                                  PostAction afterProcess, PostAction afterError,
                                  int arity, boolean secondParamIsCaller, Type contentType) {

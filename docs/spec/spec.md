@@ -36,13 +36,7 @@ The official implementation aligns with this specification. Any deviation qualif
    * 4.6 [Copy Operations](#46-copy-operations)
    * 4.7 [Range Operations](#47-range-operations)
    * 4.8 [Share Snapshot Operations](#48-share-snapshot-operations)
-   * 4.9 [Lease Operations](#49-lease-operations)
-   * 4.10 [SMB Handle Operations](#410-smb-handle-operations)
-   * 4.11 [Property Update Operations](#411-property-update-operations)
-   * 4.12 [Access Policy Operations](#412-access-policy-operations)
-   * 4.13 [Permission Operations](#413-permission-operations)
-   * 4.14 [SAS Generation](#414-sas-generation)
-   * 4.15 [NFS Link Operations](#415-nfs-link-operations)
+   * 4.9 [SAS Generation](#49-sas-generation)
 5. [The Listener and Caller](#5-the-listener-and-caller)
    * 5.1 [Initializing the Listener](#51-initializing-the-listener)
    * 5.2 [The Service and the Watched Path](#52-the-service-and-the-watched-path)
@@ -60,7 +54,7 @@ The official implementation aligns with this specification. Any deviation qualif
 The public surface is four types:
 
 * The `AdminClient` operates at the storage account level. It creates, lists, deletes, and restores shares, manages the account's file service configuration, and mints account level SAS tokens.
-* The `Client` is bound to a single share at initialization and carries every operation inside that share: directories, files, transfers, copies, byte ranges, snapshots, leases, SMB handles, access policies, stored permissions, SAS generation, and NFS links.
+* The `Client` is bound to a single share at initialization and carries every operation inside that share: directories, files, transfers, copies, byte ranges, snapshots, and SAS generation.
 * The `Listener` polls one watched path on a share and dispatches each present file to the matching content handler of its attached service.
 * The `Caller` is passed to each listener handler. It forwards a curated share scoped subset of the `Client`, so a handler can act on the event's file without constructing a separate client.
 
@@ -163,7 +157,7 @@ if !(check admin->hasShare("invoices")) {
 
 ### 3.4 User Delegation Key and Account SAS
 
-* `getUserDelegationKey(startTime, expiryTime)`: obtains a `UserDelegationKey` for signing user delegation SAS tokens (section 4.14). Requires a client authenticated with Microsoft Entra ID whose identity holds the `Storage File Delegator` role. The key is valid at most 7 days.
+* `getUserDelegationKey(startTime, expiryTime)`: obtains a `UserDelegationKey` for signing user delegation SAS tokens (section 4.9). Requires a client authenticated with Microsoft Entra ID whose identity holds the `Storage File Delegator` role. The key is valid at most 7 days.
 * `generateAccountSas(values)`: mints an account level SAS token. This is an ordinary method, invoked with `.`: it signs the token locally with the account key and makes no service call. It requires a client authenticated with a shared key (or a connection string carrying an account key). Rotating the account key revokes every SAS minted from it.
 
 ## 4. Client
@@ -188,7 +182,7 @@ files:Client fileShare = check new ("invoices", auth = {accountName: "myacct", a
 
 ### 4.3 Directory Operations
 
-* `createDirectory(directoryPath, options)`: creates a directory. `DirectoryCreateOptions` accepts metadata, an SDDL permission, SMB properties, and POSIX properties.
+* `createDirectory(directoryPath, options)`: creates a directory. `DirectoryCreateOptions` accepts metadata.
 * `deleteDirectory(directoryPath)`: deletes a directory, which must be empty.
 * `hasDirectory(directoryPath)`: returns whether the directory exists, with the same semantics as `hasShare`: `false` only on a confirmed 404, an `Error` when the check itself fails.
 * `getDirectoryProperties(directoryPath)`: reads the directory's properties as a `DirectoryProperties` record.
@@ -207,7 +201,7 @@ check entries.forEach(function(files:Entry entry) {
 
 ### 4.4 File Operations
 
-* `createFile(path, sizeInBytes, options)`: provisions an empty file of a fixed size; content is written separately through the transfer or range operations. `CreateOptions` accepts content headers, metadata, an SDDL permission, SMB properties, and POSIX properties.
+* `createFile(path, sizeInBytes, options)`: provisions an empty file of a fixed size; content is written separately through the transfer or range operations. `CreateOptions` accepts content headers and metadata.
 * `deleteFile(path)`: deletes a file.
 * `hasFile(path)`: returns whether the file exists, with the same semantics as `hasShare`.
 * `getFileProperties(path)`: reads the file's properties, including its metadata, as a `FileProperties` record.
@@ -223,7 +217,7 @@ check entries.forEach(function(files:Entry entry) {
 * `downloadFile(sourcePath, destinationPath, options)`: copies a share file to a local path, the share path first. The download fails with a client side `Error` when a local file already exists at the destination.
 * `getFile(path, options, targetType)`: retrieves the file's content in the form the caller directed target type selects (section 4.5.3).
 
-The upload options carry content headers, metadata, an SDDL permission, SMB properties, and POSIX properties; `uploadContent` additionally accepts the `fileFormat` override described below. The retrieval options carry a byte `range`, a `snapshotId` to read from a share snapshot (section 4.8), and the `fileFormat` override for record shaped targets.
+The upload options carry content headers and metadata; `uploadContent` additionally accepts the `fileFormat` override described below. The retrieval options carry a byte `range`, a `snapshotId` to read from a share snapshot (section 4.8), and the `fileFormat` override for record shaped targets.
 
 #### 4.5.1 In-Memory Content
 
@@ -296,7 +290,7 @@ check fileShare->downloadFile("/2026/07/invoice.pdf", "./copies/invoice.pdf");
 * `checkCopyStatus(path)`: reports the destination file's copy state as a `CopyStatusInfo`, or `()` when the file has never been a copy destination.
 * `abortCopy(path, copyId)`: cancels a pending copy.
 
-Copies are asynchronous: inspect the returned `CopyInfo.copyStatus` and, if pending, observe progress with `checkCopyStatus` or cancel with `abortCopy`. `CopyOptions` accepts destination metadata, an SDDL permission with its copy mode, SMB properties, and the read only override.
+Copies are asynchronous: inspect the returned `CopyInfo.copyStatus` and, if pending, observe progress with `checkCopyStatus` or cancel with `abortCopy`. `CopyOptions` accepts destination metadata.
 
 ### 4.7 Range Operations
 
@@ -313,53 +307,7 @@ Copies are asynchronous: inspect the returned `CopyInfo.copyStatus` and, if pend
 
 Snapshot contents are read through the regular read operations: pass the snapshot id in the options of `downloadFile` or `getFile`, or the list options of `list`, to resolve the same paths inside the snapshot instead of the live share. The three snapshot management operations need account level credentials (an account key, a connection string carrying one, or an account SAS); a share scoped SAS is not sufficient.
 
-### 4.9 Lease Operations
-
-Share leases lock the share against deletion by anyone not holding the lease id:
-
-* `acquireShareLease(leaseDurationSeconds, proposedLeaseId)`: acquires a lease, fixed duration (15 to 60 seconds) or infinite (-1), returning the lease id.
-* `renewShareLease(leaseId)`: keeps a fixed duration lease alive.
-* `releaseShareLease(leaseId)`: releases the lease.
-* `breakShareLease(breakPeriodSeconds)`: reclaims the lease without its id, for when the holder is gone. The lease keeps running for the break period (or its own remaining time) before breaking; the operation returns the remaining seconds.
-* `changeShareLease(leaseId, proposedLeaseId)`: changes the lease id.
-
-File leases lock a file against writes and deletion. A file lease is always infinite, so it takes no duration and has no renew:
-
-* `acquireLease(path, proposedLeaseId)`: acquires the file's lease, returning the lease id.
-* `releaseLease(path, leaseId)`: releases it.
-* `breakLease(path)`: breaks it immediately, without needing the id.
-* `changeLease(path, leaseId, proposedLeaseId)`: changes the lease id.
-
-### 4.10 SMB Handle Operations
-
-* `listFileHandles(path)`: lists the open SMB handles on a file.
-* `forceCloseFileHandles(path, handleId)`: force closes one handle by id or, when the id is absent, all handles on the file.
-* `listDirectoryHandles(directoryPath)`: lists the open handles on a directory.
-* `forceCloseDirectoryHandles(directoryPath, handleId, recursive)`: force closes directory handles, optionally throughout the directory's subtree.
-
-Handles are opened by SMB clients (mounted drives); REST operations through this connector do not hold handles. The force close operations release locks whose holders are gone or unresponsive; the affected SMB clients receive an error on their next operation.
-
-### 4.11 Property Update Operations
-
-* `setShareProperties(options)`: changes the share's quota or access tier. This is administrative: it needs account level credentials and fails with an `AuthorizationError` on a share scoped SAS.
-* `setFileProperties(path, options)`: updates a file's content headers, SMB properties, SDDL permission, size (growing pre-allocates, shrinking truncates), and POSIX attributes.
-* `setDirectoryProperties(directoryPath, options)`: updates a directory's SMB properties, SDDL permission, and POSIX attributes.
-
-These update properties after creation; only what is set is changed, and every omitted field keeps the current value.
-
-### 4.12 Access Policy Operations
-
-* `getShareAccessPolicy()`: reads the share's stored access policies as a `SignedIdentifier` array.
-* `setShareAccessPolicy(identifiers)`: replaces the complete policy set, at most five per share.
-
-A stored access policy carries a validity window and a permission string under an identifier. Share SAS tokens minted against a policy (via the `identifier` field of the signature values) inherit its window and permissions, so removing or editing a policy immediately revokes or changes every SAS minted against it.
-
-### 4.13 Permission Operations
-
-* `createSharePermission(sddlPermission)`: stores a security descriptor (an SDDL string) in the share's permission store and returns its key, so the same permission can be applied to many files via `SmbProperties.filePermissionKey` without repeating the descriptor.
-* `getSharePermission(permissionKey)`: reads a stored descriptor back by key.
-
-### 4.14 SAS Generation
+### 4.9 SAS Generation
 
 The SAS generation methods are ordinary methods, invoked with `.`: signing happens locally with the credential the client holds, and no call is made to Azure.
 
@@ -382,14 +330,6 @@ string sasToken = check fileShare.generateSas("/2026/07/invoice.pdf", {
     permissions: {read: true}
 });
 ```
-
-### 4.15 NFS Link Operations
-
-* `createHardLink(path, targetPath)`: makes both paths refer to the same underlying file; the file's `PosixProperties.linkCount` grows by one.
-* `createSymbolicLink(path, linkTarget)`: stores a symbolic link whose target is resolved by the NFS client at access time; the target need not exist.
-* `getSymbolicLink(path)`: reads a symbolic link's target.
-
-These operate on NFS shares only.
 
 ## 5. The Listener and Caller
 
@@ -506,7 +446,7 @@ Every error raised by an operation of this module is a subtype of the distinct `
   * **`NotFoundError`**: the requested share, directory, or file was not found (HTTP 404).
   * **`ConflictError`**: the operation conflicts with the current state of the resource, for example creating a share that already exists (HTTP 409).
   * **`AuthorizationError`**: authentication or authorization failed, for example an invalid key or insufficient SAS permissions (HTTP 403).
-  * **`PreconditionFailedError`**: a precondition such as a lease id requirement was not met (HTTP 412).
+  * **`PreconditionFailedError`**: a precondition was not met (HTTP 412), such as a lease held on the resource by another client blocking the operation.
   * **`RangeNotSatisfiableError`**: the requested byte range cannot be satisfied for the target file (HTTP 416).
   * **`QuotaExceededError`**: a write was rejected because the share's provisioned capacity is exhausted (HTTP 403).
 

@@ -2,14 +2,14 @@
 
 [Azure Files](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-introduction) offers fully managed file shares in the cloud, accessible via the industry-standard SMB and NFS protocols and a REST API.
 
-The Azure Files connector offers APIs to connect to Azure Files and manage shares and the directories and files within them, covering uploads, downloads, copies, renames, byte ranges, snapshots, leases, and SAS token generation. It also provides a polling `Listener` that turns files arriving on a share into service events.
+The Azure Files connector offers APIs to connect to Azure Files and manage shares and the directories and files within them, covering uploads, downloads, copies, renames, byte ranges, snapshots, and SAS token generation. It also provides a polling `Listener` that turns files arriving on a share into service events.
 
 ### Key Features
 
 - Share-scoped `Client` for directory and file operations, transfers, copies, and byte ranges
 - Account-level `AdminClient` for creating, listing, deleting, and restoring shares
 - Polling `Listener` that routes files arriving on a watched path to raw, typed, or streaming content handlers, with an optional `onError` notification handler
-- Share snapshots, leases, access policies, SMB handles, and NFS links
+- Share snapshots
 - Authentication with shared key, SAS tokens, connection strings, and Microsoft Entra ID
 - GraalVM compatible for native image builds
 

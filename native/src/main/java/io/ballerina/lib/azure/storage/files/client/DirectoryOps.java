@@ -18,11 +18,8 @@
 
 package io.ballerina.lib.azure.storage.files.client;
 
-import com.azure.core.util.Context;
 import com.azure.storage.file.share.ShareDirectoryClient;
-import com.azure.storage.file.share.models.ShareFilePermission;
 import com.azure.storage.file.share.options.ShareDirectoryCreateOptions;
-import com.azure.storage.file.share.options.ShareDirectorySetPropertiesOptions;
 import com.azure.storage.file.share.options.ShareFileRenameOptions;
 import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
@@ -48,10 +45,7 @@ public final class DirectoryOps {
             if (options != null) {
                 @SuppressWarnings("unchecked")
                 BMap<BString, Object> record = (BMap<BString, Object>) options;
-                sdkOptions.setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA))
-                        .setFilePermission(ValueUtils.optString(record, OptionsReader.FILE_PERMISSION))
-                        .setSmbProperties(OptionsReader.smbProperties(record.get(OptionsReader.SMB_PROPERTIES)))
-                        .setPosixProperties(OptionsReader.posixProperties(record.get(OptionsReader.POSIX_PROPERTIES)));
+                sdkOptions.setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA));
             }
             directoryClient(self, directoryPath).createWithResponse(sdkOptions, null, null);
             return null;
@@ -62,22 +56,6 @@ public final class DirectoryOps {
     public static Object deleteDirectory(Environment env, BObject self, BString directoryPath) {
         return BallerinaAzureClient.invoke(env, () -> {
             directoryClient(self, directoryPath).delete();
-            return null;
-        });
-    }
-
-    /** Updates a directory's SMB and POSIX properties. */
-    public static Object setDirectoryProperties(Environment env, BObject self, BString directoryPath,
-            BMap<BString, Object> options) {
-        return BallerinaAzureClient.invoke(env, () -> {
-            ShareDirectorySetPropertiesOptions sdkOptions = new ShareDirectorySetPropertiesOptions()
-                    .setSmbProperties(OptionsReader.smbProperties(options.get(OptionsReader.SMB_PROPERTIES)))
-                    .setPosixProperties(OptionsReader.posixProperties(options.get(OptionsReader.POSIX_PROPERTIES)));
-            String permission = ValueUtils.optString(options, OptionsReader.FILE_PERMISSION);
-            if (permission != null) {
-                sdkOptions.setFilePermissions(new ShareFilePermission().setPermission(permission));
-            }
-            directoryClient(self, directoryPath).setPropertiesWithResponse(sdkOptions, null, Context.NONE);
             return null;
         });
     }
@@ -121,8 +99,6 @@ public final class DirectoryOps {
             @SuppressWarnings("unchecked")
             BMap<BString, Object> record = (BMap<BString, Object>) options;
             sdkOptions.setReplaceIfExists(record.getBooleanValue(OptionsReader.REPLACE_IF_EXISTS))
-                    .setIgnoreReadOnly(record.getBooleanValue(OptionsReader.IGNORE_READ_ONLY))
-                    .setFilePermission(ValueUtils.optString(record, OptionsReader.FILE_PERMISSION))
                     .setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA));
         }
         return sdkOptions;

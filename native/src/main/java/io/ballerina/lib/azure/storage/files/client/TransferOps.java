@@ -226,12 +226,9 @@ public final class TransferOps {
         return ((BXml) content).toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    // Serializes string[][] rows as CSV text (the data.csv module parses only, it does not
-    // serialize), in the dialect data.csv reads by default: a field is quoted when it contains
-    // a comma, quote, backslash, or line break, and embedded quotes and backslashes are
-    // backslash-escaped (data.csv's escapeChar default, not RFC 4180 quote doubling). Fields
-    // join with commas and rows with a newline, with no trailing newline, so an empty outer
-    // array yields a zero-byte file.
+    // Serializes CSV rows in the dialect data.csv reads by default: quote on comma, quote,
+    // backslash, or line break, with backslash escaping (not RFC 4180 quote doubling); no
+    // trailing newline, so an empty outer array yields a zero-byte file.
     private static byte[] csvBytes(BArray rows) {
         StringBuilder csv = new StringBuilder();
         for (int i = 0; i < rows.size(); i++) {

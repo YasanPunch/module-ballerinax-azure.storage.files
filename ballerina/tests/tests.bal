@@ -500,8 +500,7 @@ function testUploadContentVariantsAndDownloadStream() returns error? {
     test:assertEquals(reparsedXml, document);
 }
 
-// An open record (the language default), as review round 4 requires the get and put
-// APIs to accept.
+// An open record (the language default); the get and put APIs must accept open records.
 type UploadMetric record {
     string quarter;
     int revenue;
@@ -1182,95 +1181,6 @@ function testClientSideErrorsCarryNoDetail() returns error? {
 // Leases
 // ---------------------------------------------------------------------------
 
-@test:Config {}
-function testShareLeaseLifecycle() returns error? {
-    AdminClient admin = check newAdmin();
-    string share = testShare("share-lease");
-    check admin->createShare(share);
-    Client fileClient = check newShareClient(share);
-
-    // An out-of-range duration is rejected before any request is made.
-    string|Error invalid = fileClient->acquireShareLease(10);
-    test:assertTrue(invalid is Error && invalid !is ServiceError, "expected an invalid duration to fail locally");
-    string|Error invalidHigh = fileClient->acquireShareLease(61);
-    test:assertTrue(invalidHigh is Error && invalidHigh !is ServiceError, "expected an invalid duration to fail locally");
-
-    string leaseId = check fileClient->acquireShareLease(-1, "11111111-1111-1111-1111-111111111111");
-    test:assertEquals(leaseId, "11111111-1111-1111-1111-111111111111");
-
-    ShareProperties props = check fileClient->getShareProperties();
-    test:assertEquals(props.leaseState, LEASED);
-    test:assertEquals(props.leaseStatus, LOCKED);
-    test:assertEquals(props.leaseDuration, INFINITE);
-
-    // Acquiring while a lease is held conflicts.
-    string|Error second = fileClient->acquireShareLease(-1);
-    test:assertTrue(second is ConflictError, "expected LeaseAlreadyPresent to map to ConflictError");
-
-    check fileClient->renewShareLease(leaseId);
-
-    string changed = check fileClient->changeShareLease(leaseId, "22222222-2222-2222-2222-222222222222");
-    test:assertEquals(changed, "22222222-2222-2222-2222-222222222222");
-
-    // The old id no longer works after the change.
-    Error? stale = fileClient->renewShareLease(leaseId);
-    test:assertTrue(stale is ConflictError, "expected a stale lease id to conflict");
-
-    check fileClient->releaseShareLease(changed);
-    props = check fileClient->getShareProperties();
-    test:assertTrue(props.leaseState is ()|AVAILABLE, "expected no lease after release");
-
-    // Breaking with no lease in place conflicts.
-    int|Error nothingToBreak = fileClient->breakShareLease();
-    test:assertTrue(nothingToBreak is ConflictError, "expected breaking without a lease to conflict");
-
-    // Break reports how long until the lease is gone; the service may round the
-    // remaining time down.
-    string reacquired = check fileClient->acquireShareLease(15);
-    test:assertTrue(reacquired.length() > 0);
-    int remaining = check fileClient->breakShareLease(5);
-    test:assertTrue(remaining >= 0 && remaining <= 5, "expected the break period to be at most the requested 5s");
-}
-
-@test:Config {}
-function testFileLeaseLifecycle() returns error? {
-    AdminClient admin = check newAdmin();
-    string share = testShare("file-lease");
-    check admin->createShare(share);
-    Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("locked", "/locked.txt");
-
-    string leaseId = check fileClient->acquireLease("/locked.txt");
-    test:assertTrue(leaseId.length() > 0);
-
-    FileProperties props = check fileClient->getFileProperties("/locked.txt");
-    test:assertEquals(props.leaseState, LEASED);
-    test:assertEquals(props.leaseStatus, LOCKED);
-    test:assertEquals(props.leaseDuration, INFINITE);
-
-    string|Error second = fileClient->acquireLease("/locked.txt");
-    test:assertTrue(second is ConflictError, "expected LeaseAlreadyPresent to map to ConflictError");
-
-    string changed = check fileClient->changeLease("/locked.txt", leaseId, "33333333-3333-3333-3333-333333333333");
-    test:assertEquals(changed, "33333333-3333-3333-3333-333333333333");
-
-    // Releasing with the superseded id conflicts; the changed id releases.
-    Error? wrongId = fileClient->releaseLease("/locked.txt", leaseId);
-    test:assertTrue(wrongId is ConflictError, "expected a stale lease id to conflict");
-    check fileClient->releaseLease("/locked.txt", changed);
-
-    props = check fileClient->getFileProperties("/locked.txt");
-    test:assertTrue(props.leaseState is ()|AVAILABLE, "expected no lease after release");
-
-    // Break needs no id; the file is immediately leasable again.
-    string beforeBreak = check fileClient->acquireLease("/locked.txt", "44444444-4444-4444-4444-444444444444");
-    test:assertEquals(beforeBreak, "44444444-4444-4444-4444-444444444444");
-    check fileClient->breakLease("/locked.txt");
-    string afterBreak = check fileClient->acquireLease("/locked.txt");
-    test:assertTrue(afterBreak.length() > 0);
-    check fileClient->releaseLease("/locked.txt", afterBreak);
-}
-
 // ---------------------------------------------------------------------------
 // Share snapshots
 // ---------------------------------------------------------------------------
@@ -1364,196 +1274,9 @@ function testListRangesDiff() returns error? {
 // Property setters, access policy, permissions
 // ---------------------------------------------------------------------------
 
-@test:Config {}
-function testSetShareProperties() returns error? {
-    AdminClient admin = check newAdmin();
-    string share = testShare("set-props");
-    check admin->createShare(share, {quotaInGb: 40});
-    Client fileClient = check newShareClient(share);
-
-    if check isPremiumAccount() {
-        // Premium shares have no working access tier: classic accounts reject the set,
-        // provisioned v2 accounts accept and ignore it. The quota is the provisioned
-        // size, which only grows safely.
-        Error? tierSet = fileClient->setShareProperties({accessTier: HOT});
-        if tierSet is () {
-            ShareProperties ignored = check fileClient->getShareProperties();
-            test:assertTrue(ignored.accessTier != HOT, "expected the tier change to be ignored on a premium share");
-        }
-        check fileClient->setShareProperties({quotaInGb: 50});
-        ShareProperties premiumProps = check fileClient->getShareProperties();
-        test:assertEquals(premiumProps.quotaInGb, 50);
-        return;
-    }
-
-    // A tier change can apply asynchronously, so the read-back is polled.
-    check fileClient->setShareProperties({quotaInGb: 50, accessTier: HOT});
-    check await(function() returns boolean|error {
-        ShareProperties props = check fileClient->getShareProperties();
-        return props.quotaInGb == 50 && props.accessTier == HOT;
-    }, timeoutSeconds = 120);
-
-    // Changing one property leaves the other in place.
-    check fileClient->setShareProperties({quotaInGb: 60});
-    check await(function() returns boolean|error {
-        ShareProperties props = check fileClient->getShareProperties();
-        return props.quotaInGb == 60 && props.accessTier == HOT;
-    }, timeoutSeconds = 120);
-}
-
-@test:Config {}
-function testSetFileProperties() returns error? {
-    AdminClient admin = check newAdmin();
-    string share = testShare("set-file");
-    check admin->createShare(share);
-    Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("0123456789", "/resize.bin");
-    check fileClient->setContentHeaders("/resize.bin", {contentType: "text/plain"});
-
-    // Shrinking truncates the content; content headers survive because only what is set
-    // changes.
-    check fileClient->setFileProperties("/resize.bin", {newFileSizeBytes: 4});
-    FileProperties props = check fileClient->getFileProperties("/resize.bin");
-    test:assertEquals(props.contentLength, 4);
-    test:assertEquals(props.contentType, "text/plain");
-    test:assertEquals(check readAll(fileClient, "/resize.bin"), "0123".toBytes());
-
-    // Growing pre-allocates zeros past the old end.
-    check fileClient->setFileProperties("/resize.bin", {newFileSizeBytes: 6});
-    props = check fileClient->getFileProperties("/resize.bin");
-    test:assertEquals(props.contentLength, 6);
-    test:assertEquals(check readAll(fileClient, "/resize.bin"), [48, 49, 50, 51, 0, 0]);
-
-    // Setting content headers alone keeps the size.
-    check fileClient->setFileProperties("/resize.bin",
-            {contentHeaders: {contentType: "application/pdf", cacheControl: "no-store"}});
-    props = check fileClient->getFileProperties("/resize.bin");
-    test:assertEquals(props.contentLength, 6);
-    test:assertEquals(props.contentType, "application/pdf");
-    test:assertEquals(props.cacheControl, "no-store");
-}
-
-@test:Config {}
-function testSetDirectoryProperties() returns error? {
-    AdminClient admin = check newAdmin();
-    string share = testShare("set-dir");
-    check admin->createShare(share);
-    Client fileClient = check newShareClient(share);
-    check fileClient->createDirectory("/tuned");
-
-    // A directory's attribute set must include the Directory flag; other attributes
-    // ride along with it.
-    check fileClient->setDirectoryProperties("/tuned",
-            {smbProperties: {ntfsFileAttributes: [DIRECTORY, READ_ONLY, HIDDEN]}});
-
-    Error? withoutFlag = fileClient->setDirectoryProperties("/tuned", {smbProperties: {ntfsFileAttributes: [HIDDEN]}});
-    test:assertTrue(withoutFlag is Error, "expected an attribute set without Directory to be rejected on a directory");
-
-    Error? missing = fileClient->setDirectoryProperties("/no-such-dir", {});
-    test:assertTrue(missing is NotFoundError, "expected a missing directory to fail");
-}
-
-@test:Config {}
-function testShareAccessPolicyRoundtrip() returns error? {
-    AdminClient admin = check newAdmin();
-    string share = testShare("acl");
-    check admin->createShare(share);
-    Client fileClient = check newShareClient(share);
-
-    SignedIdentifier[] initial = check fileClient->getShareAccessPolicy();
-    test:assertEquals(initial.length(), 0);
-
-    time:Utc startsOn = check time:utcFromString("2026-07-01T00:00:00Z");
-    time:Utc expiresOn = check time:utcFromString("2026-08-01T00:00:00Z");
-    check fileClient->setShareAccessPolicy([
-        {id: "read-only-policy", accessPolicy: {startsOn, expiresOn, permissions: "rl"}},
-        {id: "write-policy", accessPolicy: {permissions: "w"}}
-    ]);
-
-    SignedIdentifier[] stored = check fileClient->getShareAccessPolicy();
-    test:assertEquals(stored.length(), 2);
-    test:assertEquals(stored[0].id, "read-only-policy");
-    test:assertEquals(stored[0].accessPolicy.permissions, "rl");
-    test:assertEquals(stored[0].accessPolicy.startsOn, startsOn);
-    test:assertEquals(stored[0].accessPolicy.expiresOn, expiresOn);
-    test:assertEquals(stored[1].id, "write-policy");
-    test:assertEquals(stored[1].accessPolicy.permissions, "w");
-    test:assertTrue(stored[1].accessPolicy.startsOn is (), "expected no start time");
-
-    // Setting an empty list clears the policies.
-    check fileClient->setShareAccessPolicy([]);
-    SignedIdentifier[] cleared = check fileClient->getShareAccessPolicy();
-    test:assertEquals(cleared.length(), 0);
-}
-
-@test:Config {}
-function testSharePermissionStore() returns error? {
-    AdminClient admin = check newAdmin();
-    string share = testShare("permission");
-    check admin->createShare(share);
-    Client fileClient = check newShareClient(share);
-
-    string sddl = "O:S-1-5-21-2127521184-1604012920-1887927527-21560751G:S-1-5-21-2127521184-1604012920-1887927527-513D:AI(A;;FA;;;SY)";
-    string key = check fileClient->createSharePermission(sddl);
-    test:assertTrue(key.length() > 0);
-
-    string fetched = check fileClient->getSharePermission(key);
-    if liveRun {
-        // Azure normalizes stored SDDL, so only readability is stable.
-        test:assertTrue(fetched.length() > 0, "expected the stored SDDL to be readable");
-    } else {
-        test:assertEquals(fetched, sddl);
-    }
-
-    string|Error missing = fileClient->getSharePermission("no-such-key");
-    if liveRun {
-        // A fabricated key is rejected, though the error code differs from a plain miss.
-        test:assertTrue(missing is Error, "expected an unknown permission key to fail");
-    } else {
-        test:assertTrue(missing is NotFoundError, "expected an unknown permission key to fail");
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SMB handles
 // ---------------------------------------------------------------------------
-
-// Pinned to the mock: an open SMB handle exists only while a real SMB client has the
-// share mounted with the file open, which no REST call can produce; the mock fabricates
-// one so the handle listing and force-close paths execute. testNoOpenHandles covers the
-// zero-handle behavior in both modes.
-@test:Config {}
-function testSmbHandles() returns error? {
-    AdminClient admin = check newMockAdmin();
-    string share = testShare("handles");
-    check admin->createShare(share);
-    Client fileClient = check newMockShareClient(share);
-    check fileClient->uploadContent("held", "/held.txt");
-    check fileClient->uploadContent("free", "/free.txt");
-    check fileClient->createDirectory("/hdir");
-    check fileClient->uploadContent("held", "/hdir/held.txt");
-
-    HandleInfo[] fileHandles = check fileClient->listFileHandles("/held.txt");
-    test:assertEquals(fileHandles.length(), 1);
-    test:assertEquals(fileHandles[0].path, "/held.txt");
-    test:assertTrue(fileHandles[0].handleId.length() > 0);
-    test:assertTrue(fileHandles[0].clientIp is string, "expected the client IP to map");
-    test:assertTrue(fileHandles[0].openTime !is (), "expected the open time to map");
-
-    HandleInfo[] none = check fileClient->listFileHandles("/free.txt");
-    test:assertEquals(none.length(), 0);
-
-    HandleInfo[] dirHandles = check fileClient->listDirectoryHandles("/hdir");
-    test:assertEquals(dirHandles.length(), 1);
-    test:assertEquals(dirHandles[0].path, "/hdir/held.txt");
-
-    CloseHandlesInfo closedOne = check fileClient->forceCloseFileHandles("/held.txt", "1");
-    test:assertEquals(closedOne.closedHandles, 1);
-    test:assertEquals(closedOne.failedHandles, 0);
-
-    CloseHandlesInfo closedAll = check fileClient->forceCloseDirectoryHandles("/hdir", recursive = true);
-    test:assertEquals(closedAll.closedHandles, 1);
-}
 
 // ---------------------------------------------------------------------------
 // Service properties and user delegation
@@ -1821,43 +1544,6 @@ function testGenerateAccountSas() returns error? {
 // NFS links
 // ---------------------------------------------------------------------------
 
-@test:Config {}
-function testNfsLinks() returns error? {
-    if liveRun && !(check isPremiumAccount()) {
-        // NFS shares exist only on premium (FileStorage) accounts, and a live run never
-        // falls back to the mock, so a standard-account live run skips this. Mock runs
-        // cover the operations.
-        return;
-    }
-    AdminClient admin = check newAdmin();
-    string share = testShare("nfs");
-    check admin->createShare(share, {enabledProtocols: [NFS]});
-    Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("original", "/original.txt");
-
-    // A hard link reads the same content as its target.
-    check fileClient->createHardLink("/link.txt", "/original.txt");
-    test:assertEquals(check readAll(fileClient, "/link.txt"), "original".toBytes());
-
-    // A hard link to a missing target fails.
-    Error? missing = fileClient->createHardLink("/dangling.txt", "/no-such.txt");
-    test:assertTrue(missing is NotFoundError, "expected a missing hard-link target to fail");
-
-    // A symbolic link stores its target text verbatim, resolved only by NFS clients.
-    check fileClient->createSymbolicLink("/pointer.txt", "../elsewhere/target.txt");
-    string linkText = check fileClient->getSymbolicLink("/pointer.txt");
-    test:assertEquals(linkText, "../elsewhere/target.txt");
-
-    // Targets survive characters the wire percent-encodes, including a literal plus,
-    // which naive form-decoding would corrupt into a space.
-    check fileClient->createSymbolicLink("/tricky.txt", "../else where/a+b.txt");
-    string trickyText = check fileClient->getSymbolicLink("/tricky.txt");
-    test:assertEquals(trickyText, "../else where/a+b.txt");
-
-    string|Error notALink = fileClient->getSymbolicLink("/original.txt");
-    test:assertTrue(notALink is Error, "expected reading a non-link to fail");
-}
-
 // ---------------------------------------------------------------------------
 // Core gap-fills
 // ---------------------------------------------------------------------------
@@ -2010,21 +1696,6 @@ function testSasRoundtrip() returns error? {
         Client sasClient = check new (share, auth = {accountName: liveAccountName, sasToken: token});
         check sasClient->deleteFile("/sas-probe.txt");
     }
-}
-
-@test:Config {}
-function testNoOpenHandles() returns error? {
-    AdminClient admin = check newAdmin();
-    string share = testShare("no-handles");
-    check admin->createShare(share);
-    Client fileClient = check newShareClient(share);
-    check fileClient->uploadContent("no handles", "/handle-probe.txt");
-
-    HandleInfo[] handles = check fileClient->listFileHandles("/handle-probe.txt");
-    test:assertEquals(handles.length(), 0, "REST clients hold no SMB handles");
-    CloseHandlesInfo closed = check fileClient->forceCloseFileHandles("/handle-probe.txt");
-    test:assertEquals(closed.closedHandles, 0);
-    test:assertEquals(closed.failedHandles, 0);
 }
 
 // ---------------------------------------------------------------------------

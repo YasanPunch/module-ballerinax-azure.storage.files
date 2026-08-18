@@ -60,13 +60,7 @@ public final class ContentStreams {
     private ContentStreams() {
     }
 
-    /**
-     * Creates the {@code stream<byte[], error?>} value handed to a stream content handler.
-     *
-     * @param content     the file's service input stream
-     * @param elementType the stream's constrained type ({@code byte[]})
-     * @return the Ballerina stream value
-     */
+    /** Creates the {@code stream<byte[], error?>} value handed to a stream content handler. */
     static Object createByteStream(InputStream content, Type elementType) {
         BObject iterator = ValueCreator.createObjectValue(ModuleUtils.getModule(), CONTENT_BYTE_STREAM_OBJECT);
         iterator.addNativeData(NATIVE_INPUT_STREAM, content);
@@ -76,16 +70,9 @@ public final class ContentStreams {
     }
 
     /**
-     * Creates the {@code stream<record{}, error?>} value handed to a CSV stream content
-     * handler: a byte stream over the file wrapped by the module's {@code ContentCsvStream}. The
-     * wrapping object is constructed through the runtime on a real strand, because its
-     * initialization runs the data.csv stream construction.
-     *
-     * @param runtime        the Ballerina runtime
-     * @param content        the file's service input stream
-     * @param elementType    the stream's constrained type (a record)
-     * @param laxDataBinding whether relaxed data projection applies
-     * @return the Ballerina stream value
+     * Creates the {@code stream<record{}, error?>} value handed to a CSV stream content handler.
+     * The wrapping object is constructed through the runtime because its initialization runs
+     * the data.csv stream construction, which needs a real strand.
      */
     static Object createCsvStream(Runtime runtime, InputStream content, Type elementType, boolean laxDataBinding) {
         Type byteArrayType = TypeCreator.createArrayType(PredefinedTypes.TYPE_BYTE);
@@ -136,10 +123,8 @@ public final class ContentStreams {
      * @return {@code null}, or an error when the source could not be closed
      */
     public static Object close(BObject iterator) {
-        // The reference is deliberately kept after closing: the read path dereferences it
-        // unguarded (a next() after close must surface the closed stream's IOException as a
-        // typed error, not a NullPointerException), a failed close stays retryable, and the
-        // Ballerina-side isClosed flag already prevents a double close.
+        // The reference stays after closing: a next() after close must surface the closed
+        // stream's IOException as a typed error, and a failed close stays retryable.
         Object inputStream = iterator.getNativeData(NATIVE_INPUT_STREAM);
         if (inputStream != null) {
             try {

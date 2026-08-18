@@ -11,7 +11,7 @@ bal test
 
 `backend.bal` reads `liveAccountName`/`liveAccountKey` from Config.toml, or from the `LIVE_ACCOUNT_NAME`/`LIVE_ACCOUNT_KEY` environment variables (a Config.toml entry takes precedence). A live run never silently falls back to the mock. To force a mock run on a machine that has credentials, move `tests/Config.toml` aside for that run.
 
-A few tests deviate from the one-backend rule for physical reasons and self-select, so no action is needed: `testErrorCodeMapping`, `testRetryAndTransportConfig`, and `testSmbHandles` always use the mock; the user-delegation and Entra tests need the Entra credentials below when live; `testNfsLinks` needs a premium account when live. The comment on each of these tests states its reason.
+A few tests deviate from the one-backend rule for physical reasons and self-select, so no action is needed: `testErrorCodeMapping` and `testRetryAndTransportConfig` always use the mock; the user-delegation and Entra tests need the Entra credentials below when live. The comment on each of these tests states its reason.
 
 ## The mock
 
@@ -31,7 +31,7 @@ A few tests deviate from the one-backend rule for physical reasons and self-sele
 2. Keep **Allow storage account key access** enabled (it is by default); the tests authenticate with the account key.
 3. After deployment, open **Security + networking** > **Access keys** and copy the storage account name and the key1 value.
 
-Pointed at a **premium (FileStorage)** account instead, the suite adapts its tier and quota assertions and `testNfsLinks` runs live against a real NFS share, as an optional second pass for the premium-specific behaviors. Two premium account settings matter: create it with the **provisioned v2** billing model (v1's 100 GiB minimum share size is above what the suite provisions), and **disable share soft delete** on it, because a soft-deleted premium share keeps holding its provisioned IOPS against the account-wide limit, so retained shares from earlier runs would starve later ones. Because soft delete is off there, the share-lifecycle test exercises its undelete tail only on standard accounts and the mock.
+Pointed at a **premium (FileStorage)** account instead, the suite adapts its tier and quota assertions, as an optional second pass for the premium-specific behaviors. Two premium account settings matter: create it with the **provisioned v2** billing model (v1's 100 GiB minimum share size is above what the suite provisions), and **disable share soft delete** on it, because a soft-deleted premium share keeps holding its provisioned IOPS against the account-wide limit, so retained shares from earlier runs would starve later ones. Because soft delete is off there, the share-lifecycle test exercises its undelete tail only on standard accounts and the mock.
 
 ### Configure and run
 

@@ -51,11 +51,10 @@ import java.util.Locale;
 
 /**
  * The {@code getFile} content retrieval: downloads a file and hands it back in the form the
- * caller-directed target type selects — raw bytes, text, a JSON or XML value, CSV rows, a
- * record shape bound per the resolved format, a lazy byte stream, or a lazy stream of
- * CSV-bound records. Binding is strict (the listener's {@code laxDataBinding} does not apply
- * to client reads) and runs through the same data.jsondata/xmldata/csv modules the listener
- * uses.
+ * caller-directed target type selects (raw bytes, text, a JSON or XML value, a record shape
+ * bound per the resolved format, a lazy byte stream, or a lazy stream of CSV-bound records).
+ * Binding is strict and runs through the same data.jsondata/xmldata/csv modules the
+ * listener uses.
  */
 public final class TypedReadOps {
 

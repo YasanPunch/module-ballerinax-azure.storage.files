@@ -44,18 +44,14 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.isRemoteFu
  * Validates a listener service's members: resource functions are rejected, every remote method
  * must be one of the content handlers or the optional {@code onError}, at least one content
  * handler must be present, and each declared handler's signature is checked by
- * {@link ContentFunctionValidator} (content handlers) or {@link OnErrorFunctionValidator}. 
- * 
- * The watched path is the service's attach point (share root when absent), so no annotation is
- * required.
- *
- * Enforces: no resource functions, no unknown remote methods, ≥1 content handler
+ * {@link ContentFunctionValidator} or {@link OnErrorFunctionValidator}. The watched path is the
+ * service's attach point (the share root when absent), so no annotation is required.
  */
 public class ServiceValidator {
 
     /**
      * Validates a listener service's members.
-     * 
+     *
      * @param context the syntax node analysis context
      */
     public void validate(SyntaxNodeAnalysisContext context) {

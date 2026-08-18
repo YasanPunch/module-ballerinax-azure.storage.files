@@ -55,21 +55,12 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.isRemoteFu
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.reportErrorDiagnostic;
 
 /**
- * Validates one content handler's signature: it must be {@code remote}, 
- * 
- * its first parameter must carry the handler's content type;
- * onFile: {@code byte[]} or a byte stream; 
- * onFileText: {@code string}; 
- * onFileJson: {@code json}, a {@code map<json>}, a record, or an array of them;
- * onFileXml: {@code xml} or a record; 
- * onFileCsv: a record array or a stream of records),
- *
- * an optional second parameter must be {@code FileInfo}, 
- * an optional third must be {@code Caller}, 
- * and the return type must be {@code error?}.
- *
- *  checks each handler's exact signature (remote, correct content type for param 1,
- *  optional FileInfo/Caller params, error? return).
+ * Validates one content handler's signature: the method must be {@code remote}; the first
+ * parameter carries the handler's content type (onFile: {@code byte[]} or a byte stream;
+ * onFileText: {@code string}; onFileJson: {@code json}, a {@code map<json>}, a record, or an
+ * array of them; onFileXml: {@code xml} or a record; onFileCsv: a record array or a record
+ * stream); an optional second parameter is {@code FileInfo}, an optional third is
+ * {@code Caller}, and the return type must be {@code error?}.
  */
 public class ContentFunctionValidator {
 
@@ -131,16 +122,7 @@ public class ContentFunctionValidator {
         }
     }
 
-    /**
-     * Validates the content parameter of a content handler.
-     * 
-     * Validates the declared type of the handler's first parameter (the content parameter)). 
-     * Per handler: onFile → byte[], onFileText → string, onFileXml → xml,
-     * onFileCsv → record{}[], onFileJson → json | map<json> | record | array of those.
-     * 
-     * @param parameterNode the parameter node
-     * @return true if the content parameter is valid, false otherwise
-     */
+    // Validates the declared type of the handler's first parameter against its content set.
     private boolean validateContentParameter(ParameterNode parameterNode) {
         Optional<TypeSymbol> typeSymbolOpt = PluginUtils.getParameterTypeSymbol(parameterNode, context);
         if (typeSymbolOpt.isEmpty()) {

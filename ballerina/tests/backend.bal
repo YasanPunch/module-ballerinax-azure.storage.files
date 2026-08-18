@@ -83,8 +83,8 @@ function testShare(string base) returns string {
     return share;
 }
 
-// Best-effort immediate deletion, breaking a stray lease if one blocks it. Anything left
-// behind is caught by the AfterSuite prefix cleanup.
+// Best-effort immediate deletion. Anything left behind is caught by the AfterSuite
+// prefix cleanup.
 function releaseShare(string share) {
     AdminClient|Error admin = newAdmin();
     if admin is Error {
@@ -92,13 +92,9 @@ function releaseShare(string share) {
     }
     Error? deleted = admin->deleteShare(share, {deleteSnapshots: INCLUDE});
     if deleted is Error && deleted !is NotFoundError {
-        Client|Error shareClient = newShareClient(share);
-        if shareClient is Client {
-            int|Error broken = shareClient->breakShareLease();
-            Error? retried = admin->deleteShare(share, {deleteSnapshots: INCLUDE});
-            if broken is Error || retried is Error {
-                // Left for the AfterSuite sweep.
-            }
+        Error? retried = admin->deleteShare(share, {deleteSnapshots: INCLUDE});
+        if retried is Error {
+            // Left for the AfterSuite sweep.
         }
     }
 }
@@ -223,7 +219,7 @@ function await(function () returns boolean|error probe, decimal timeoutSeconds =
 
 // Live runs create one share per test; delete everything this run's prefix owns so a
 // green run leaves the account clean. Best effort on purpose: a share that resists
-// deletion (for example a lease left by a failed test) must not flip the suite red.
+// deletion (for example one leased from outside the connector) must not flip the suite red.
 @test:AfterSuite {alwaysRun: true}
 function cleanupTestShares() {
     if !liveRun {

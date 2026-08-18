@@ -14,10 +14,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// ---------------------------------------------------------------------------
-// Content headers
-// ---------------------------------------------------------------------------
-
 # The standard content headers that can be set on a file.
 public type ContentHeaders record {|
     # The MIME type of the content (e.g. `application/pdf`), served as `Content-Type` on downloads
@@ -33,10 +29,6 @@ public type ContentHeaders record {|
     # Base64-encoded MD5 of the content, for integrity verification
     string contentMd5?;
 |};
-
-// ---------------------------------------------------------------------------
-// Share option records
-// ---------------------------------------------------------------------------
 
 # Options for `AdminClient.listShares`.
 public type ShareListOptions record {|
@@ -67,16 +59,6 @@ public type ShareCreateOptions record {|
     NfsRootSquash rootSquash?;
 |};
 
-# Options for `Client.setShareProperties`: administrative quota and tier changes.
-public type ShareSetPropertiesOptions record {|
-    # The new provisioned capacity of the share, in GiB; when absent, the quota is unchanged
-    int quotaInGb?;
-    # The new access tier for the share; when absent, the tier is unchanged
-    ShareAccessTier accessTier?;
-    # The active lease id, required when the share is leased
-    string leaseId?;
-|};
-
 # Options for `AdminClient.deleteShare`.
 public type ShareDeleteOptions record {|
     # How the share's snapshots are handled; when absent, only the share itself is deleted
@@ -88,20 +70,10 @@ public type ShareDeleteOptions record {|
     string leaseId?;
 |};
 
-// ---------------------------------------------------------------------------
-// Directory option records
-// ---------------------------------------------------------------------------
-
 # Options for `Client.createDirectory`.
 public type DirectoryCreateOptions record {|
     # User-defined metadata to set on the new directory
     map<string> metadata?;
-    # An SDDL (Security Descriptor Definition Language) permission string to apply
-    string filePermission?;
-    # SMB properties to apply
-    SmbProperties smbProperties?;
-    # POSIX owner, group, and mode to apply (NFS shares only)
-    PosixProperties posixProperties?;
 |};
 
 # Options for `Client.list`.
@@ -119,21 +91,12 @@ public type ListOptions record {|
     string snapshotId?;
 |};
 
-// ---------------------------------------------------------------------------
-// File option records
-// ---------------------------------------------------------------------------
-
 # Options for `Client.renameFile` and `Client.renameDirectory`.
 public type RenameOptions record {|
     # If a file already occupies the destination path, delete it and give its path to the
     # renamed entry. A directory occupying the destination always fails the operation
     # regardless of this flag
     boolean replaceIfExists = false;
-    # Rename even if the destination has the read-only attribute set (requires `replaceIfExists`)
-    boolean ignoreReadOnly = false;
-    # An SDDL permission string to apply to the renamed entry; when absent, the existing
-    # permission is preserved
-    string filePermission?;
     # User-defined metadata to set on the renamed entry (replaces all existing metadata);
     # when absent, the existing metadata is preserved
     map<string> metadata?;
@@ -145,12 +108,6 @@ public type CreateOptions record {|
     ContentHeaders contentHeaders?;
     # User-defined metadata to set on the file
     map<string> metadata?;
-    # An SDDL permission string to apply
-    string filePermission?;
-    # SMB properties to apply
-    SmbProperties smbProperties?;
-    # POSIX owner, group, and mode to apply (NFS shares only)
-    PosixProperties posixProperties?;
 |};
 
 # Options for the upload operations (`uploadFile`, `uploadContent`, `uploadFromStream`).
@@ -159,12 +116,6 @@ public type UploadOptions record {|
     ContentHeaders contentHeaders?;
     # User-defined metadata to set on the file
     map<string> metadata?;
-    # An SDDL permission string to apply
-    string filePermission?;
-    # SMB properties to apply
-    SmbProperties smbProperties?;
-    # POSIX owner, group, and mode to apply (NFS shares only)
-    PosixProperties posixProperties?;
 |};
 
 # The content forms accepted by `uploadContent`: raw bytes, text, a JSON or XML value,
@@ -215,46 +166,10 @@ public type CopyOptions record {|
     # User-defined metadata to set on the destination; when absent, the metadata is copied
     # from the source file
     map<string> metadata?;
-    # An SDDL permission string to apply to the destination; setting it requires
-    # `permissionCopyMode` to be `OVERRIDE`
-    string filePermission?;
-    # SMB properties to apply to the destination
-    SmbProperties smbProperties?;
-    # How the destination file's permission is determined; when absent, the security
-    # descriptor is copied from the source file (`SOURCE` behaviour)
-    PermissionCopyMode permissionCopyMode?;
-    # Copy even if the destination has the read-only attribute set; when `false`, a read-only
-    # file at the destination fails the copy
-    boolean ignoreReadOnly = false;
 |};
 
 # Options for `Client.listRanges` and `Client.listRangesDiff`.
 public type RangeListOptions record {|
     # Restrict the listing to this byte range
     Range range?;
-|};
-
-# Options for `Client.setFileProperties`. Only what is set is changed; every omitted field
-# leaves the file's current value in place.
-public type FileSetPropertiesOptions record {|
-    # Content headers to set on the file
-    ContentHeaders contentHeaders?;
-    # SMB properties to apply
-    SmbProperties smbProperties?;
-    # An SDDL (Security Descriptor Definition Language) permission string to apply
-    string filePermission?;
-    # A new size for the file, in bytes
-    int newFileSizeBytes?;
-    # POSIX owner, group, and mode to apply (NFS shares only)
-    PosixProperties posixProperties?;
-|};
-
-# Options for `Client.setDirectoryProperties`. Only what is set is changed.
-public type DirectorySetPropertiesOptions record {|
-    # SMB properties to apply
-    SmbProperties smbProperties?;
-    # An SDDL (Security Descriptor Definition Language) permission string to apply
-    string filePermission?;
-    # POSIX owner, group, and mode to apply (NFS shares only)
-    PosixProperties posixProperties?;
 |};

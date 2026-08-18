@@ -43,14 +43,11 @@ public isolated client class Caller {
     #
     # + path - The source share-relative path
     # + options - Optional retrieval options (range, snapshot, record binding format)
-    # + targetType - The form to retrieve the content in, inferred from the assignment target:
-    #                raw bytes (`byte[]`), UTF-8 text (`string`), a `json` or `xml` value, a
-    #                record or record array, a lazy byte stream (`stream<byte[], error?>`), or a
-    #                lazy stream of CSV-bound records. Binding is strict: content that does not
-    #                match the target fails with a client-side `Error`. A record or record array
-    #                target binds per the format resolved from `GetFileOptions.fileFormat` when
-    #                set, else from the path's extension (`.json`, `.xml`, `.csv`); CSV content
-    #                binds to record array and record stream targets only
+    # + targetType - The form to retrieve, inferred from the assignment target: `byte[]`,
+    #                `string`, `json`, `xml`, a record or record array, a lazy byte stream, or a
+    #                lazy stream of CSV-bound records. Records bind per `GetFileOptions.fileFormat`,
+    #                else the path's extension; CSV binds record targets only. Binding is strict:
+    #                content that does not match the target fails with a client-side `Error`
     # + return - The content in the requested form, or an `Error`
     isolated remote function getFile(string path, GetFileOptions? options = (),
             typedesc<RetrievableType> targetType = <>) returns targetType|Error = @java:Method {
@@ -61,7 +58,7 @@ public isolated client class Caller {
     #
     # + sourcePath - The path of the local file to upload, including the file name
     # + destinationPath - The share-relative path the file is written to, including the file name
-    # + options - Optional upload options (headers, metadata, permission, SMB properties)
+    # + options - Optional upload options (headers, metadata)
     # + return - An `Error` if the upload failed, otherwise `()`
     isolated remote function uploadFile(string sourcePath, string destinationPath,
             UploadOptions? options = ()) returns Error? {
@@ -70,15 +67,13 @@ public isolated client class Caller {
 
     # Uploads in-memory content to the watched share.
     #
-    # + content - The content to upload: a `byte[]` is written as-is, a `string` as raw text,
-    #             and an `xml` value as its textual form. A record (which includes any map of
-    #             `anydata` members), a record array, or any other `json` value is serialized
-    #             per the format inferred from the destination path's extension or set with
-    #             `UploadContentOptions.fileFormat`: a record becomes a JSON or an XML document
-    #             (never CSV), a record array becomes CSV rows headed by the union of the
-    #             records' field names, and other `json` values become JSON documents
+    # + content - The content to upload: `byte[]` is written as-is, `string` as raw text, and
+    #             `xml` as its textual form. A record, a record array, or any other `json` value
+    #             is serialized per `UploadContentOptions.fileFormat`, else the destination
+    #             extension: a record becomes a JSON or an XML document (never CSV), a record
+    #             array becomes CSV rows, and other `json` values become JSON documents
     # + destinationPath - The share-relative path the content is written to, including the file name
-    # + options - Optional upload options (headers, metadata, permission, SMB properties, format override)
+    # + options - Optional upload options (headers, metadata, format override)
     # + return - An `Error` if the upload failed, otherwise `()`
     isolated remote function uploadContent(UploadContent content,
             string destinationPath, UploadContentOptions? options = ()) returns Error? {
@@ -98,7 +93,7 @@ public isolated client class Caller {
     #
     # + sourcePath - The current share-relative path of the file
     # + destinationPath - The new share-relative path
-    # + options - Optional rename options (overwrite, permission, metadata)
+    # + options - Optional rename options (overwrite, metadata)
     # + return - An `Error` if the file could not be renamed, otherwise `()`
     isolated remote function renameFile(string sourcePath, string destinationPath,
             RenameOptions? options = ()) returns Error? {
@@ -110,7 +105,7 @@ public isolated client class Caller {
     #
     # + sourcePath - The source share-relative path
     # + destinationPath - The destination share-relative path
-    # + options - Optional copy options (metadata, permission handling)
+    # + options - Optional copy options (metadata)
     # + return - The `CopyInfo` for the started copy, or an `Error`
     isolated remote function copyFile(string sourcePath, string destinationPath,
             CopyOptions? options = ()) returns CopyInfo|Error {
@@ -138,7 +133,7 @@ public isolated client class Caller {
     # Creates a directory in the watched share.
     #
     # + directoryPath - The share-relative path of the directory to create
-    # + options - Optional creation options (metadata, permission, SMB properties)
+    # + options - Optional creation options (metadata)
     # + return - An `Error` if the directory could not be created, otherwise `()`
     isolated remote function createDirectory(string directoryPath, DirectoryCreateOptions? options = ())
             returns Error? {

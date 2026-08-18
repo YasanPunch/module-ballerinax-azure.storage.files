@@ -16,8 +16,7 @@
 
 import ballerina/data.xmldata;
 
-// Resolves the serialization format of record content: an explicit override wins,
-// otherwise the destination path's extension decides.
+// Resolves the serialization format: the explicit override wins, else the destination extension.
 isolated function resolveUploadFormat(string destinationPath, FileFormat? override) returns FileFormat? {
     if override is FileFormat {
         return override;
@@ -35,8 +34,7 @@ isolated function resolveUploadFormat(string destinationPath, FileFormat? overri
     return ();
 }
 
-// Serializes a single record as a JSON or an XML document per the resolved format.
-// A single record is never CSV, and an unresolvable format is refused.
+// Serializes a single record as a JSON or an XML document; CSV and unresolvable formats are refused.
 isolated function serializeRecord(record {} content, string destinationPath,
         FileFormat? override) returns string|Error {
     FileFormat? format = resolveUploadFormat(destinationPath, override);
@@ -57,10 +55,8 @@ isolated function serializeRecord(record {} content, string destinationPath,
             + "destination path, or an explicit fileFormat");
 }
 
-// Serializes a record array as CSV rows: the header row is the union of every record's
-// field names in first-seen order, values are stringified in header order, and a nil or
-// absent member becomes an empty cell. A record array is only CSV; any other resolved
-// format is refused.
+// Serializes a record array as CSV rows. The header row is the union of every record's field
+// names in first-seen order; nil or absent members become empty cells; non-CSV formats are refused.
 isolated function serializeRecordArray(record {}[] content, string destinationPath,
         FileFormat? override) returns string[][]|Error {
     FileFormat? format = resolveUploadFormat(destinationPath, override);
@@ -90,9 +86,8 @@ isolated function serializeRecordArray(record {}[] content, string destinationPa
     return rows;
 }
 
-// Serializes a non-mapping json value (an array, a scalar, or nil) as a JSON document.
-// Mappings never reach this function (they serialize as records), and json is only
-// JSON: an XML or CSV format, or an unresolvable one, is refused.
+// Serializes a non-mapping json value as a JSON document; XML, CSV, and unresolvable formats
+// are refused.
 isolated function serializeJson(json content, string destinationPath,
         FileFormat? override) returns string|Error {
     FileFormat? format = resolveUploadFormat(destinationPath, override);

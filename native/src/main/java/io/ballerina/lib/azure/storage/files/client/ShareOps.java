@@ -18,12 +18,7 @@
 
 package io.ballerina.lib.azure.storage.files.client;
 
-import com.azure.core.util.Context;
-import com.azure.storage.file.share.models.ShareAccessTier;
-import com.azure.storage.file.share.models.ShareRequestConditions;
-import com.azure.storage.file.share.options.ShareSetPropertiesOptions;
 import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
-import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
@@ -57,26 +52,5 @@ public final class ShareOps {
     public static Object getShareUsage(Environment env, BObject self) {
         return BallerinaAzureClient.invoke(env,
                 () -> BallerinaAzureClient.getShareClient(self).getStatistics().getShareUsageInBytes());
-    }
-
-    /** Updates the bound share's quota and access tier. */
-    public static Object setShareProperties(Environment env, BObject self, BMap<BString, Object> options) {
-        return BallerinaAzureClient.invoke(env, () -> {
-            ShareSetPropertiesOptions sdkOptions = new ShareSetPropertiesOptions();
-            Object quota = options.get(OptionsReader.QUOTA_IN_GB);
-            if (quota != null) {
-                sdkOptions.setQuotaInGb(Math.toIntExact((Long) quota));
-            }
-            String tier = ValueUtils.optString(options, OptionsReader.ACCESS_TIER);
-            if (tier != null) {
-                sdkOptions.setAccessTier(ShareAccessTier.fromString(tier));
-            }
-            String leaseId = ValueUtils.optString(options, OptionsReader.LEASE_ID);
-            if (leaseId != null) {
-                sdkOptions.setRequestConditions(new ShareRequestConditions().setLeaseId(leaseId));
-            }
-            BallerinaAzureClient.getShareClient(self).setPropertiesWithResponse(sdkOptions, null, Context.NONE);
-            return null;
-        });
     }
 }

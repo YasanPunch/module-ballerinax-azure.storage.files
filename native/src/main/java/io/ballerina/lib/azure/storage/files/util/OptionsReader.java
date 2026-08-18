@@ -18,9 +18,6 @@
 
 package io.ballerina.lib.azure.storage.files.util;
 
-import com.azure.storage.file.share.FileSmbProperties;
-import com.azure.storage.file.share.models.FilePosixProperties;
-import com.azure.storage.file.share.models.NtfsFileAttributes;
 import com.azure.storage.file.share.models.ShareCorsRule;
 import com.azure.storage.file.share.models.ShareFileHttpHeaders;
 import com.azure.storage.file.share.models.ShareFileRange;
@@ -37,7 +34,6 @@ import io.ballerina.runtime.api.values.BString;
 
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.EnumSet;
 import java.util.List;
 
 /**
@@ -46,19 +42,8 @@ import java.util.List;
  */
 public final class OptionsReader {
 
-    // Field names of the option, content-header, SMB, and POSIX records. Owned here as
-    // the options schema; other classes reference them from this class.
-    // The Ballerina NtfsFileAttribute enum values.
-    public static final String ATTRIBUTE_READ_ONLY = "ReadOnly";
-    public static final String ATTRIBUTE_HIDDEN = "Hidden";
-    public static final String ATTRIBUTE_SYSTEM = "System";
-    public static final String ATTRIBUTE_NONE = "None";
-    public static final String ATTRIBUTE_DIRECTORY = "Directory";
-    public static final String ATTRIBUTE_ARCHIVE = "Archive";
-    public static final String ATTRIBUTE_TEMPORARY = "Temporary";
-    public static final String ATTRIBUTE_OFFLINE = "Offline";
-    public static final String ATTRIBUTE_NOT_CONTENT_INDEXED = "NotContentIndexed";
-    public static final String ATTRIBUTE_NO_SCRUB_DATA = "NoScrubData";
+    // Field names of the option and content-header records; the options schema other
+    // classes reference.
     public static final BString PREFIX = StringUtils.fromString("prefix");
     public static final BString INCLUDE_METADATA = StringUtils.fromString("includeMetadata");
     public static final BString INCLUDE_SNAPSHOTS = StringUtils.fromString("includeSnapshots");
@@ -71,36 +56,19 @@ public final class OptionsReader {
     public static final BString DELETE_SNAPSHOTS = StringUtils.fromString("deleteSnapshots");
     public static final BString SNAPSHOT_ID = StringUtils.fromString("snapshotId");
     public static final BString LEASE_ID = StringUtils.fromString("leaseId");
-    public static final BString FILE_PERMISSION = StringUtils.fromString("filePermission");
-    public static final BString SMB_PROPERTIES = StringUtils.fromString("smbProperties");
-    public static final BString POSIX_PROPERTIES = StringUtils.fromString("posixProperties");
     public static final BString RECURSIVE = StringUtils.fromString("recursive");
     public static final BString PAGE_SIZE = StringUtils.fromString("pageSize");
     public static final BString INCLUDE_EXTENDED_INFO = StringUtils.fromString("includeExtendedInfo");
     public static final BString REPLACE_IF_EXISTS = StringUtils.fromString("replaceIfExists");
-    public static final BString IGNORE_READ_ONLY = StringUtils.fromString("ignoreReadOnly");
     public static final BString CONTENT_HEADERS = StringUtils.fromString("contentHeaders");
     public static final BString RANGE = StringUtils.fromString("range");
     public static final BString FILE_FORMAT = StringUtils.fromString("fileFormat");
-    public static final BString PERMISSION_COPY_MODE = StringUtils.fromString("permissionCopyMode");
     public static final BString CONTENT_TYPE = StringUtils.fromString("contentType");
     public static final BString CONTENT_ENCODING = StringUtils.fromString("contentEncoding");
     public static final BString CONTENT_LANGUAGE = StringUtils.fromString("contentLanguage");
     public static final BString CONTENT_DISPOSITION = StringUtils.fromString("contentDisposition");
     public static final BString CACHE_CONTROL = StringUtils.fromString("cacheControl");
     public static final BString CONTENT_MD5 = StringUtils.fromString("contentMd5");
-    public static final BString NTFS_FILE_ATTRIBUTES = StringUtils.fromString("ntfsFileAttributes");
-    public static final BString FILE_PERMISSION_KEY = StringUtils.fromString("filePermissionKey");
-    public static final BString FILE_CREATION_TIME = StringUtils.fromString("fileCreationTime");
-    public static final BString FILE_LAST_WRITE_TIME = StringUtils.fromString("fileLastWriteTime");
-    public static final BString FILE_CHANGE_TIME = StringUtils.fromString("fileChangeTime");
-    public static final BString FILE_ID = StringUtils.fromString("fileId");
-    public static final BString PARENT_ID = StringUtils.fromString("parentId");
-    public static final BString OWNER = StringUtils.fromString("owner");
-    public static final BString GROUP = StringUtils.fromString("group");
-    public static final BString FILE_MODE = StringUtils.fromString("fileMode");
-    public static final BString FILE_TYPE = StringUtils.fromString("fileType");
-    public static final BString LINK_COUNT = StringUtils.fromString("linkCount");
 
     private OptionsReader() {
     }
@@ -146,52 +114,6 @@ public final class OptionsReader {
             }
         }
         return headers;
-    }
-
-    /** Converts an {@code SmbProperties} record to the SDK class; {@code null} when absent. */
-    public static FileSmbProperties smbProperties(Object value) {
-        if (value == null) {
-            return null;
-        }
-        @SuppressWarnings("unchecked")
-        BMap<BString, Object> record = (BMap<BString, Object>) value;
-        FileSmbProperties smb = new FileSmbProperties()
-                .setFilePermissionKey(ValueUtils.optString(record, FILE_PERMISSION_KEY));
-        Object attributes = record.get(NTFS_FILE_ATTRIBUTES);
-        if (attributes != null) {
-            BArray array = (BArray) attributes;
-            EnumSet<NtfsFileAttributes> set = EnumSet.noneOf(NtfsFileAttributes.class);
-            for (int i = 0; i < array.size(); i++) {
-                set.add(ntfsAttribute(array.getBString(i).getValue()));
-            }
-            smb.setNtfsFileAttributes(set);
-        }
-        Object creation = record.get(FILE_CREATION_TIME);
-        if (creation != null) {
-            smb.setFileCreationTime(ValueUtils.fromUtc((BArray) creation));
-        }
-        Object lastWrite = record.get(FILE_LAST_WRITE_TIME);
-        if (lastWrite != null) {
-            smb.setFileLastWriteTime(ValueUtils.fromUtc((BArray) lastWrite));
-        }
-        Object change = record.get(FILE_CHANGE_TIME);
-        if (change != null) {
-            smb.setFileChangeTime(ValueUtils.fromUtc((BArray) change));
-        }
-        return smb;
-    }
-
-    /** Converts a writable {@code PosixProperties} record to the SDK class; {@code null} when absent. */
-    public static FilePosixProperties posixProperties(Object value) {
-        if (value == null) {
-            return null;
-        }
-        @SuppressWarnings("unchecked")
-        BMap<BString, Object> record = (BMap<BString, Object>) value;
-        return new FilePosixProperties()
-                .setOwner(ValueUtils.optString(record, OWNER))
-                .setGroup(ValueUtils.optString(record, GROUP))
-                .setFileMode(ValueUtils.optString(record, FILE_MODE));
     }
 
     /** Converts a {@code Range} record to the SDK range; {@code null} when absent. */
@@ -266,19 +188,4 @@ public final class OptionsReader {
         return sdk;
     }
 
-    private static NtfsFileAttributes ntfsAttribute(String value) {
-        return switch (value) {
-            case ATTRIBUTE_READ_ONLY -> NtfsFileAttributes.READ_ONLY;
-            case ATTRIBUTE_HIDDEN -> NtfsFileAttributes.HIDDEN;
-            case ATTRIBUTE_SYSTEM -> NtfsFileAttributes.SYSTEM;
-            case ATTRIBUTE_NONE -> NtfsFileAttributes.NORMAL;
-            case ATTRIBUTE_DIRECTORY -> NtfsFileAttributes.DIRECTORY;
-            case ATTRIBUTE_ARCHIVE -> NtfsFileAttributes.ARCHIVE;
-            case ATTRIBUTE_TEMPORARY -> NtfsFileAttributes.TEMPORARY;
-            case ATTRIBUTE_OFFLINE -> NtfsFileAttributes.OFFLINE;
-            case ATTRIBUTE_NOT_CONTENT_INDEXED -> NtfsFileAttributes.NOT_CONTENT_INDEXED;
-            case ATTRIBUTE_NO_SCRUB_DATA -> NtfsFileAttributes.NO_SCRUB_DATA;
-            default -> throw FilesErrorCreator.clientError("unknown NTFS attribute: " + value, null);
-        };
-    }
 }

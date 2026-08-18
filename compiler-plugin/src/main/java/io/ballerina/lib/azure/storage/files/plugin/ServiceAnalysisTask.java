@@ -37,11 +37,9 @@ import java.util.Optional;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.validateModuleId;
 
 /**
- * Runs on every service declaration. It skips services whose package already has compilation
- * errors and services not attached to the connector's {@code Listener}.
- * 
- * Checks the service is attached to our Listener (otherwise it stays silent — it must not
- * fire on http/ftp services in the same file)
+ * Runs on every service declaration, skipping services whose package already has compilation
+ * errors and services not attached to the connector's {@code Listener} (the plugin must not
+ * fire on other listeners' services in the same file).
  */
 public class ServiceAnalysisTask implements AnalysisTask<SyntaxNodeAnalysisContext> {
 
@@ -54,12 +52,6 @@ public class ServiceAnalysisTask implements AnalysisTask<SyntaxNodeAnalysisConte
         this.serviceValidator = new ServiceValidator();
     }
 
-    /**
-     * Performs the analysis task. It skips services whose package already has compilation
-     * errors and services not attached to the listener.
-     * 
-     * @param context the syntax node analysis context
-     */
     @Override
     public void perform(SyntaxNodeAnalysisContext context) {
         for (Diagnostic diagnostic : context.semanticModel().diagnostics()) {
@@ -73,12 +65,7 @@ public class ServiceAnalysisTask implements AnalysisTask<SyntaxNodeAnalysisConte
         serviceValidator.validate(context);
     }
 
-    /**
-     * Checks if the service is an Azure Files service.
-     * 
-     * @param context the syntax node analysis context
-     * @return true if the service is an Azure Files service, false otherwise
-     */
+    // True when the service's attached listener is this module's Listener.
     private boolean isAzureFilesService(SyntaxNodeAnalysisContext context) {
         SemanticModel semanticModel = context.semanticModel();
         ServiceDeclarationNode serviceDeclarationNode = (ServiceDeclarationNode) context.node();
@@ -98,12 +85,7 @@ public class ServiceAnalysisTask implements AnalysisTask<SyntaxNodeAnalysisConte
         return true;
     }
 
-    /**
-     * Checks if the listener is an Azure Files listener.
-     * 
-     * @param listener the listener type symbol
-     * @return true if the listener is an Azure Files listener, false otherwise
-     */
+    // True when the listener type symbol resolves to this module's Listener class.
     private boolean isAzureFilesListener(TypeSymbol listener) {
         if (listener.typeKind() == TypeDescKind.UNION) {
             for (TypeSymbol member : ((UnionTypeSymbol) listener).memberTypeDescriptors()) {
