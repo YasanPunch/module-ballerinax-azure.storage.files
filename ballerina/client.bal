@@ -214,11 +214,8 @@ public isolated client class Client {
     # check fileClient->uploadContent(<map<json>>{"revenue": 1250000, "growth": 0.12}, "/2026/q1/metrics.json");
     # ```
     #
-    # + content - The content to upload: `byte[]` is written as-is, `string` as raw text, and
-    #             `xml` as its textual form. A record, a record array, or any other `json` value
-    #             is serialized per `UploadContentOptions.fileFormat`, else the destination
-    #             extension: a record becomes a JSON or an XML document (never CSV), a record
-    #             array becomes CSV rows, and other `json` values become JSON documents
+    # + content - The content to upload. A record, a record array, or another `json` value is
+    #             serialized per the resolved file format
     # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, format override)
     # + return - An `Error` if the upload failed, otherwise `()`
@@ -239,11 +236,9 @@ public isolated client class Client {
         return externUploadContent(self, payload, destinationPath, options);
     }
 
-    # Uploads a byte stream to the bound share. The total content length is required and
-    # must not be negative. There is no record stream upload; collect records into a
-    # `record {}[]` and use `uploadContent`. A failed upload closes the source stream and
-    # leaves the partially written file at the destination; inspect or delete it before
-    # retrying.
+    # Uploads a byte stream to the bound share. The total content length is required. There
+    # is no record stream upload, so collect records into a `record {}[]` and use
+    # `uploadContent`.
     #
     # + content - The byte stream to upload
     # + contentLength - The total length of the content, in bytes
@@ -347,11 +342,8 @@ public isolated client class Client {
     #
     # + path - The source share-relative path
     # + options - Optional retrieval options (range, snapshot, record binding format)
-    # + targetType - The form to retrieve, inferred from the assignment target: `byte[]`,
-    #                `string`, `json`, `xml`, a record or record array, a lazy byte stream, or a
-    #                lazy stream of CSV-bound records. Records bind per `GetFileOptions.fileFormat`,
-    #                else the path's extension; CSV binds record targets only. Binding is strict:
-    #                content that does not match the target fails with a client-side `Error`
+    # + targetType - The type the content binds to, inferred from the assignment target. Accepts
+    #                `byte[]`, `string`, `json`, `xml`, records, record arrays, and byte or CSV record streams
     # + return - The content in the requested form, or an `Error`
     isolated remote function getFile(string path, GetFileOptions? options = (),
             typedesc<RetrievableType> targetType = <>) returns targetType|Error = @java:Method {

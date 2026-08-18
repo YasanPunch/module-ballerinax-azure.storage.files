@@ -66,7 +66,7 @@ function setupWatchedShare(string base) returns [Client, string]|error {
     AdminClient admin = check newAdmin();
     boolean shareExists = check admin->hasShare(share);
     if !shareExists {
-        check admin->createShare(share);
+        check createTestShare(admin, share);
     }
     Client shareClient = check newShareClient(share);
     boolean dirExists = check shareClient->hasDirectory("/incoming");
@@ -172,7 +172,7 @@ function testTypedJsonRouting() returns error? {
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
     Service svc = service object {
-        remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
+        remote function onFileJson(json content, FileInfo info, Caller caller) returns error? {
             recorder.put("json", content.toJsonString());
             check caller->deleteFile(info.path);
         }
@@ -201,7 +201,7 @@ function testUnmappedExtensionFallsBackToOnFile() returns error? {
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
     Service svc = service object {
-        remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
+        remote function onFileJson(json content, FileInfo info, Caller caller) returns error? {
             recorder.hit("json");
         }
 
@@ -225,15 +225,15 @@ function testMalformedJsonTriggersAfterError() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-malformed");
     Client shareClient = setup[0];
     string share = setup[1];
-    // Not a JSON object at the root, so binding to map<json> fails: a content-binding error, which
-    // triggers afterError (here a DELETE), and never falls through to onFile.
+    // Not parseable JSON, so binding fails: a content-binding error, which triggers
+    // afterError (here a DELETE), and never falls through to onFile.
     check shareClient->uploadContent("this is not json", "/incoming/broken.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
     Service svc = service object {
         @FunctionConfig {afterError: DELETE}
-        remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
+        remote function onFileJson(json content, FileInfo info, Caller caller) returns error? {
             recorder.hit("json");
         }
 
@@ -291,15 +291,15 @@ function testOnFileJsonArrayRootBindingError() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-json-array");
     Client shareClient = setup[0];
     string share = setup[1];
-    // A JSON array at the root parses, but binding to map<json> fails: a content-binding error,
-    // which triggers afterError (here a DELETE), and never falls through to onFile.
+    // A JSON array at the root parses, but binding to a record target fails: a content-binding
+    // error, which triggers afterError (here a DELETE), and never falls through to onFile.
     check shareClient->uploadContent("[1, 2, 3]", "/incoming/list.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
     Service svc = service object {
         @FunctionConfig {afterError: DELETE}
-        remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
+        remote function onFileJson(OrderDoc content, FileInfo info, Caller caller) returns error? {
             recorder.hit("json");
         }
 
@@ -317,96 +317,8 @@ function testOnFileJsonArrayRootBindingError() returns error? {
     check lsn.gracefulStop();
     check lsn.detach(svc);
 
-    test:assertEquals(recorder.count("json"), 0, "an array-root JSON must not invoke the map<json> handler body");
+    test:assertEquals(recorder.count("json"), 0, "an array-root JSON must not invoke the record handler body");
     test:assertEquals(recorder.count("fallback"), 0, "a content-binding error must not fall through to onFile");
-}
-
-@test:Config {}
-function testOnFileJsonMapArrayBinding() returns error? {
-    [Client, string] setup = check setupWatchedShare("lsn-json-maparr");
-    Client shareClient = setup[0];
-    string share = setup[1];
-    check shareClient->uploadContent("[{\"sku\": \"A1\"}, {\"sku\": \"B2\"}]", "/incoming/batch.json");
-
-    final Recorder recorder = new;
-    Listener lsn = check newListener(share);
-    Service svc = service object {
-        remote function onFileJson(map<json>[] content, FileInfo info, Caller caller) returns error? {
-            string[] skus = [];
-            foreach map<json> item in content {
-                skus.push(check item["sku"].ensureType(string));
-            }
-            recorder.put("maparr", string:'join(",", ...skus));
-            check caller->deleteFile(info.path);
-        }
-    };
-    check lsn.attach(svc, "/incoming");
-    check lsn.'start();
-    check await(() => recorder.count("maparr") >= 1);
-    check lsn.gracefulStop();
-    check lsn.detach(svc);
-
-    test:assertEquals(recorder.payload("maparr"), "A1,B2");
-}
-
-@test:Config {}
-function testOnFileJsonRecordArrayBinding() returns error? {
-    [Client, string] setup = check setupWatchedShare("lsn-json-recarr");
-    Client shareClient = setup[0];
-    string share = setup[1];
-    check shareClient->uploadContent("[{\"sku\": \"A1\", \"qty\": 2}, {\"sku\": \"B2\", \"qty\": 7}]",
-            "/incoming/orders.json");
-
-    final Recorder recorder = new;
-    Listener lsn = check newListener(share);
-    Service svc = service object {
-        remote function onFileJson(OrderDoc[] content, FileInfo info, Caller caller) returns error? {
-            string[] parts = [];
-            foreach OrderDoc item in content {
-                parts.push(item.sku + ":" + item.qty.toString());
-            }
-            recorder.put("recarr", string:'join(",", ...parts));
-            check caller->deleteFile(info.path);
-        }
-    };
-    check lsn.attach(svc, "/incoming");
-    check lsn.'start();
-    check await(() => recorder.count("recarr") >= 1);
-    check lsn.gracefulStop();
-    check lsn.detach(svc);
-
-    test:assertEquals(recorder.payload("recarr"), "A1:2,B2:7");
-}
-
-@test:Config {}
-function testOnFileJsonArrayTargetObjectRootBindingError() returns error? {
-    [Client, string] setup = check setupWatchedShare("lsn-json-arrmismatch");
-    Client shareClient = setup[0];
-    string share = setup[1];
-    // An object root cannot bind to an array-typed handler: a content-binding error, which
-    // triggers afterError (here a DELETE), and never invokes the handler body.
-    map<json> document = {sku: "A1"};
-    check shareClient->uploadContent(document, "/incoming/single.json");
-
-    final Recorder recorder = new;
-    Listener lsn = check newListener(share);
-    Service svc = service object {
-        @FunctionConfig {afterError: DELETE}
-        remote function onFileJson(map<json>[] content, FileInfo info, Caller caller) returns error? {
-            recorder.hit("maparr");
-        }
-    };
-    check lsn.attach(svc, "/incoming");
-    check lsn.'start();
-    // The mismatched file is consumed by afterError; wait for it to disappear.
-    check await(function() returns boolean|error {
-        boolean present = check shareClient->hasFile("/incoming/single.json");
-        return !present;
-    });
-    check lsn.gracefulStop();
-    check lsn.detach(svc);
-
-    test:assertEquals(recorder.count("maparr"), 0, "an object-root JSON must not invoke an array-typed handler body");
 }
 
 @test:Config {}
@@ -414,7 +326,7 @@ function testOnFileJsonBareJsonBinding() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-json-bare");
     Client shareClient = setup[0];
     string share = setup[1];
-    // A scalar-element array root binds no map or record form; only a bare json target admits it.
+    // An array root binds no record form; a bare json target admits it.
     check shareClient->uploadContent("[1, 2, 3]", "/incoming/counts.json");
 
     final Recorder recorder = new;
@@ -912,7 +824,7 @@ function testUnmappedFileSkippedWithoutOnFile() returns error? {
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
     Service svc = service object {
-        remote function onFileJson(map<json> content, FileInfo info, Caller caller) returns error? {
+        remote function onFileJson(json content, FileInfo info, Caller caller) returns error? {
             recorder.hit("json");
         }
     };
@@ -970,7 +882,7 @@ function setupMockWatchedShare(string base) returns [Client, string]|error {
     AdminClient admin = check newMockAdmin();
     boolean shareExists = check admin->hasShare(share);
     if !shareExists {
-        check admin->createShare(share);
+        check createTestShare(admin, share);
     }
     Client shareClient = check newMockShareClient(share);
     boolean dirExists = check shareClient->hasDirectory("/incoming");
@@ -1140,7 +1052,7 @@ function testOnErrorFiresOnBindingFailure() returns error? {
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
     Service svc = service object {
-        remote function onFileJson(map<json> content) returns error? {
+        remote function onFileJson(json content) returns error? {
             recorder.hit("json");
         }
 
@@ -1233,7 +1145,7 @@ function testBindingFailureAfterErrorInteraction() returns error? {
     Listener lsn = check newListener(share);
     Service svc = service object {
         @FunctionConfig {afterError: DELETE}
-        remote function onFileJson(map<json> content) returns error? {
+        remote function onFileJson(json content) returns error? {
             recorder.hit("json");
         }
 
@@ -1267,7 +1179,7 @@ function testOnErrorErrorReturnIsSwallowed() returns error? {
     Listener lsn = check newListener(share);
     Service svc = service object {
         @FunctionConfig {afterError: DELETE}
-        remote function onFileJson(map<json> content) returns error? {
+        remote function onFileJson(json content) returns error? {
             recorder.hit("json");
         }
 
@@ -1985,7 +1897,7 @@ function testAbsentPathDefaultsToShareRoot() returns error? {
     AdminClient admin = check newAdmin();
     boolean shareExists = check admin->hasShare(share);
     if !shareExists {
-        check admin->createShare(share);
+        check createTestShare(admin, share);
     }
     Client shareClient = check newShareClient(share);
     check shareClient->uploadContent("at the root", "/root.dat");
@@ -2014,7 +1926,7 @@ function testEmptyAttachPointDefaultsToShareRoot() returns error? {
     AdminClient admin = check newAdmin();
     boolean shareExists = check admin->hasShare(share);
     if !shareExists {
-        check admin->createShare(share);
+        check createTestShare(admin, share);
     }
     Client shareClient = check newShareClient(share);
     check shareClient->uploadContent("empty means root", "/empty.dat");

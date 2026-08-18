@@ -1,4 +1,0 @@
-[package]
-org = "azure_files_test"
-name = "valid_on_file_json_record_array"
-version = "0.9.0"

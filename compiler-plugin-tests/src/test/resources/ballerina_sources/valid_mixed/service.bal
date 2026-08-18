@@ -24,6 +24,6 @@ service /incoming on lsn {
     remote function onFile(byte[] content, files:FileInfo info, files:Caller caller) returns error? {
     }
 
-    remote function onFileJson(map<json> content) returns error? {
+    remote function onFileJson(json content) returns error? {
     }
 }

@@ -39,9 +39,10 @@ public class ServiceValidationTest {
     }
 
     @Test
-    public void testValidTypedJsonService() {
-        DiagnosticResult result = loadPackage("valid_on_file_json");
-        assertEquals(result.errorCount(), 0, "expected no diagnostics for a valid onFileJson service");
+    public void testInvalidOnFileJsonMap() {
+        DiagnosticResult result = loadPackage("invalid_on_file_json_map");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileJson");
     }
 
     @Test
@@ -57,21 +58,10 @@ public class ServiceValidationTest {
     }
 
     @Test
-    public void testValidTypedJsonMapArrayService() {
-        DiagnosticResult result = loadPackage("valid_on_file_json_map_array");
-        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileJson map<json>[] service");
-    }
-
-    @Test
-    public void testValidTypedJsonRecordArrayService() {
-        DiagnosticResult result = loadPackage("valid_on_file_json_record_array");
-        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileJson record-array service");
-    }
-
-    @Test
-    public void testValidTypedJsonBareArrayService() {
-        DiagnosticResult result = loadPackage("valid_on_file_json_json_array");
-        assertEquals(result.errorCount(), 0);
+    public void testInvalidOnFileJsonRecordArray() {
+        DiagnosticResult result = loadPackage("invalid_on_file_json_record_array");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileJson");
     }
 
     @Test

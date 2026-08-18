@@ -387,7 +387,7 @@ A service declares at least one content handler, validated at compile time by th
 
 * **`onFile`**: the raw bytes catch all. Takes its content as `byte[]` or as `stream<byte[], error?>`.
 * **`onFileText`**: takes a `string`.
-* **`onFileJson`**: takes a `json`, a `map<json>`, a record, or an array of those forms. A `json` target receives any parsed root as is; an object root binds the map and record forms (a record binds by projection); an array root binds the array forms element by element.
+* **`onFileJson`**: takes a `json` value or a record. A `json` parameter receives any parsed root as is, and a record binds an object root by projection.
 * **`onFileXml`**: takes an `xml` document or a record whose fields bind from the document's elements.
 * **`onFileCsv`**: takes a record array or a `stream<record {}, error?>`. Both forms map each row's fields through the file's first row, the header. To consume positional or headerless rows, take the content through `onFile` and parse it with the `data.csv` module.
 

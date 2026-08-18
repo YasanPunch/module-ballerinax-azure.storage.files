@@ -130,7 +130,7 @@ function testInitEntraIdValidation() {
 function testRetryAndTransportConfig() returns error? {
     AdminClient admin = check newMockAdmin();
     string share = testShare("transport-config");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
 
     // A tuned retry policy still round-trips content.
     Client retryClient = check new (share, auth = {
@@ -181,7 +181,7 @@ function testRetryAndTransportConfig() returns error? {
 function testSecondaryHostRetryReachesSecondaryHost() returns error? {
     AdminClient admin = check newMockAdmin();
     string share = testShare("secondary-host");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check new (share, auth = {
         accountName: "mockaccount",
         accountKey: MOCK_KEY,
@@ -327,7 +327,7 @@ function testShareLifecycle() returns error? {
 function testCreateShareTwiceConflicts() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("dup");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Error? result = admin->createShare(share);
     test:assertTrue(result is ConflictError, "expected a ConflictError for a duplicate share");
 }
@@ -376,7 +376,7 @@ function testSharePropertiesAndUsage() returns error? {
 function testDirectoryLifecycle() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("dir");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     check fileClient->createDirectory("/docs");
@@ -412,7 +412,7 @@ function testDirectoryLifecycle() returns error? {
 function testDeleteNonEmptyDirectoryConflicts() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("nonempty");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->createDirectory("/keep");
     check fileClient->uploadContent("x", "/keep/file.txt");
@@ -428,7 +428,7 @@ function testDeleteNonEmptyDirectoryConflicts() returns error? {
 function testFileLifecycle() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("file");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     check fileClient->createFile("/report.bin", 16, {metadata: {kind: "report"}});
@@ -474,7 +474,7 @@ function testFileLifecycle() returns error? {
 function testUploadContentVariantsAndDownloadStream() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("content");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     check fileClient->uploadContent("hello mock", "/text.txt");
@@ -526,7 +526,7 @@ type UploadBonus record {|
 function testUploadContentRecordAsJson() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("rec-json");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     UploadMetric metric = {quarter: "q1", revenue: 1250000};
@@ -542,7 +542,7 @@ function testUploadContentRecordAsJson() returns error? {
 function testUploadContentRecordAsXml() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("rec-xml");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     UploadMetric metric = {quarter: "q2", revenue: 7};
@@ -555,7 +555,7 @@ function testUploadContentRecordAsXml() returns error? {
 function testUploadContentRecordArrayAsCsv() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("rec-csv");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     // A field containing a comma exercises the quoting-aware CSV writer.
@@ -578,7 +578,7 @@ function testUploadContentRecordArrayAsCsv() returns error? {
 function testUploadContentRecordArrayHeaderUnion() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("csv-headers");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     // The header row is the union of every record's field names in first-seen order,
@@ -593,7 +593,7 @@ function testUploadContentRecordArrayHeaderUnion() returns error? {
 function testUploadContentRecordFormatRefusals() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("rec-refuse");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     UploadMetric metric = {quarter: "q3", revenue: 1};
@@ -630,7 +630,7 @@ function testUploadContentRecordFormatRefusals() returns error? {
 function testUploadContentFileFormatOverride() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("rec-override");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     // The explicit format beats the destination extension, on the write and the read.
@@ -649,7 +649,7 @@ function testUploadContentFileFormatOverride() returns error? {
 function testUploadContentStringRowsRefused() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("string-rows");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     // String matrices and tuple rows are json subtypes, so the calls still compile, but
@@ -673,7 +673,7 @@ function testUploadContentStringRowsRefused() returns error? {
 function testUploadContentBareJson() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("bare-json");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     // A json array serializes as a JSON document and reads back as json.
@@ -705,7 +705,7 @@ function testUploadContentBareJson() returns error? {
 function testUploadContentJsonFormatRefusals() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("json-refuse");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     json values = [1, 2, 3];
@@ -746,7 +746,7 @@ function testUploadContentJsonFormatRefusals() returns error? {
 function testUploadAndDownloadLocalFile() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("transfer");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     string localSource = "target/mock-upload-source.txt";
@@ -775,7 +775,7 @@ function testUploadAndDownloadLocalFile() returns error? {
 function testUploadFromStream() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("stream");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     byte[][] chunks = ["abc".toBytes(), "defg".toBytes(), "hi".toBytes()];
@@ -795,7 +795,7 @@ function testUploadFromStream() returns error? {
 function testUploadFromStreamCoalescesSmallChunks() returns error? {
     AdminClient admin = check newMockAdmin();
     string share = testShare("stream-coalesce");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newMockShareClient(share);
 
     final int chunkSize = 4096;
@@ -839,7 +839,7 @@ function testUploadFromStreamCoalescesSmallChunks() returns error? {
 function testUploadFromStreamSplitsOversizedChunk() returns error? {
     AdminClient admin = check newMockAdmin();
     string share = testShare("stream-split");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newMockShareClient(share);
 
     final int rangeCap = 4 * 1024 * 1024;
@@ -899,7 +899,7 @@ class CloseTrackingChunks {
 function testUploadFromStreamClosesSourceOnError() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("stream-close");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     // A failing source stream: the upload fails client-side and the source is closed.
@@ -923,7 +923,7 @@ function testUploadFromStreamClosesSourceOnError() returns error? {
 function testUploadFromStreamRejectsNegativeLength() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("stream-negative");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     byte[][] chunks = ["abc".toBytes()];
@@ -939,7 +939,7 @@ function testUploadFromStreamRejectsNegativeLength() returns error? {
 function testRangedDownload() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("range-read");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("0123456789", "/digits.txt");
 
@@ -955,7 +955,7 @@ function testRangedDownload() returns error? {
 function testListFlatAndRecursive() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("list");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->createDirectory("/a");
     check fileClient->createDirectory("/a/b");
@@ -991,7 +991,7 @@ function testListFlatAndRecursive() returns error? {
 function testCopyWithinShare() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("copy");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("copy me", "/source.txt");
 
@@ -1025,7 +1025,7 @@ function testCopyWithinShare() returns error? {
 function testCopyFromUrl() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("copy-url");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("via url", "/origin.txt");
 
@@ -1051,7 +1051,7 @@ function testCopyFromUrl() returns error? {
 function testRangeWriteClearAndList() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("ranges");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->createFile("/ranges.bin", 8);
 
@@ -1089,7 +1089,7 @@ function testRangeWriteClearAndList() returns error? {
 function testErrorCodeMapping() returns error? {
     AdminClient admin = check newMockAdmin();
     string share = testShare("errors");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newMockShareClient(share);
 
     FileProperties|Error quota = fileClient->getFileProperties("/__err-403-ShareSizeLimitReached");
@@ -1162,7 +1162,7 @@ function testClientSideErrorsCarryNoDetail() returns error? {
 
     AdminClient admin = check newAdmin();
     string share = testShare("nodetail");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     byte[][] longChunks = ["abcdef".toBytes(), "ghijkl".toBytes()];
     Error? overflow = fileClient->uploadFromStream(longChunks.toStream(), 5, "/overflow.txt");
@@ -1189,7 +1189,7 @@ function testClientSideErrorsCarryNoDetail() returns error? {
 function testShareSnapshotLifecycle() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("snap");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("version one", "/versioned.txt");
     check fileClient->createDirectory("/snapdir");
@@ -1245,7 +1245,7 @@ function testShareSnapshotLifecycle() returns error? {
 function testListRangesDiff() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("diff");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->createFile("/diff.bin", 16);
     check fileClient->uploadRange("/diff.bin", 0, "AAAABBBB".toBytes());
@@ -1384,7 +1384,7 @@ function testGetUserDelegationKey() returns error? {
 function testGenerateShareAndFileSas() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("sas");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     time:Utc expiry = check time:utcFromString("2026-08-01T00:00:00Z");
 
@@ -1464,7 +1464,7 @@ function testGenerateUserDelegationSas() returns error? {
     AdminClient keyAdmin = liveRun ? check newEntraAdmin() : check newMockAdmin();
     AdminClient admin = check newAdmin();
     string share = testShare("uds");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     time:Utc keyStart = [time:utcNow()[0], 0];
     UserDelegationKey key = check keyAdmin->getUserDelegationKey(keyStart, time:utcAddSeconds(keyStart, 86400));
@@ -1552,7 +1552,7 @@ function testGenerateAccountSas() returns error? {
 function testRenameReplaceIfExists() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("rename");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("new", "/incoming.txt");
     check fileClient->uploadContent("old", "/settled.txt");
@@ -1571,7 +1571,7 @@ function testRenameReplaceIfExists() returns error? {
 function testLargeUploadSplitsIntoRanges() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("large");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     // 4 MiB is the service's maximum single-range size, so this upload must split.
@@ -1592,7 +1592,7 @@ function testLargeUploadSplitsIntoRanges() returns error? {
 function testEarlyStreamClose() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("close");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("0123456789", "/close.txt");
     check fileClient->createDirectory("/somedir");
@@ -1626,7 +1626,7 @@ class FailingByteSource {
 function testStreamFailurePaths() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("stream-fail");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     stream<Entry, Error?>|Error missingDirectory = fileClient->list("/no-such-dir");
@@ -1649,7 +1649,7 @@ function testStreamFailurePaths() returns error? {
 function testUploadFromStreamOverflow() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("overflow");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     byte[][] longChunks = ["abcdef".toBytes(), "ghijkl".toBytes()];
@@ -1662,7 +1662,7 @@ function testUploadFromStreamOverflow() returns error? {
 function testConnectionStringClientOps() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("cs");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check new (share, auth = {connectionString: testConnectionString()});
     check fileClient->uploadContent("via connection string", "/cs.txt");
     test:assertEquals(check readAll(fileClient, "/cs.txt"), "via connection string".toBytes());
@@ -1676,7 +1676,7 @@ function testConnectionStringClientOps() returns error? {
 function testSasRoundtrip() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("sas-roundtrip");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client keyClient = check newShareClient(share);
     check keyClient->uploadContent("sas readable", "/sas-probe.txt");
 
@@ -1815,7 +1815,7 @@ type CsvTricky record {|
 function testGetFileStringTarget() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("typed-text");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     check fileClient->uploadContent("hello typed text", "/hello.txt");
     string full = check fileClient->getFile("/hello.txt");
@@ -1830,7 +1830,7 @@ function testGetFileStringTarget() returns error? {
 function testGetFileRejectsInvalidUtf8() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("typed-text-utf8");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
     byte[] invalid = [0xC3, 0x28, 0xFF, 0xFE, 0x80];
     check fileClient->uploadContent(invalid, "/binary.bin");
@@ -1847,7 +1847,7 @@ function testGetFileRejectsInvalidUtf8() returns error? {
 function testGetFileJsonTargets() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("typed-json");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     check fileClient->uploadContent(<map<json>>{"quarter": "q1", "revenue": 1250000}, "/metrics.json");
@@ -1880,7 +1880,7 @@ function testGetFileJsonTargets() returns error? {
 function testGetFileXmlTargets() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("typed-xml");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     xml note = xml `<note><to>ops</to><body>rotate the key</body></note>`;
@@ -1899,7 +1899,7 @@ function testGetFileXmlTargets() returns error? {
 function testGetFileCsvTargets() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("typed-csv");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     check fileClient->uploadContent("name,qty\na,1\nb,2", "/items.csv");
@@ -1923,7 +1923,7 @@ function testGetFileCsvTargets() returns error? {
 function testGetFileByteTarget() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("get-bytes");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     byte[] payload = [0, 1, 2, 251, 252, 253];
@@ -1940,7 +1940,7 @@ function testGetFileByteTarget() returns error? {
 function testGetFileRecordFormatByExtension() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("get-ext");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     // The same record binds from all three formats; the extension selects the parser.
@@ -1962,7 +1962,7 @@ function testGetFileRecordFormatByExtension() returns error? {
 function testGetFileFormatOverrideAndRefusal() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("get-override");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     UploadMetric metric = {quarter: "q9", revenue: 3};
@@ -1985,7 +1985,7 @@ function testGetFileFormatOverrideAndRefusal() returns error? {
 function testGetFileCsvRowStream() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("get-rowstream");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     check fileClient->uploadContent("name,qty\na,1\nb,2\nc,3", "/rows.csv");
@@ -2012,7 +2012,7 @@ function testGetFileCsvRowStream() returns error? {
 function testUploadContentCsvRoundTrip() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("csv-write");
-    check admin->createShare(share);
+    check createTestShare(admin, share);
     Client fileClient = check newShareClient(share);
 
     CsvTricky[] rows = [

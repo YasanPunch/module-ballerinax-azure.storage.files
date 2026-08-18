@@ -43,15 +43,12 @@ public isolated client class Caller {
     #
     # + path - The source share-relative path
     # + options - Optional retrieval options (range, snapshot, record binding format)
-    # + targetType - The form to retrieve, inferred from the assignment target: `byte[]`,
-    #                `string`, `json`, `xml`, a record or record array, a lazy byte stream, or a
-    #                lazy stream of CSV-bound records. Records bind per `GetFileOptions.fileFormat`,
-    #                else the path's extension; CSV binds record targets only. Binding is strict:
-    #                content that does not match the target fails with a client-side `Error`
+    # + targetType - The type the content binds to, inferred from the assignment target. Accepts
+    #                `byte[]`, `string`, `json`, `xml`, records, record arrays, and byte or CSV record streams
     # + return - The content in the requested form, or an `Error`
     isolated remote function getFile(string path, GetFileOptions? options = (),
             typedesc<RetrievableType> targetType = <>) returns targetType|Error = @java:Method {
-        name: "callerGetFile", 'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
+        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
     } external;
 
     # Uploads a local file to the watched share.
@@ -67,11 +64,8 @@ public isolated client class Caller {
 
     # Uploads in-memory content to the watched share.
     #
-    # + content - The content to upload: `byte[]` is written as-is, `string` as raw text, and
-    #             `xml` as its textual form. A record, a record array, or any other `json` value
-    #             is serialized per `UploadContentOptions.fileFormat`, else the destination
-    #             extension: a record becomes a JSON or an XML document (never CSV), a record
-    #             array becomes CSV rows, and other `json` values become JSON documents
+    # + content - The content to upload. A record, a record array, or another `json` value is
+    #             serialized per the resolved file format
     # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, format override)
     # + return - An `Error` if the upload failed, otherwise `()`

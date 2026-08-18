@@ -74,9 +74,12 @@ public final class TypedReadOps {
     private TypedReadOps() {
     }
 
-    /** Retrieves the file's content in the form the target typedesc selects. */
-    public static Object getFile(Environment env, BObject clientObj, BString path, Object options,
+    /** Retrieves the file's content in the form the target typedesc selects, for Client and Caller. */
+    public static Object getFile(Environment env, BObject self, BString path, Object options,
                                  BTypedesc targetType) {
+        // A Caller carries no native data; unwrap it to the Client it holds.
+        BObject clientObj = self.getNativeData(BallerinaAzureClient.NATIVE_SHARE_CLIENT) == null
+                ? (BObject) self.getObjectValue(BallerinaAzureClient.CALLER_CLIENT_FIELD) : self;
         Type described = TypeUtils.getReferredType(targetType.getDescribingType());
         if (described.getTag() == TypeTags.STREAM_TAG) {
             return streamTarget(env, clientObj, path, options, (StreamType) described);
@@ -86,12 +89,6 @@ public final class TypedReadOps {
             return bytes;
         }
         return bindMaterialized(env, (BArray) bytes, described, path, options);
-    }
-
-    /** The Caller's mirror of {@code getFile}, unwrapping the wrapped Client. */
-    public static Object callerGetFile(Environment env, BObject caller, BString path, Object options,
-                                       BTypedesc targetType) {
-        return getFile(env, callerClient(caller), path, options, targetType);
     }
 
     // Binds materialized content to a non-stream target.
@@ -275,9 +272,5 @@ public final class TypedReadOps {
 
     private static BError csvFailure(BError cause) {
         return FilesErrorCreator.clientError(CSV_BIND_CONTEXT + ": " + cause.getErrorMessage(), cause);
-    }
-
-    private static BObject callerClient(BObject caller) {
-        return (BObject) caller.getObjectValue(BallerinaAzureClient.CALLER_CLIENT_FIELD);
     }
 }

@@ -83,6 +83,18 @@ function testShare(string base) returns string {
     return share;
 }
 
+// Creates a test share, tolerating ShareAlreadyExists. Share names are per-run unique, so
+// an AlreadyExists here can only be this run's own create resurfacing through a transport
+// retry: Create Share is not idempotent, and the SDK retries a request whose first attempt
+// succeeded but whose response was lost.
+function createTestShare(AdminClient admin, string share) returns Error? {
+    Error? created = admin->createShare(share);
+    if created is ConflictError && created.detail().errorCode == "ShareAlreadyExists" {
+        return ();
+    }
+    return created;
+}
+
 // Best-effort immediate deletion. Anything left behind is caught by the AfterSuite
 // prefix cleanup.
 function releaseShare(string share) {
