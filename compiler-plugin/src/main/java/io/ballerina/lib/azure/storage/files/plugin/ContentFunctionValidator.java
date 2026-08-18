@@ -62,8 +62,8 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.reportErro
  * onFileText: {@code string}; 
  * onFileJson: {@code json}, a {@code map<json>}, a record, or an array of them;
  * onFileXml: {@code xml} or a record; 
- * onFileCsv: {@code string[][]}, a record array, or a stream of {@code string[]} or records), 
- * 
+ * onFileCsv: a record array or a stream of records),
+ *
  * an optional second parameter must be {@code FileInfo}, 
  * an optional third must be {@code Caller}, 
  * and the return type must be {@code error?}.
@@ -136,7 +136,7 @@ public class ContentFunctionValidator {
      * 
      * Validates the declared type of the handler's first parameter (the content parameter)). 
      * Per handler: onFile → byte[], onFileText → string, onFileXml → xml,
-     * onFileCsv → string[][], onFileJson → json | map<json> | record | array of those.
+     * onFileCsv → record{}[], onFileJson → json | map<json> | record | array of those.
      * 
      * @param parameterNode the parameter node
      * @return true if the content parameter is valid, false otherwise
@@ -153,8 +153,7 @@ public class ContentFunctionValidator {
             case ON_FILE_TEXT_FUNC -> typeKind == STRING;
             case ON_FILE_JSON_FUNC -> isJsonObject(typeSymbol, typeKind) || isJsonObjectArray(typeSymbol, typeKind);
             case ON_FILE_XML_FUNC -> typeKind == XML || typeKind == RECORD || isRecordTypeReference(typeSymbol);
-            case ON_FILE_CSV_FUNC -> isStringArrayOfArray(typeSymbol, typeKind)
-                    || isRecordArray(typeSymbol, typeKind) || isCsvStream(typeSymbol, typeKind);
+            case ON_FILE_CSV_FUNC -> isRecordArray(typeSymbol, typeKind) || isCsvStream(typeSymbol, typeKind);
             default -> false;
         };
     }
@@ -180,14 +179,6 @@ public class ContentFunctionValidator {
         return typeKind == MAP && ((MapTypeSymbol) typeSymbol).typeParam().typeKind() == JSON;
     }
 
-    private boolean isStringArrayOfArray(TypeSymbol typeSymbol, TypeDescKind typeKind) {
-        if (typeKind != ARRAY) {
-            return false;
-        }
-        TypeSymbol member = ((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor();
-        return member.typeKind() == ARRAY && ((ArrayTypeSymbol) member).memberTypeDescriptor().typeKind() == STRING;
-    }
-
     private boolean isByteStream(TypeSymbol typeSymbol, TypeDescKind typeKind) {
         if (typeKind != STREAM) {
             return false;
@@ -209,11 +200,7 @@ public class ContentFunctionValidator {
             return false;
         }
         TypeSymbol itemType = ((StreamTypeSymbol) typeSymbol).typeParameter();
-        TypeDescKind itemKind = itemType.typeKind();
-        if (itemKind == RECORD || isRecordTypeReference(itemType)) {
-            return true;
-        }
-        return itemKind == ARRAY && ((ArrayTypeSymbol) itemType).memberTypeDescriptor().typeKind() == STRING;
+        return itemType.typeKind() == RECORD || isRecordTypeReference(itemType);
     }
 
     private boolean isRecordTypeReference(TypeSymbol typeSymbol) {
@@ -230,8 +217,7 @@ public class ContentFunctionValidator {
             case ON_FILE_TEXT_FUNC -> "string";
             case ON_FILE_JSON_FUNC -> "json, map<json>, a record, or an array of them";
             case ON_FILE_XML_FUNC -> "xml or a record";
-            case ON_FILE_CSV_FUNC -> "string[][], record{}[], stream<string[], error?>, "
-                    + "or stream<record{}, error?>";
+            case ON_FILE_CSV_FUNC -> "record{}[] or stream<record{}, error?>";
             default -> "unknown";
         };
     }

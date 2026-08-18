@@ -484,7 +484,7 @@ function testUploadContentVariantsAndDownloadStream() returns error? {
     check fileClient->uploadContent(binary, "/binary.bin");
     test:assertEquals(check readAll(fileClient, "/binary.bin"), binary);
 
-    check fileClient->uploadContent({"metric": 42}, "/data.json");
+    check fileClient->uploadContent(<map<json>>{"metric": 42}, "/data.json");
     byte[] jsonBytes = check readAll(fileClient, "/data.json");
     test:assertEquals(jsonBytes, "{\"metric\":42}".toBytes());
     // The downloaded bytes parse back to the value that was uploaded.
@@ -515,6 +515,12 @@ type UploadPlayer record {|
 type UploadRanked record {|
     string name;
     int? rank;
+|};
+
+type UploadBonus record {|
+    string name;
+    int score;
+    int bonus?;
 |};
 
 @test:Config {}
@@ -558,15 +564,30 @@ function testUploadContentRecordArrayAsCsv() returns error? {
     check fileClient->uploadContent(players, "/players.csv");
     UploadPlayer[] bound = check fileClient->getFile("/players.csv");
     test:assertEquals(bound, players);
-    // The header row comes from the first record's field names.
-    string[][] matrix = check fileClient->getFile("/players.csv");
-    test:assertEquals(matrix[0], ["name", "score"]);
+    // The header row derives from the records' field names.
+    string playersText = check string:fromBytes(check readAll(fileClient, "/players.csv"));
+    test:assertEquals(playersText, "name,score\nalice,12\n\"bob, jr\",7");
 
     // Nil members become empty cells.
     UploadRanked[] ranked = [{name: "a", rank: 1}, {name: "b", rank: ()}];
     check fileClient->uploadContent(ranked, "/ranked.csv");
     string csvText = check string:fromBytes(check readAll(fileClient, "/ranked.csv"));
     test:assertEquals(csvText, "name,rank\na,1\nb,");
+}
+
+@test:Config {}
+function testUploadContentRecordArrayHeaderUnion() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("csv-headers");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+
+    // The header row is the union of every record's field names in first-seen order,
+    // so an optional field absent from the first record still gets its column.
+    UploadBonus[] squad = [{name: "a", score: 1}, {name: "b", score: 2, bonus: 5}];
+    check fileClient->uploadContent(squad, "/squad.csv");
+    string csvText = check string:fromBytes(check readAll(fileClient, "/squad.csv"));
+    test:assertEquals(csvText, "name,score,bonus\na,1,\nb,2,5");
 }
 
 @test:Config {}
@@ -613,11 +634,12 @@ function testUploadContentFileFormatOverride() returns error? {
     check admin->createShare(share);
     Client fileClient = check newShareClient(share);
 
-    // The explicit format beats the destination extension.
+    // The explicit format beats the destination extension, on the write and the read.
     UploadPlayer[] players = [{name: "cara", score: 3}];
     check fileClient->uploadContent(players, "/data.json", {fileFormat: CSV});
-    string[][] rows = check fileClient->getFile("/data.json");
-    test:assertEquals(rows, [["name", "score"], ["cara", "3"]]);
+    test:assertEquals(check string:fromBytes(check readAll(fileClient, "/data.json")), "name,score\ncara,3");
+    UploadPlayer[] rows = check fileClient->getFile("/data.json", {fileFormat: CSV});
+    test:assertEquals(rows, players);
 
     UploadMetric metric = {quarter: "q4", revenue: 9};
     check fileClient->uploadContent(metric, "/notes.txt", {fileFormat: JSON});
@@ -625,17 +647,100 @@ function testUploadContentFileFormatOverride() returns error? {
 }
 
 @test:Config {}
-function testUploadContentTupleRows() returns error? {
+function testUploadContentStringRowsRefused() returns error? {
     AdminClient admin = check newAdmin();
-    string share = testShare("tuple-rows");
+    string share = testShare("string-rows");
     check admin->createShare(share);
     Client fileClient = check newShareClient(share);
 
-    // Tuple rows are string[][] subtypes and must serialize as CSV, not crash the dispatch.
-    [string, string][] pairs = [["k1", "v1"], ["k2", "v2"]];
-    check fileClient->uploadContent(pairs, "/pairs.csv");
-    string[][] rows = check fileClient->getFile("/pairs.csv");
-    test:assertEquals(rows, [["k1", "v1"], ["k2", "v2"]]);
+    // String matrices and tuple rows are json subtypes, so the calls still compile, but
+    // CSV serialization takes record arrays only.
+    string[][] rows = [["k1", "v1"], ["k2", "v2"]];
+    Error? matrixRefused = fileClient->uploadContent(rows, "/rows.csv");
+    test:assertTrue(matrixRefused is Error && matrixRefused !is ServiceError,
+            "string[][] content to a .csv destination must fail client-side");
+    if matrixRefused is Error {
+        test:assertTrue(matrixRefused.message().includes("cannot be serialized as CSV"),
+                "the error must state json content cannot be CSV");
+    }
+
+    [string, string][] pairs = [["k1", "v1"]];
+    Error? tupleRefused = fileClient->uploadContent(pairs, "/pairs.csv");
+    test:assertTrue(tupleRefused is Error && tupleRefused !is ServiceError,
+            "tuple rows to a .csv destination must fail client-side");
+}
+
+@test:Config {}
+function testUploadContentBareJson() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("bare-json");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+
+    // A json array serializes as a JSON document and reads back as json.
+    json values = [1, "two", true, ()];
+    check fileClient->uploadContent(values, "/values.json");
+    test:assertEquals(check readAll(fileClient, "/values.json"), values.toJsonString().toBytes());
+    json bound = check fileClient->getFile("/values.json");
+    test:assertEquals(bound, values);
+
+    // Scalars and nil are json values too.
+    json answer = 42;
+    check fileClient->uploadContent(answer, "/answer.json");
+    test:assertEquals(check string:fromBytes(check readAll(fileClient, "/answer.json")), "42");
+    json nil = ();
+    check fileClient->uploadContent(nil, "/null.json");
+    test:assertEquals(check string:fromBytes(check readAll(fileClient, "/null.json")), "null");
+
+    // A json string is text and passes through unquoted.
+    json text = "plain";
+    check fileClient->uploadContent(text, "/text.json");
+    test:assertEquals(check string:fromBytes(check readAll(fileClient, "/text.json")), "plain");
+
+    // The explicit override serializes json to a destination without a format extension.
+    check fileClient->uploadContent(values, "/values.dat", {fileFormat: JSON});
+    test:assertEquals(check readAll(fileClient, "/values.dat"), values.toJsonString().toBytes());
+}
+
+@test:Config {}
+function testUploadContentJsonFormatRefusals() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("json-refuse");
+    check admin->createShare(share);
+    Client fileClient = check newShareClient(share);
+
+    json values = [1, 2, 3];
+
+    // json is never CSV.
+    Error? asCsv = fileClient->uploadContent(values, "/v.csv");
+    test:assertTrue(asCsv is Error && asCsv !is ServiceError,
+            "json content to a .csv destination must fail client-side");
+    if asCsv is Error {
+        test:assertTrue(asCsv.message().includes("cannot be serialized as CSV"),
+                "the error must state json cannot be CSV");
+    }
+
+    // A json array or scalar has no XML form.
+    Error? asXml = fileClient->uploadContent(values, "/v.xml");
+    test:assertTrue(asXml is Error && asXml !is ServiceError,
+            "json content to an .xml destination must fail client-side");
+    if asXml is Error {
+        test:assertTrue(asXml.message().includes("cannot be serialized as XML"),
+                "the error must state json cannot be XML");
+    }
+
+    // No override and no format-bearing extension: the format is unresolvable.
+    Error? unresolved = fileClient->uploadContent(values, "/v.txt");
+    test:assertTrue(unresolved is Error && unresolved !is ServiceError,
+            "json content to an extension-less format must fail client-side");
+    if unresolved is Error {
+        test:assertTrue(unresolved.message().includes("fileFormat"), "the error must point at the fileFormat override");
+    }
+
+    json scalar = 42;
+    Error? scalarAsCsv = fileClient->uploadContent(scalar, "/n.csv");
+    test:assertTrue(scalarAsCsv is Error && scalarAsCsv !is ServiceError,
+            "a json scalar to a .csv destination must fail client-side");
 }
 
 @test:Config {}
@@ -2030,6 +2135,11 @@ type TypedReadNote record {|
     string body;
 |};
 
+type CsvTricky record {|
+    string name;
+    string note;
+|};
+
 @test:Config {}
 function testGetFileStringTarget() returns error? {
     AdminClient admin = check newAdmin();
@@ -2069,7 +2179,7 @@ function testGetFileJsonTargets() returns error? {
     check admin->createShare(share);
     Client fileClient = check newShareClient(share);
 
-    check fileClient->uploadContent({"quarter": "q1", "revenue": 1250000}, "/metrics.json");
+    check fileClient->uploadContent(<map<json>>{"quarter": "q1", "revenue": 1250000}, "/metrics.json");
     json asJson = check fileClient->getFile("/metrics.json");
     test:assertEquals(asJson, {quarter: "q1", revenue: 1250000});
     TypedReadMetric asRecord = check fileClient->getFile("/metrics.json");
@@ -2122,8 +2232,14 @@ function testGetFileCsvTargets() returns error? {
     Client fileClient = check newShareClient(share);
 
     check fileClient->uploadContent("name,qty\na,1\nb,2", "/items.csv");
-    string[][] asRows = check fileClient->getFile("/items.csv");
-    test:assertEquals(asRows, [["name", "qty"], ["a", "1"], ["b", "2"]]);
+    // A string matrix target compiles (it is a json subtype) but CSV binds record arrays only.
+    string[][]|Error asRows = fileClient->getFile("/items.csv");
+    test:assertTrue(asRows is Error && asRows !is ServiceError,
+            "a string[][] target on CSV content must fail client-side");
+    if asRows is Error {
+        test:assertTrue(asRows.message().includes("record array"),
+                "the refusal must point at record array targets");
+    }
     TypedReadRow[] asRecords = check fileClient->getFile("/items.csv");
     test:assertEquals(asRecords, [{name: "a", qty: 1}, {name: "b", qty: 2}]);
 
@@ -2228,18 +2344,23 @@ function testUploadContentCsvRoundTrip() returns error? {
     check admin->createShare(share);
     Client fileClient = check newShareClient(share);
 
-    string[][] rows = [
-        ["name", "note"],
-        ["alpha", "a,b"],
-        ["beta", "say \"hi\""],
-        ["gamma", "line1\nline2"],
-        ["delta", "back\\slash"]
+    CsvTricky[] rows = [
+        {name: "alpha", note: "a,b"},
+        {name: "beta", note: "say \"hi\""},
+        {name: "gamma", note: "line1\nline2"},
+        {name: "delta", note: "back\\slash"}
     ];
     check fileClient->uploadContent(rows, "/tricky.csv");
-    string[][] roundTripped = check fileClient->getFile("/tricky.csv");
+    CsvTricky[] roundTripped = check fileClient->getFile("/tricky.csv");
     test:assertEquals(roundTripped, rows);
 
-    string[][] empty = [];
+    // The exact bytes pin the writer dialect: quote on comma, quote, backslash, or line
+    // break, with backslash escaping (the dialect data.csv reads by default).
+    string csvText = check string:fromBytes(check readAll(fileClient, "/tricky.csv"));
+    test:assertEquals(csvText,
+            "name,note\nalpha,\"a,b\"\nbeta,\"say \\\"hi\\\"\"\ngamma,\"line1\nline2\"\ndelta,\"back\\\\slash\"");
+
+    CsvTricky[] empty = [];
     check fileClient->uploadContent(empty, "/empty.csv");
     test:assertEquals(check readAll(fileClient, "/empty.csv"), <byte[]>[]);
 }

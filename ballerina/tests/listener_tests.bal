@@ -506,7 +506,7 @@ function testCallerOperations() returns error? {
             check caller->uploadContent("alpha", "/work/a.txt");
 
             // The Caller mirrors the Client's record upload contract by delegation.
-            check caller->uploadContent({"kind": "caller"}, "/work/meta.json");
+            check caller->uploadContent(<map<json>>{"kind": "caller"}, "/work/meta.json");
             string metaJson = check caller->getFile("/work/meta.json");
             recorder.put("recordUpload", metaJson);
             check caller->deleteFile("/work/meta.json");
@@ -651,15 +651,15 @@ function testTypedCsvRouting() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-csv");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent("a,b\nc,d", "/incoming/rows.csv");
+    check shareClient->uploadContent("name,age\nalice,30\nbob,25", "/incoming/rows.csv");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
     Service svc = service object {
-        remote function onFileCsv(string[][] content, FileInfo info, Caller caller) returns error? {
+        remote function onFileCsv(CsvPerson[] content, FileInfo info, Caller caller) returns error? {
             string[] rows = [];
-            foreach string[] row in content {
-                rows.push(string:'join(",", ...row));
+            foreach CsvPerson person in content {
+                rows.push(string `${person.name}=${person.age}`);
             }
             recorder.put("csv", string:'join(";", ...rows));
             check caller->deleteFile(info.path);
@@ -671,7 +671,7 @@ function testTypedCsvRouting() returns error? {
     check lsn.gracefulStop();
     check lsn.detach(svc);
 
-    test:assertEquals(recorder.payload("csv"), "a,b;c,d");
+    test:assertEquals(recorder.payload("csv"), "alice=30;bob=25");
 }
 
 @test:Config {}
@@ -803,7 +803,7 @@ function testRoutingPatternPrecedenceCanonical() returns error? {
     // deliberately declared first so declaration order cannot mask a broken precedence.
     Service svc = service object {
         @FunctionConfig {fileNamePattern: "report\\..*"}
-        remote function onFileCsv(string[][] content) returns error? {
+        remote function onFileCsv(CsvPerson[] content) returns error? {
             recorder.hit("csv");
         }
 
@@ -1677,39 +1677,6 @@ function testStreamPartialDrainThenClose() returns error? {
 }
 
 @test:Config {}
-function testCsvStreamStringArrays() returns error? {
-    [Client, string] setup = check setupWatchedShare("lsn-csvstream-str");
-    Client shareClient = setup[0];
-    string share = setup[1];
-    check shareClient->uploadContent("a,b\nc,d", "/incoming/rows.csv");
-
-    final Recorder recorder = new;
-    Listener lsn = check newListener(share);
-    Service svc = isolated service object {
-        @FunctionConfig {afterProcess: DELETE}
-        remote function onFileCsv(stream<string[], error?> rows) returns error? {
-            string[] collected = [];
-            record {|string[] value;|}|error? entry = rows.next();
-            while entry is record {|string[] value;|} {
-                collected.push(string:'join(",", ...entry.value));
-                entry = rows.next();
-            }
-            if entry is error {
-                return entry;
-            }
-            recorder.put("csv", string:'join(";", ...collected));
-        }
-    };
-    check lsn.attach(svc, "/incoming");
-    check lsn.'start();
-    check await(() => recorder.count("csv") >= 1);
-    check lsn.gracefulStop();
-    check lsn.detach(svc);
-
-    test:assertEquals(recorder.payload("csv"), "a,b;c,d", "the string array stream must yield every row of the file");
-}
-
-@test:Config {}
 function testCsvStreamRecords() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-csvstream-rec");
     Client shareClient = setup[0];
@@ -2292,7 +2259,7 @@ function testCallerTypedRead() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-typedread");
     Client shareClient = setup[0];
     string share = setup[1];
-    check shareClient->uploadContent({"kind": "probe", "value": 7}, "/incoming/data.json");
+    check shareClient->uploadContent(<map<json>>{"kind": "probe", "value": 7}, "/incoming/data.json");
 
     final Recorder recorder = new;
     Listener lsn = check newListener(share);

@@ -227,9 +227,11 @@ The upload options carry content headers, metadata, an SDDL permission, SMB prop
 
 #### 4.5.1 In-Memory Content
 
-`uploadContent` takes its content as the `UploadContent` union. A `byte[]` is written as is, a `string` as raw text, an `xml` value in its textual form, and a `string[][]` as CSV rows, with fields containing a comma, quote, backslash, or line break quoted in the dialect the CSV reads bind back.
+`uploadContent` takes its content as the `UploadContent` union. A `byte[]` is written as is, a `string` as raw text, and an `xml` value in its textual form.
 
-A record (which includes any map of `anydata` members) or a record array is serialized per a resolved format: the explicit `UploadContentOptions.fileFormat` override wins, else the destination path's extension (`.json`, `.xml`, `.csv`) decides. A record becomes a JSON or an XML document; a record array becomes CSV rows headed by the first record's field names, with nil members as empty cells. A record directed to CSV, a record array directed to a non CSV format, and a format that resolves to neither an override nor a known extension are each refused with a client side `Error`.
+A record (which includes any map of `anydata` members), a record array, or any other `json` value is serialized per a resolved format: the explicit `UploadContentOptions.fileFormat` override wins, else the destination path's extension (`.json`, `.xml`, `.csv`) decides. A record becomes a JSON or an XML document; a record array becomes CSV rows headed by the union of the records' field names in first seen order, with nil or absent members as empty cells and fields containing a comma, quote, backslash, or line break quoted in the dialect the CSV reads bind back; any other `json` value (an array, a scalar, or nil) becomes a JSON document. A record directed to CSV, a record array directed to a non CSV format, a non mapping `json` value directed to a non JSON format, and a format that resolves to neither an override nor a known extension are each refused with a client side `Error`.
+
+There is no record stream upload, because the service pre-allocates a file at its full size before content is written; collect records into a `record {}[]` and upload them with `uploadContent`, or use `uploadFromStream` for a byte stream of known length. CSV serialization takes record arrays only; to write positional or headerless rows, serialize them with your own code and upload the text.
 
 ###### Example: Uploading Records
 
@@ -261,12 +263,11 @@ A source stream failure, a stream whose length does not match `contentLength`, a
 * `string`: the content decoded as UTF-8 text; content that is not valid UTF-8 fails with a client side `Error`.
 * `json`: the content parsed as a JSON document.
 * `xml`: the content parsed as an XML document.
-* `string[][]`: the content parsed as CSV rows; every row of the file is kept, including the first.
 * `record {}` or `record {}[]`: the content bound to the record shape per a resolved format. The explicit `GetFileOptions.fileFormat` override wins, else the path's extension (`.json`, `.xml`, `.csv`) decides. A single record binds from JSON or XML (never CSV), a record array binds from a JSON array or CSV rows (never XML), and a format that resolves to neither an override nor a known extension is refused with a client side `Error`, mirroring the `uploadContent` refusals.
 * `stream<byte[], error?>`: a lazy byte stream, so memory stays bounded for any file size.
 * `stream<record {}, error?>`: CSV rows bound lazily, one record per pull; a row that fails to bind surfaces as the error entry of that pull.
 
-The materialized targets download the full content before binding, and binding is strict: content that does not match the target type fails with a client side `Error`. The listener's `laxDataBinding` setting applies only to listener handlers, not to these reads.
+The materialized targets download the full content before binding, and binding is strict: content that does not match the target type fails with a client side `Error`. CSV content binds to the record array and record stream targets only; to consume positional or headerless rows, retrieve the content as `string` or `byte[]` and parse it with the `data.csv` module. The listener's `laxDataBinding` setting applies only to listener handlers, not to these reads.
 
 ###### Example: Retrieving Content by Target Type
 
@@ -448,7 +449,7 @@ A service declares at least one content handler, validated at compile time by th
 * **`onFileText`**: takes a `string`.
 * **`onFileJson`**: takes a `json`, a `map<json>`, a record, or an array of those forms. A `json` target receives any parsed root as is; an object root binds the map and record forms (a record binds by projection); an array root binds the array forms element by element.
 * **`onFileXml`**: takes an `xml` document or a record whose fields bind from the document's elements.
-* **`onFileCsv`**: takes a `string[][]`, a record array, a `stream<string[], error?>`, or a `stream<record {}, error?>`. The string forms yield every row of the file; the record forms map each row's fields through the file's first row, the header.
+* **`onFileCsv`**: takes a record array or a `stream<record {}, error?>`. Both forms map each row's fields through the file's first row, the header. To consume positional or headerless rows, take the content through `onFile` and parse it with the `data.csv` module.
 
 The `FileInfo` and `Caller` parameters are optional trailing parameters: a handler declares its content parameter first, then either, both, or neither of `FileInfo` and `Caller` (with `FileInfo` before `Caller` when both are present), and the listener passes only what the handler declares. `FileInfo` carries what the directory listing provides: the share name, the share relative path, the file name, the size in bytes, the entity tag, and the last modified time.
 

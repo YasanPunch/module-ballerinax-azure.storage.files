@@ -44,16 +44,16 @@ public isolated client class Caller {
     # + path - The source share-relative path
     # + options - Optional retrieval options (range, snapshot, record binding format)
     # + targetType - The form to retrieve the content in, inferred from the assignment target:
-    #                raw bytes (`byte[]`), UTF-8 text (`string`), a `json` or `xml` value, CSV rows
-    #                (`string[][]`), a record or record array, a lazy byte stream
-    #                (`stream<byte[], error?>`), or a lazy stream of CSV-bound records. Binding is
-    #                strict: content that does not match the target fails with a client-side
-    #                `Error`. A record or record array target binds per the format resolved from
-    #                `GetFileOptions.fileFormat` when set, else from the path's extension
-    #                (`.json`, `.xml`, `.csv`)
+    #                raw bytes (`byte[]`), UTF-8 text (`string`), a `json` or `xml` value, a
+    #                record or record array, a lazy byte stream (`stream<byte[], error?>`), or a
+    #                lazy stream of CSV-bound records. Binding is strict: content that does not
+    #                match the target fails with a client-side `Error`. A record or record array
+    #                target binds per the format resolved from `GetFileOptions.fileFormat` when
+    #                set, else from the path's extension (`.json`, `.xml`, `.csv`); CSV content
+    #                binds to record array and record stream targets only
     # + return - The content in the requested form, or an `Error`
     isolated remote function getFile(string path, GetFileOptions? options = (),
-            typedesc<RetrievableContent> targetType = <>) returns targetType|Error = @java:Method {
+            typedesc<RetrievableType> targetType = <>) returns targetType|Error = @java:Method {
         name: "callerGetFile", 'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
     } external;
 
@@ -71,12 +71,12 @@ public isolated client class Caller {
     # Uploads in-memory content to the watched share.
     #
     # + content - The content to upload: a `byte[]` is written as-is, a `string` as raw text,
-    #             an `xml` value as its textual form, and a `string[][]` as CSV rows. A record
-    #             (which includes any map of `anydata` members) or a record array is serialized
+    #             and an `xml` value as its textual form. A record (which includes any map of
+    #             `anydata` members), a record array, or any other `json` value is serialized
     #             per the format inferred from the destination path's extension or set with
     #             `UploadContentOptions.fileFormat`: a record becomes a JSON or an XML document
-    #             (never CSV), and a record array becomes CSV rows headed by the first record's
-    #             field names
+    #             (never CSV), a record array becomes CSV rows headed by the union of the
+    #             records' field names, and other `json` values become JSON documents
     # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, permission, SMB properties, format override)
     # + return - An `Error` if the upload failed, otherwise `()`

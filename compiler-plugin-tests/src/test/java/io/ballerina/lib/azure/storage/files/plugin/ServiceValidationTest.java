@@ -249,12 +249,6 @@ public class ServiceValidationTest {
     }
 
     @Test
-    public void testValidOnFileCsvStringArrayStreamService() {
-        DiagnosticResult result = loadPackage("valid_on_file_csv_stream_string_array");
-        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv string[] stream service");
-    }
-
-    @Test
     public void testValidOnFileCsvRecordStreamService() {
         DiagnosticResult result = loadPackage("valid_on_file_csv_stream_record");
         assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv record stream service");
@@ -283,6 +277,20 @@ public class ServiceValidationTest {
     @Test
     public void testInvalidOnFileCsvScalarArray() {
         DiagnosticResult result = loadPackage("invalid_on_file_csv_scalar_array");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
+    }
+
+    @Test
+    public void testInvalidOnFileCsvStringMatrix() {
+        DiagnosticResult result = loadPackage("invalid_on_file_csv_string_matrix");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
+    }
+
+    @Test
+    public void testInvalidOnFileCsvStringArrayStream() {
+        DiagnosticResult result = loadPackage("invalid_on_file_csv_stream_string_array");
         assertEquals(result.errorCount(), 1);
         assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
     }

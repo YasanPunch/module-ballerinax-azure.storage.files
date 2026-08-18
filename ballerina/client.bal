@@ -227,16 +227,17 @@ public isolated client class Client {
     # Uploads in-memory content to the bound share.
     #
     # ```ballerina
-    # check fileClient->uploadContent({"revenue": 1250000, "growth": 0.12}, "/2026/q1/metrics.json");
+    # check fileClient->uploadContent(<map<json>>{"revenue": 1250000, "growth": 0.12}, "/2026/q1/metrics.json");
     # ```
     #
     # + content - The content to upload: a `byte[]` is written as-is, a `string` as raw text,
-    #             an `xml` value as its textual form, and a `string[][]` as CSV rows. A record
-    #             (which includes any map of `anydata` members) or a record array is serialized
+    #             and an `xml` value as its textual form. A record (which includes any map of
+    #             `anydata` members), a record array, or any other `json` value is serialized
     #             per the format inferred from the destination path's extension or set with
     #             `UploadContentOptions.fileFormat`: a record becomes a JSON or an XML document
-    #             (never CSV), and a record array becomes CSV rows headed by the first record's
-    #             field names
+    #             (never CSV), a record array becomes CSV rows headed by the union of the
+    #             records' field names, and other `json` values become JSON documents. A stream
+    #             upload is `uploadFromStream`
     # + destinationPath - The share-relative path the content is written to, including the file name
     # + options - Optional upload options (headers, metadata, permission, SMB properties, format override)
     # + return - An `Error` if the upload failed, otherwise `()`
@@ -247,18 +248,23 @@ public isolated client class Client {
             payload = check serializeRecord(content, destinationPath, options?.fileFormat);
         } else if content is record {}[] {
             payload = check serializeRecordArray(content, destinationPath, options?.fileFormat);
+        } else if content is byte[]|string|xml {
+            payload = content;
         } else {
-            // The compiler does not subtract record {}[] from the union here, but both
-            // record shapes are handled above, so the residual value is cast-safe.
-            payload = <byte[]|string|xml|string[][]>content;
+            // The compiler does not subtract the record shapes from the union here, but
+            // both are handled above, so the residual json value is cast-safe.
+            payload = check serializeJson(<json>content, destinationPath, options?.fileFormat);
         }
         return externUploadContent(self, payload, destinationPath, options);
     }
 
     # Uploads a byte stream to the bound share. The total content length must be known
-    # up front and must not be negative. A failed upload closes the source stream and
-    # leaves the pre-allocated file, holding whatever ranges were written before the
-    # failure, at the destination; inspect or delete it before retrying.
+    # up front and must not be negative, because the service pre-allocates the file at
+    # its full size; for the same reason there is no record-stream upload, so collect
+    # records into a `record {}[]` and use `uploadContent`. A failed upload closes the
+    # source stream and leaves the pre-allocated file, holding whatever ranges were
+    # written before the failure, at the destination; inspect or delete it before
+    # retrying.
     #
     # + content - The byte stream to upload
     # + contentLength - The total length of the content, in bytes
@@ -364,16 +370,16 @@ public isolated client class Client {
     # + path - The source share-relative path
     # + options - Optional retrieval options (range, snapshot, record binding format)
     # + targetType - The form to retrieve the content in, inferred from the assignment target:
-    #                raw bytes (`byte[]`), UTF-8 text (`string`), a `json` or `xml` value, CSV rows
-    #                (`string[][]`), a record or record array, a lazy byte stream
-    #                (`stream<byte[], error?>`), or a lazy stream of CSV-bound records. Binding is
-    #                strict: content that does not match the target fails with a client-side
-    #                `Error`. A record or record array target binds per the format resolved from
-    #                `GetFileOptions.fileFormat` when set, else from the path's extension
-    #                (`.json`, `.xml`, `.csv`)
+    #                raw bytes (`byte[]`), UTF-8 text (`string`), a `json` or `xml` value, a
+    #                record or record array, a lazy byte stream (`stream<byte[], error?>`), or a
+    #                lazy stream of CSV-bound records. Binding is strict: content that does not
+    #                match the target fails with a client-side `Error`. A record or record array
+    #                target binds per the format resolved from `GetFileOptions.fileFormat` when
+    #                set, else from the path's extension (`.json`, `.xml`, `.csv`); CSV content
+    #                binds to record array and record stream targets only
     # + return - The content in the requested form, or an `Error`
     isolated remote function getFile(string path, GetFileOptions? options = (),
-            typedesc<RetrievableContent> targetType = <>) returns targetType|Error = @java:Method {
+            typedesc<RetrievableType> targetType = <>) returns targetType|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
     } external;
 

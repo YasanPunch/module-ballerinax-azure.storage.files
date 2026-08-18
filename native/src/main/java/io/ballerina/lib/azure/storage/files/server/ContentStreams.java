@@ -76,14 +76,14 @@ public final class ContentStreams {
     }
 
     /**
-     * Creates the {@code stream<string[]|record{}, error?>} value handed to a CSV stream content
+     * Creates the {@code stream<record{}, error?>} value handed to a CSV stream content
      * handler: a byte stream over the file wrapped by the module's {@code ContentCsvStream}. The
      * wrapping object is constructed through the runtime on a real strand, because its
      * initialization runs the data.csv stream construction.
      *
      * @param runtime        the Ballerina runtime
      * @param content        the file's service input stream
-     * @param elementType    the stream's constrained type (a {@code string[]} or a record)
+     * @param elementType    the stream's constrained type (a record)
      * @param laxDataBinding whether relaxed data projection applies
      * @return the Ballerina stream value
      */

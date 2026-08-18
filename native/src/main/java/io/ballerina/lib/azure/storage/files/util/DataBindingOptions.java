@@ -34,7 +34,6 @@ public final class DataBindingOptions {
     private static final BString ALLOW_DATA_PROJECTION = StringUtils.fromString("allowDataProjection");
     private static final BString NIL_AS_OPTIONAL_FIELD = StringUtils.fromString("nilAsOptionalField");
     private static final BString ABSENT_AS_NILABLE_TYPE = StringUtils.fromString("absentAsNilableType");
-    private static final BString HEADER = StringUtils.fromString("header");
     private static final String JSON_OPTIONS_RECORD = "Options";
     private static final String XML_SOURCE_OPTIONS_RECORD = "SourceOptions";
     private static final String CSV_PARSE_OPTIONS_RECORD = "ParseOptions";
@@ -59,17 +58,13 @@ public final class DataBindingOptions {
     }
 
     /**
-     * Builds the data.csv parse options. A record-array target keeps the module's default of
-     * mapping record fields through the file's header row; {@code keepAllRows} (the string-matrix
-     * target) clears the header so every row of the file is returned.
+     * Builds the data.csv parse options. Record targets keep the module's default of mapping
+     * record fields through the file's header row.
      */
-    public static BMap<BString, Object> csvParseOptions(boolean laxDataBinding, boolean keepAllRows) {
+    public static BMap<BString, Object> csvParseOptions(boolean laxDataBinding) {
         BMap<BString, Object> options = ValueCreator.createRecordValue(
                 io.ballerina.lib.data.csvdata.utils.ModuleUtils.getModule(), CSV_PARSE_OPTIONS_RECORD);
         applyProjection(options, laxDataBinding);
-        if (keepAllRows) {
-            options.put(HEADER, null);
-        }
         return options;
     }
 

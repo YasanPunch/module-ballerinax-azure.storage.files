@@ -211,9 +211,9 @@ public final class TransferOps {
 
     private static byte[] contentBytes(Object content) {
         if (content instanceof BArray array) {
-            // A byte-element array is raw content; every other list value (string[][] rows,
-            // including tuple-typed rows, which are lists but not ArrayType) is CSV rows.
-            // An empty literal serializes to a zero-byte file on either branch.
+            // A byte-element array is raw content; every other list value is the string[][]
+            // CSV rows the Ballerina-side record serialization produces. An empty array
+            // serializes to a zero-byte file on either branch.
             if (TypeUtils.getReferredType(array.getType()) instanceof ArrayType arrayType
                     && TypeUtils.getReferredType(arrayType.getElementType()).getTag() == TypeTags.BYTE_TAG) {
                 return array.getBytes();

@@ -167,14 +167,14 @@ public type UploadOptions record {|
     PosixProperties posixProperties?;
 |};
 
-# The content forms accepted by `uploadContent`: raw bytes, text, an XML document,
-# CSV rows, and records or record arrays serialized per the resolved `FileFormat`.
-public type UploadContent byte[]|string|xml|string[][]|record {}|record {}[];
+# The content forms accepted by `uploadContent`: raw bytes, text, a JSON or XML value,
+# and records or record arrays serialized per the resolved `FileFormat`.
+public type UploadContent byte[]|string|json|xml|record {}|record {}[];
 
-# The target forms `getFile` retrieves: raw bytes, text, a JSON or XML value, CSV rows,
-# records or record arrays bound per the resolved `FileFormat`, a lazy byte stream, or
-# a lazy stream of CSV-bound records.
-public type RetrievableContent byte[]|string|json|xml|record {}|record {}[]|string[][]|
+# The target forms `getFile` retrieves: raw bytes, text, a JSON or XML value, records
+# or record arrays bound per the resolved `FileFormat`, a lazy byte stream, or a lazy
+# stream of CSV-bound records.
+public type RetrievableType byte[]|string|json|xml|record {}|record {}[]|
     stream<byte[], error?>|stream<record {}, error?>;
 
 # Options for `getFile`, extending the download options with the record binding format.
@@ -185,19 +185,20 @@ public type GetFileOptions record {|
     FileFormat fileFormat?;
 |};
 
-# The serialization format of record content passed to `uploadContent`.
+# The serialization and binding format of record and json content.
 public enum FileFormat {
     JSON,
     XML,
     CSV
 }
 
-# Options for `uploadContent`, extending the upload options with the record
+# Options for `uploadContent`, extending the upload options with the content
 # serialization format.
 public type UploadContentOptions record {|
     *UploadOptions;
-    # The serialization format for `record {}` and `record {}[]` content; when absent,
-    # the format is inferred from the destination path's extension (`.json`, `.xml`, `.csv`)
+    # The serialization format for `json`, `record {}`, and `record {}[]` content; when
+    # absent, the format is inferred from the destination path's extension (`.json`,
+    # `.xml`, `.csv`)
     FileFormat fileFormat?;
 |};
 

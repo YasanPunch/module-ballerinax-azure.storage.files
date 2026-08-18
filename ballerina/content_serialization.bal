@@ -57,9 +57,10 @@ isolated function serializeRecord(record {} content, string destinationPath,
             + "destination path, or an explicit fileFormat");
 }
 
-// Serializes a record array as CSV rows: the first record's field names form the header
-// row, values are stringified in header order, and a nil member becomes an empty cell.
-// A record array is only CSV; any other resolved format is refused.
+// Serializes a record array as CSV rows: the header row is the union of every record's
+// field names in first-seen order, values are stringified in header order, and a nil or
+// absent member becomes an empty cell. A record array is only CSV; any other resolved
+// format is refused.
 isolated function serializeRecordArray(record {}[] content, string destinationPath,
         FileFormat? override) returns string[][]|Error {
     FileFormat? format = resolveUploadFormat(destinationPath, override);
@@ -69,7 +70,14 @@ isolated function serializeRecordArray(record {}[] content, string destinationPa
     if content.length() == 0 {
         return [];
     }
-    string[] header = content[0].keys();
+    string[] header = [];
+    foreach record {} entry in content {
+        foreach string fieldName in entry.keys() {
+            if header.indexOf(fieldName) is () {
+                header.push(fieldName);
+            }
+        }
+    }
     string[][] rows = [header];
     foreach record {} entry in content {
         string[] row = [];
@@ -80,4 +88,23 @@ isolated function serializeRecordArray(record {}[] content, string destinationPa
         rows.push(row);
     }
     return rows;
+}
+
+// Serializes a non-mapping json value (an array, a scalar, or nil) as a JSON document.
+// Mappings never reach this function (they serialize as records), and json is only
+// JSON: an XML or CSV format, or an unresolvable one, is refused.
+isolated function serializeJson(json content, string destinationPath,
+        FileFormat? override) returns string|Error {
+    FileFormat? format = resolveUploadFormat(destinationPath, override);
+    if format is JSON {
+        return content.toJsonString();
+    }
+    if format is XML {
+        return error Error("json content cannot be serialized as XML");
+    }
+    if format is CSV {
+        return error Error("json content cannot be serialized as CSV");
+    }
+    return error Error("json content requires a '.json' extension in the destination path, "
+            + "or an explicit fileFormat");
 }

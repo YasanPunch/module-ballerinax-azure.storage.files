@@ -115,24 +115,30 @@ public final class TypedReadOps {
         }
     }
 
-    // byte[] is the raw content; string[][] (incl. tuple rows) is CSV rows; a record array
-    // binds per the resolved format (a JSON array or CSV rows; XML has no top-level array).
+    // byte[] is the raw content; a record or map array binds per the resolved format (a
+    // JSON array or CSV rows; XML has no top-level array). Any other array is a json-shaped
+    // target: it binds through the JSON parser, except that CSV content never binds to it.
     private static Object bindArrayTarget(Environment env, BArray byteArray, ArrayType arrayType,
                                           BString path, Object options) {
         Type element = TypeUtils.getReferredType(arrayType.getElementType());
         if (element.getTag() == TypeTags.BYTE_TAG) {
             return byteArray;
         }
-        if (element.getTag() == TypeTags.ARRAY_TAG || element.getTag() == TypeTags.TUPLE_TAG) {
-            return parseCsv(env, byteArray, arrayType, true);
-        }
         String format = resolveFormat(path, options);
+        if (element.getTag() != TypeTags.RECORD_TYPE_TAG && element.getTag() != TypeTags.MAP_TAG) {
+            if (FORMAT_CSV.equals(format)) {
+                return FilesErrorCreator.clientError(
+                        "CSV content binds to a record array target; read the content as string "
+                                + "or byte[] and bind rows with the data.csv module", null);
+            }
+            return bindJson(byteArray, arrayType);
+        }
         if (format == null) {
             return unresolvableFormat("record array");
         }
         return switch (format) {
             case FORMAT_JSON -> bindJson(byteArray, arrayType);
-            case FORMAT_CSV -> parseCsv(env, byteArray, arrayType, false);
+            case FORMAT_CSV -> parseCsv(env, byteArray, arrayType);
             default -> FilesErrorCreator.clientError(
                     "a record array target does not bind from XML; use a '.json' or '.csv' source, "
                             + "or an explicit fileFormat", null);
@@ -175,7 +181,7 @@ public final class TypedReadOps {
         BStream byteFeed = ValueCreator.createStreamValue(TypeCreator.createStreamType(
                 TypeCreator.createArrayType(PredefinedTypes.TYPE_BYTE), completionType()), generator);
         Object rows = io.ballerina.lib.data.csvdata.csv.Native.parseToStream(env, byteFeed,
-                DataBindingOptions.csvParseOptions(false, false),
+                DataBindingOptions.csvParseOptions(false),
                 ValueCreator.createTypedescValue(constraint));
         if (rows instanceof BError bError) {
             return csvFailure(bError);
@@ -214,10 +220,10 @@ public final class TypedReadOps {
         }
     }
 
-    private static Object parseCsv(Environment env, BArray byteArray, Type target, boolean stringTarget) {
+    private static Object parseCsv(Environment env, BArray byteArray, Type target) {
         try {
             Object result = io.ballerina.lib.data.csvdata.csv.Native.parseBytes(env, byteArray,
-                    DataBindingOptions.csvParseOptions(false, stringTarget),
+                    DataBindingOptions.csvParseOptions(false),
                     ValueCreator.createTypedescValue(target));
             return result instanceof BError bError ? csvFailure(bError) : result;
         } catch (BError e) {
