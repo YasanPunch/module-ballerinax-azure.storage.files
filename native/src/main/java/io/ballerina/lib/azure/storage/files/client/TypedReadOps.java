@@ -19,145 +19,258 @@
 package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.storage.file.share.ShareFileClient;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
+import io.ballerina.lib.azure.storage.files.util.ContentBinder;
 import io.ballerina.lib.azure.storage.files.util.DataBindingOptions;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
+import io.ballerina.lib.azure.storage.files.util.ModuleUtils;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
-import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
+import io.ballerina.runtime.api.creators.TypeCreator;
 import io.ballerina.runtime.api.creators.ValueCreator;
 import io.ballerina.runtime.api.types.ArrayType;
-import io.ballerina.runtime.api.types.RecordType;
+import io.ballerina.runtime.api.types.PredefinedTypes;
+import io.ballerina.runtime.api.types.StreamType;
 import io.ballerina.runtime.api.types.Type;
+import io.ballerina.runtime.api.types.TypeTags;
+import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.utils.TypeUtils;
-import io.ballerina.runtime.api.utils.XmlUtils;
 import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BError;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
+import io.ballerina.runtime.api.values.BStream;
 import io.ballerina.runtime.api.values.BString;
 import io.ballerina.runtime.api.values.BTypedesc;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 
 /**
- * Typed content reads: download a file's full content and bind it to the caller-directed target
- * type through the data.jsondata, data.xmldata, and data.csv modules. Binding is strict (the
- * listener's {@code laxDataBinding} does not apply to client reads) and always runs on the
- * extern's own strand, after the network call has returned from {@link SdkInvoker#invoke}.
+ * The {@code getFile} content retrieval: downloads a file and hands it back in the form the
+ * caller-directed target type selects (raw bytes, text, a JSON or XML value, a record shape
+ * bound per the resolved format, a lazy byte stream, or a lazy stream of CSV-bound records).
+ * Binding is strict and runs through the same data.jsondata/xmldata/csv modules the
+ * listener uses.
  */
 public final class TypedReadOps {
 
     private static final String XML_TYPE_NAME = "xml";
-    private static final BString CALLER_CLIENT_FIELD = io.ballerina.runtime.api.utils.StringUtils
-            .fromString("client");
+    // The generator class backing the lazy byte stream, declared in natives.bal.
+    private static final String CONTENT_STREAM_GENERATOR_CLASS = "ContentStreamGenerator";
+
+    private static final String FORMAT_JSON = "JSON";
+    private static final String FORMAT_XML = "XML";
+    private static final String FORMAT_CSV = "CSV";
+
+    private static final String JSON_BIND_CONTEXT = "the file content does not bind to the target JSON type";
+    private static final String XML_BIND_CONTEXT = "the file content does not bind to the target XML type";
+    private static final String XML_PARSE_CONTEXT = "the file content is not valid XML";
+    private static final String CSV_BIND_CONTEXT = "the file content does not bind to the target CSV type";
 
     private TypedReadOps() {
     }
 
-    /** Downloads a file's full content (or a range of it) into a Ballerina byte array. */
-    public static Object readFileBytes(Environment env, BObject clientObj, BString path, Object options) {
-        return SdkInvoker.invoke(env, () -> {
-            Object range = null;
-            String snapshotId = null;
-            if (options != null) {
-                @SuppressWarnings("unchecked")
-                BMap<BString, Object> record = (BMap<BString, Object>) options;
-                range = record.get(OptionsReader.RANGE);
-                snapshotId = ValueUtils.optString(record, OptionsReader.SNAPSHOT_ID);
+    /** Retrieves the file's content in the form the target typedesc selects, for Client and Caller. */
+    public static Object getFile(Environment env, BObject self, BString path, Object options,
+                                 BTypedesc targetType) {
+        // A Caller carries no native data; unwrap it to the Client it holds.
+        BObject clientObj = self.getNativeData(BallerinaAzureClient.NATIVE_SHARE_CLIENT) == null
+                ? (BObject) self.getObjectValue(BallerinaAzureClient.CALLER_CLIENT_FIELD) : self;
+        Type described = TypeUtils.getReferredType(targetType.getDescribingType());
+        if (described.getTag() == TypeTags.STREAM_TAG) {
+            return streamTarget(env, clientObj, path, options, (StreamType) described);
+        }
+        Object bytes = readFileBytes(env, clientObj, path, options);
+        if (bytes instanceof BError) {
+            return bytes;
+        }
+        return bindMaterialized(env, (BArray) bytes, described, path, options);
+    }
+
+    // Binds materialized content to a non-stream target.
+    private static Object bindMaterialized(Environment env, BArray byteArray, Type described,
+                                           BString path, Object options) {
+        switch (described.getTag()) {
+            case TypeTags.STRING_TAG:
+                return decodeText(byteArray);
+            case TypeTags.ARRAY_TAG:
+                return bindArrayTarget(env, byteArray, (ArrayType) described, path, options);
+            case TypeTags.RECORD_TYPE_TAG:
+            case TypeTags.MAP_TAG:
+                return bindRecordTarget(byteArray, described, path, options);
+            default:
+                if (XML_TYPE_NAME.equals(described.getQualifiedName())) {
+                    return bindXml(byteArray, described);
+                }
+                // json (and json-shaped unions) bind through the JSON parser.
+                return bindJson(byteArray, described);
+        }
+    }
+
+    // byte[] is the raw content; a record or map array binds per the resolved format (a
+    // JSON array or CSV rows; XML has no top-level array). Any other array is a json-shaped
+    // target: it binds through the JSON parser, except that CSV content never binds to it.
+    private static Object bindArrayTarget(Environment env, BArray byteArray, ArrayType arrayType,
+                                          BString path, Object options) {
+        Type element = TypeUtils.getReferredType(arrayType.getElementType());
+        if (element.getTag() == TypeTags.BYTE_TAG) {
+            return byteArray;
+        }
+        String format = resolveFormat(path, options);
+        if (element.getTag() != TypeTags.RECORD_TYPE_TAG && element.getTag() != TypeTags.MAP_TAG) {
+            if (FORMAT_CSV.equals(format)) {
+                return FilesErrorCreator.clientError(
+                        "CSV content binds to a record array target; read the content as string "
+                                + "or byte[] and bind rows with the data.csv module", null);
             }
-            ShareFileClient client = FileOps.fileClient(clientObj, path, snapshotId);
+            return bindJson(byteArray, arrayType);
+        }
+        if (format == null) {
+            return unresolvableFormat("record array");
+        }
+        return switch (format) {
+            case FORMAT_JSON -> bindJson(byteArray, arrayType);
+            case FORMAT_CSV -> parseCsv(env, byteArray, arrayType);
+            default -> FilesErrorCreator.clientError(
+                    "a record array target does not bind from XML; use a '.json' or '.csv' source, "
+                            + "or an explicit fileFormat", null);
+        };
+    }
+
+    // A single record (or map) binds per the resolved format; a record is never CSV.
+    private static Object bindRecordTarget(BArray byteArray, Type described, BString path, Object options) {
+        String format = resolveFormat(path, options);
+        if (format == null) {
+            return unresolvableFormat("record");
+        }
+        return switch (format) {
+            case FORMAT_JSON -> bindJson(byteArray, described);
+            case FORMAT_XML -> bindXml(byteArray, described);
+            default -> FilesErrorCreator.clientError(
+                    "a record target does not bind from CSV; use a record array target for CSV rows", null);
+        };
+    }
+
+    // A stream target reads lazily: byte streams pull chunks from the open content stream,
+    // record streams bind CSV rows through data.csv's own stream parser.
+    private static Object streamTarget(Environment env, BObject clientObj, BString path, Object options,
+                                       StreamType streamType) {
+        BObject generator = ValueCreator.createObjectValue(ModuleUtils.getModule(), CONTENT_STREAM_GENERATOR_CLASS);
+        Object opened = TransferOps.openContentStream(env, clientObj, generator, path, options);
+        if (opened instanceof BError) {
+            return opened;
+        }
+        Type constraint = TypeUtils.getReferredType(streamType.getConstrainedType());
+        boolean byteStream = constraint.getTag() == TypeTags.ARRAY_TAG
+                && TypeUtils.getReferredType(((ArrayType) constraint).getElementType()).getTag()
+                        == TypeTags.BYTE_TAG;
+        if (byteStream) {
+            // The stream is typed with the DECLARED constraint and completion, so a target
+            // narrowed to the module's Error completion casts cleanly.
+            return ValueCreator.createStreamValue(
+                    TypeCreator.createStreamType(constraint, streamType.getCompletionType()), generator);
+        }
+        BStream byteFeed = ValueCreator.createStreamValue(TypeCreator.createStreamType(
+                TypeCreator.createArrayType(PredefinedTypes.TYPE_BYTE), completionType()), generator);
+        Object rows = io.ballerina.lib.data.csvdata.csv.Native.parseToStream(env, byteFeed,
+                DataBindingOptions.csvParseOptions(false),
+                ValueCreator.createTypedescValue(constraint));
+        if (rows instanceof BError bError) {
+            return csvFailure(bError);
+        }
+        return rows;
+    }
+
+    // Downloads the file's full content (or a range of it) into a Ballerina byte array.
+    private static Object readFileBytes(Environment env, BObject clientObj, BString path, Object options) {
+        return BallerinaAzureClient.invoke(env, () -> {
+            OptionsReader.DownloadArgs args = OptionsReader.downloadArgs(options);
+            ShareFileClient client = FileOps.fileClient(clientObj, path, args.snapshotId());
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            if (range == null) {
+            if (args.range() == null) {
                 client.download(out);
             } else {
-                client.downloadWithResponse(out, OptionsReader.range(range), null, null, null);
+                client.downloadWithResponse(out, OptionsReader.range(args.range()), null, null, null);
             }
             return ValueCreator.createArrayValue(out.toByteArray());
         });
     }
 
-    public static Object getFileJson(Environment env, BObject clientObj, BString path, Object options,
-                                     BTypedesc targetType) {
-        Object bytes = readFileBytes(env, clientObj, path, options);
-        if (bytes instanceof BError) {
-            return bytes;
-        }
+    private static Object bindJson(BArray content, Type target) {
         try {
-            Object result = io.ballerina.lib.data.jsondata.json.Native.parseBytes((BArray) bytes,
-                    DataBindingOptions.jsonParseOptions(false), targetType);
-            return result instanceof BError bError ? bindingFailure("JSON", bError) : result;
+            return ContentBinder.bindJson(content, target, false, JSON_BIND_CONTEXT);
         } catch (BError e) {
-            return bindingFailure("JSON", e);
+            return e;
         }
     }
 
-    public static Object getFileXml(Environment env, BObject clientObj, BString path, Object options,
-                                    BTypedesc targetType) {
-        Object bytes = readFileBytes(env, clientObj, path, options);
-        if (bytes instanceof BError) {
-            return bytes;
+    private static Object bindXml(BArray content, Type target) {
+        try {
+            return ContentBinder.bindXml(content, target, false, XML_BIND_CONTEXT, XML_PARSE_CONTEXT);
+        } catch (BError e) {
+            return e;
         }
-        BArray byteArray = (BArray) bytes;
-        Type described = TypeUtils.getReferredType(targetType.getDescribingType());
-        if (XML_TYPE_NAME.equals(described.getQualifiedName())) {
-            try {
-                return XmlUtils.parse(new String(byteArray.getBytes(), StandardCharsets.UTF_8));
-            } catch (BError e) {
-                return FilesErrorCreator.processingError(
-                        "the file content is not valid XML: " + e.getErrorMessage(), e);
+    }
+
+    private static Object parseCsv(Environment env, BArray byteArray, Type target) {
+        try {
+            Object result = io.ballerina.lib.data.csvdata.csv.Native.parseBytes(env, byteArray,
+                    DataBindingOptions.csvParseOptions(false),
+                    ValueCreator.createTypedescValue(target));
+            return result instanceof BError bError ? csvFailure(bError) : result;
+        } catch (BError e) {
+            return csvFailure(e);
+        }
+    }
+
+    private static Object decodeText(BArray byteArray) {
+        try {
+            String text = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(byteArray.getBytes())).toString();
+            return StringUtils.fromString(text);
+        } catch (CharacterCodingException e) {
+            return FilesErrorCreator.clientError(
+                    "the file content is not valid UTF-8 text: " + BallerinaAzureClient.describe(e), e);
+        }
+    }
+
+    // Resolves the binding format of a record-shaped target: the explicit fileFormat
+    // override wins, else the path's extension decides; null means unresolvable.
+    private static String resolveFormat(BString path, Object options) {
+        if (options != null) {
+            @SuppressWarnings("unchecked")
+            BMap<BString, Object> record = (BMap<BString, Object>) options;
+            BString override = record.getStringValue(OptionsReader.FILE_FORMAT);
+            if (override != null) {
+                return override.getValue();
             }
         }
-        try {
-            // The xmldata parser does not unwrap type references, so hand it the referred type.
-            Object result = io.ballerina.lib.data.xmldata.xml.Native.parseBytes(byteArray,
-                    DataBindingOptions.xmlSourceOptions(false), ValueCreator.createTypedescValue(described));
-            return result instanceof BError bError ? bindingFailure("XML", bError) : result;
-        } catch (BError e) {
-            return bindingFailure("XML", e);
+        String lower = path.getValue().toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".json")) {
+            return FORMAT_JSON;
         }
-    }
-
-    public static Object getFileCsv(Environment env, BObject clientObj, BString path, Object options,
-                                    BTypedesc targetType) {
-        Object bytes = readFileBytes(env, clientObj, path, options);
-        if (bytes instanceof BError) {
-            return bytes;
+        if (lower.endsWith(".xml")) {
+            return FORMAT_XML;
         }
-        Type described = TypeUtils.getReferredType(targetType.getDescribingType());
-        boolean recordTarget = described instanceof ArrayType arrayType
-                && TypeUtils.getReferredType(arrayType.getElementType()) instanceof RecordType;
-        try {
-            Object result = io.ballerina.lib.data.csvdata.csv.Native.parseBytes(env, (BArray) bytes,
-                    DataBindingOptions.csvParseOptions(false, !recordTarget), targetType);
-            return result instanceof BError bError ? bindingFailure("CSV", bError) : result;
-        } catch (BError e) {
-            return bindingFailure("CSV", e);
+        if (lower.endsWith(".csv")) {
+            return FORMAT_CSV;
         }
+        return null;
     }
 
-    public static Object callerGetFileJson(Environment env, BObject caller, BString path, Object options,
-                                           BTypedesc targetType) {
-        return getFileJson(env, callerClient(caller), path, options, targetType);
+    private static Type completionType() {
+        return TypeCreator.createUnionType(PredefinedTypes.TYPE_ERROR, PredefinedTypes.TYPE_NULL);
     }
 
-    public static Object callerGetFileXml(Environment env, BObject caller, BString path, Object options,
-                                          BTypedesc targetType) {
-        return getFileXml(env, callerClient(caller), path, options, targetType);
+    private static BError unresolvableFormat(String targetKind) {
+        return FilesErrorCreator.clientError("a " + targetKind + " target requires a '.json', '.xml', or "
+                + "'.csv' extension in the path, or an explicit fileFormat", null);
     }
 
-    public static Object callerGetFileCsv(Environment env, BObject caller, BString path, Object options,
-                                          BTypedesc targetType) {
-        return getFileCsv(env, callerClient(caller), path, options, targetType);
-    }
-
-    private static BObject callerClient(BObject caller) {
-        return (BObject) caller.getObjectValue(CALLER_CLIENT_FIELD);
-    }
-
-    private static BError bindingFailure(String kind, BError cause) {
-        return FilesErrorCreator.processingError("the file content does not bind to the target "
-                + kind + " type: " + cause.getErrorMessage(), cause);
+    private static BError csvFailure(BError cause) {
+        return FilesErrorCreator.clientError(CSV_BIND_CONTEXT + ": " + cause.getErrorMessage(), cause);
     }
 }

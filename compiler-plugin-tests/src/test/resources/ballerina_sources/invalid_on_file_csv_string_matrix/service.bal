@@ -19,6 +19,6 @@ import ballerinax/azure.storage.files as files;
 listener files:Listener lsn = new ("share", auth = {accountName: "acc", accountKey: "a2V5"});
 
 service /incoming on lsn {
-    remote function onFileJson(json[] content) returns error? {
+    remote function onFileCsv(string[][] rows) returns error? {
     }
 }

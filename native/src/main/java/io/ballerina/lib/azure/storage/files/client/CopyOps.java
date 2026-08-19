@@ -20,14 +20,13 @@ package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.core.util.polling.SyncPoller;
 import com.azure.storage.file.share.ShareFileClient;
-import com.azure.storage.file.share.models.PermissionCopyModeType;
 import com.azure.storage.file.share.models.ShareFileCopyInfo;
 import com.azure.storage.file.share.models.ShareFileProperties;
 import com.azure.storage.file.share.options.ShareFileCopyOptions;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
@@ -44,17 +43,15 @@ import java.time.OffsetDateTime;
  */
 public final class CopyOps {
 
-    // The Ballerina PermissionCopyMode enum value selecting an explicit permission.
-    private static final String PERMISSION_COPY_MODE_OVERRIDE = "override";
-
     private CopyOps() {
     }
 
     /** Starts a server-side copy from another file in the same share. */
     public static Object copyFile(Environment env, BObject self, BString sourcePath,
                                   BString destinationPath, Object options) {
-        return SdkInvoker.invoke(env, () -> {
-            String sourceUrl = SdkInvoker.shareClient(self).getFileClient(SdkInvoker.filePath(sourcePath)).getFileUrl();
+        return BallerinaAzureClient.invoke(env, () -> {
+            String sourceUrl = BallerinaAzureClient.getShareClient(self)
+                    .getFileClient(BallerinaAzureClient.filePath(sourcePath)).getFileUrl();
             return startCopy(self, sourceUrl, destinationPath, options);
         });
     }
@@ -62,18 +59,18 @@ public final class CopyOps {
     /** Starts a server-side copy from any accessible source URL. */
     public static Object copyFileFromUrl(Environment env, BObject self, BString sourceUrl,
                                          BString destinationPath, Object options) {
-        return SdkInvoker.invoke(env, () -> startCopy(self, sourceUrl.getValue(), destinationPath, options));
+        return BallerinaAzureClient.invoke(env, () -> startCopy(self, sourceUrl.getValue(), destinationPath, options));
     }
 
     /** Reports the progress of a copy targeting the given file; {@code null} when none exists. */
     public static Object checkCopyStatus(Environment env, BObject self, BString path) {
-        return SdkInvoker.invoke(env, () ->
+        return BallerinaAzureClient.invoke(env, () ->
                 RecordMapper.copyStatusInfo(FileOps.fileClient(self, path).getProperties()));
     }
 
     /** Aborts an in-progress copy identified by its copy id. */
     public static Object abortCopy(Environment env, BObject self, BString path, BString copyId) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             FileOps.fileClient(self, path).abortCopy(copyId.getValue());
             return null;
         });
@@ -85,21 +82,13 @@ public final class CopyOps {
         if (options != null) {
             @SuppressWarnings("unchecked")
             BMap<BString, Object> record = (BMap<BString, Object>) options;
-            sdkOptions.setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA))
-                    .setFilePermission(ValueUtils.optString(record, OptionsReader.FILE_PERMISSION))
-                    .setSmbProperties(OptionsReader.smbProperties(record.get(OptionsReader.SMB_PROPERTIES)))
-                    .setIgnoreReadOnly(record.getBooleanValue(OptionsReader.IGNORE_READ_ONLY));
-            String copyMode = ValueUtils.optString(record, OptionsReader.PERMISSION_COPY_MODE);
-            if (copyMode != null) {
-                sdkOptions.setPermissionCopyModeType(PERMISSION_COPY_MODE_OVERRIDE.equals(copyMode)
-                        ? PermissionCopyModeType.OVERRIDE : PermissionCopyModeType.SOURCE);
-            }
+            sdkOptions.setMetadata(ValueUtils.optStringMap(record, OptionsReader.METADATA));
         }
         SyncPoller<ShareFileCopyInfo, Void> poller =
                 destination.beginCopy(sourceUrl, sdkOptions, Duration.ofSeconds(1));
         ShareFileCopyInfo info = poller.poll().getValue();
         if (info == null) {
-            throw FilesErrorCreator.processingError("the copy operation returned no status", null);
+            throw FilesErrorCreator.clientError("the copy operation returned no status", null);
         }
         // The poll cycle does not always carry the destination's eTag and last-modified time;
         // fill the gaps from the destination's properties so CopyInfo is always complete.

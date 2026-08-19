@@ -15,38 +15,18 @@
 // under the License.
 
 import ballerina/data.csv;
+// The jsondata import keeps the module in the dependency graph: the Java adaptor calls its
+// natives directly (TypedReadOps and ContentBinder), with no Ballerina-side reference.
 import ballerina/data.jsondata as _;
-import ballerina/data.xmldata as _;
-import ballerina/file;
 
-// Binds CSV file content to the declared handler type through the data.csv module. Invoked from
-// the native dispatcher, which supplies the handler's declared parameter type as the typedesc.
-isolated function bindCsvContent(byte[] content, typedesc<string[][]|record {}[]> targetType,
-        boolean laxDataBinding, FailSafeOptions? csvFailSafe, string fileNamePrefix)
-        returns string[][]|record {}[]|error {
-    csv:ParseOptions options = csvParseOptions(laxDataBinding);
-    if targetType is typedesc<record {}[]> {
-        // A record target maps its fields through the header row (the file's first row),
-        // which the data.csv default already consumes.
-    } else {
-        // The string matrix keeps every row of the file, including the first.
-        options.header = ();
-    }
-    if csvFailSafe is FailSafeOptions {
-        string currentDir = file:getCurrentDir();
-        options.failSafe = {
-            fileOutputMode: {
-                filePath: currentDir + "/" + fileNamePrefix + "_error.log",
-                fileWriteOption: csv:APPEND,
-                contentType: csvFailSafe.contentType
-            }
-        };
-    }
-    return csv:parseBytes(content, options, targetType);
+// Binds CSV file content to the handler's declared record array type through data.csv;
+// each record maps its fields through the file's header row.
+isolated function bindCsvContent(byte[] content, typedesc<record {}[]> targetType,
+        boolean laxDataBinding) returns record {}[]|error {
+    return csv:parseBytes(content, csvParseOptions(laxDataBinding), targetType);
 }
 
-// The CSV parse options shared by the materialized and stream binding paths: only the data
-// projection toggle is set, everything else keeps the data.csv defaults.
+// The CSV parse options shared by the materialized and stream binding paths.
 isolated function csvParseOptions(boolean laxDataBinding) returns csv:ParseOptions {
     if laxDataBinding {
         return {allowDataProjection: {nilAsOptionalField: true, absentAsNilableType: true}};

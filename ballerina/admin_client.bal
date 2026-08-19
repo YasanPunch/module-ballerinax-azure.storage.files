@@ -41,8 +41,7 @@ public isolated client class AdminClient {
     #
     # + options - Optional filtering and listing options
     # + return - An array of `ShareInfo`, or an `Error`
-    isolated remote function listShares(ShareListOptions? options = ())
-            returns ShareInfo[]|Error = @java:Method {
+    isolated remote function listShares(ShareListOptions? options = ()) returns ShareInfo[]|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
@@ -75,10 +74,6 @@ public isolated client class AdminClient {
         'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
-    // -----------------------------------------------------------------------
-    // Service configuration
-    // -----------------------------------------------------------------------
-
     # Reads the account's file-service configuration (metrics and CORS rules).
     #
     # + return - The `ServiceProperties`, or an `Error`
@@ -95,10 +90,6 @@ public isolated client class AdminClient {
         'class: "io.ballerina.lib.azure.storage.files.client.AdminOps"
     } external;
 
-    // -----------------------------------------------------------------------
-    // SAS
-    // -----------------------------------------------------------------------
-
     # Gets a user-delegation key for signing user-delegation SAS tokens. Requires Microsoft
     # Entra ID credentials with the `Storage File Delegator` role.
     #
@@ -114,8 +105,7 @@ public isolated client class AdminClient {
     #
     # + values - What the SAS grants: validity window, permissions, and resource types
     # + return - The SAS token, or an `Error`
-    public isolated function generateAccountSas(AccountSasSignatureValues values)
-            returns string|Error = @java:Method {
+    public isolated function generateAccountSas(AccountSasSignatureValues values) returns string|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.SasOps"
     } external;
 }

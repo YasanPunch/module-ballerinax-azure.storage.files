@@ -39,9 +39,10 @@ public class ServiceValidationTest {
     }
 
     @Test
-    public void testValidTypedJsonService() {
-        DiagnosticResult result = loadPackage("valid_on_file_json");
-        assertEquals(result.errorCount(), 0, "expected no diagnostics for a valid onFileJson service");
+    public void testInvalidOnFileJsonMap() {
+        DiagnosticResult result = loadPackage("invalid_on_file_json_map");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileJson");
     }
 
     @Test
@@ -57,29 +58,16 @@ public class ServiceValidationTest {
     }
 
     @Test
-    public void testValidTypedJsonMapArrayService() {
-        DiagnosticResult result = loadPackage("valid_on_file_json_map_array");
-        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileJson map<json>[] service");
-    }
-
-    @Test
-    public void testValidTypedJsonRecordArrayService() {
-        DiagnosticResult result = loadPackage("valid_on_file_json_record_array");
-        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileJson record-array service");
-    }
-
-    @Test
-    public void testInvalidOnFileJsonJsonArray() {
-        DiagnosticResult result = loadPackage("invalid_on_file_json_json_array");
+    public void testInvalidOnFileJsonRecordArray() {
+        DiagnosticResult result = loadPackage("invalid_on_file_json_record_array");
         assertEquals(result.errorCount(), 1);
         assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileJson");
     }
 
     @Test
-    public void testInvalidOnFileJsonBareJson() {
-        DiagnosticResult result = loadPackage("invalid_on_file_json_bare");
-        assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileJson");
+    public void testValidTypedJsonBareService() {
+        DiagnosticResult result = loadPackage("valid_on_file_json_bare");
+        assertEquals(result.errorCount(), 0);
     }
 
     @Test
@@ -204,6 +192,13 @@ public class ServiceValidationTest {
     }
 
     @Test
+    public void testInvalidOnErrorNarrowErrorParameter() {
+        DiagnosticResult result = loadPackage("invalid_on_error_narrow_error");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_112", "The first parameter must be");
+    }
+
+    @Test
     public void testInvalidOnErrorSecondParameter() {
         DiagnosticResult result = loadPackage("invalid_on_error_second_param");
         assertEquals(result.errorCount(), 1);
@@ -251,12 +246,6 @@ public class ServiceValidationTest {
     }
 
     @Test
-    public void testValidOnFileCsvStringArrayStreamService() {
-        DiagnosticResult result = loadPackage("valid_on_file_csv_stream_string_array");
-        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv string[] stream service");
-    }
-
-    @Test
     public void testValidOnFileCsvRecordStreamService() {
         DiagnosticResult result = loadPackage("valid_on_file_csv_stream_record");
         assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv record stream service");
@@ -285,6 +274,20 @@ public class ServiceValidationTest {
     @Test
     public void testInvalidOnFileCsvScalarArray() {
         DiagnosticResult result = loadPackage("invalid_on_file_csv_scalar_array");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
+    }
+
+    @Test
+    public void testInvalidOnFileCsvStringMatrix() {
+        DiagnosticResult result = loadPackage("invalid_on_file_csv_string_matrix");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
+    }
+
+    @Test
+    public void testInvalidOnFileCsvStringArrayStream() {
+        DiagnosticResult result = loadPackage("invalid_on_file_csv_stream_string_array");
         assertEquals(result.errorCount(), 1);
         assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
     }

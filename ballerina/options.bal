@@ -14,10 +14,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// ---------------------------------------------------------------------------
-// Content headers
-// ---------------------------------------------------------------------------
-
 # The standard content headers that can be set on a file.
 public type ContentHeaders record {|
     # The MIME type of the content (e.g. `application/pdf`), served as `Content-Type` on downloads
@@ -33,10 +29,6 @@ public type ContentHeaders record {|
     # Base64-encoded MD5 of the content, for integrity verification
     string contentMd5?;
 |};
-
-// ---------------------------------------------------------------------------
-// Share option records
-// ---------------------------------------------------------------------------
 
 # Options for `AdminClient.listShares`.
 public type ShareListOptions record {|
@@ -67,16 +59,6 @@ public type ShareCreateOptions record {|
     NfsRootSquash rootSquash?;
 |};
 
-# Options for `Client.setShareProperties`: administrative quota and tier changes.
-public type ShareSetPropertiesOptions record {|
-    # The new provisioned capacity of the share, in GiB; when absent, the quota is unchanged
-    int quotaInGb?;
-    # The new access tier for the share; when absent, the tier is unchanged
-    ShareAccessTier accessTier?;
-    # The active lease id, required when the share is leased
-    string leaseId?;
-|};
-
 # Options for `AdminClient.deleteShare`.
 public type ShareDeleteOptions record {|
     # How the share's snapshots are handled; when absent, only the share itself is deleted
@@ -88,20 +70,10 @@ public type ShareDeleteOptions record {|
     string leaseId?;
 |};
 
-// ---------------------------------------------------------------------------
-// Directory option records
-// ---------------------------------------------------------------------------
-
 # Options for `Client.createDirectory`.
 public type DirectoryCreateOptions record {|
     # User-defined metadata to set on the new directory
     map<string> metadata?;
-    # An SDDL (Security Descriptor Definition Language) permission string to apply
-    string filePermission?;
-    # SMB properties to apply
-    SmbProperties smbProperties?;
-    # POSIX owner, group, and mode to apply (NFS shares only)
-    PosixProperties posixProperties?;
 |};
 
 # Options for `Client.list`.
@@ -119,21 +91,12 @@ public type ListOptions record {|
     string snapshotId?;
 |};
 
-// ---------------------------------------------------------------------------
-// File option records
-// ---------------------------------------------------------------------------
-
 # Options for `Client.renameFile` and `Client.renameDirectory`.
 public type RenameOptions record {|
     # If a file already occupies the destination path, delete it and give its path to the
     # renamed entry. A directory occupying the destination always fails the operation
     # regardless of this flag
     boolean replaceIfExists = false;
-    # Rename even if the destination has the read-only attribute set (requires `replaceIfExists`)
-    boolean ignoreReadOnly = false;
-    # An SDDL permission string to apply to the renamed entry; when absent, the existing
-    # permission is preserved
-    string filePermission?;
     # User-defined metadata to set on the renamed entry (replaces all existing metadata);
     # when absent, the existing metadata is preserved
     map<string> metadata?;
@@ -145,29 +108,52 @@ public type CreateOptions record {|
     ContentHeaders contentHeaders?;
     # User-defined metadata to set on the file
     map<string> metadata?;
-    # An SDDL permission string to apply
-    string filePermission?;
-    # SMB properties to apply
-    SmbProperties smbProperties?;
-    # POSIX owner, group, and mode to apply (NFS shares only)
-    PosixProperties posixProperties?;
 |};
 
-# Options for the upload operations (`uploadFile`, `uploadContent`, `uploadFromStream`).
+# Options for the upload operations (`uploadFromFile`, `upload`, `uploadFromStream`).
 public type UploadOptions record {|
     # Content headers to set on the file, such as `Content-Type` and `Cache-Control`
     ContentHeaders contentHeaders?;
     # User-defined metadata to set on the file
     map<string> metadata?;
-    # An SDDL permission string to apply
-    string filePermission?;
-    # SMB properties to apply
-    SmbProperties smbProperties?;
-    # POSIX owner, group, and mode to apply (NFS shares only)
-    PosixProperties posixProperties?;
 |};
 
-# Options for the download operations (`downloadFile`, `getFileContent`).
+# The content forms accepted by `upload`: raw bytes, text, a JSON or XML value,
+# and records or record arrays serialized per the resolved `FileFormat`.
+public type UploadContent byte[]|string|json|xml|record {}|record {}[];
+
+# The target forms `getFile` retrieves: raw bytes, text, a JSON or XML value, records
+# or record arrays bound per the resolved `FileFormat`, a lazy byte stream, or a lazy
+# stream of CSV-bound records.
+public type RetrievableType byte[]|string|json|xml|record {}|record {}[]|
+    stream<byte[], error?>|stream<record {}, error?>;
+
+# Options for `getFile`, extending the download options with the record binding format.
+public type GetFileOptions record {|
+    *DownloadOptions;
+    # The binding format for `record {}` and `record {}[]` targets; when absent, the
+    # format is inferred from the path's extension (`.json`, `.xml`, `.csv`)
+    FileFormat fileFormat?;
+|};
+
+# The serialization and binding format of record and json content.
+public enum FileFormat {
+    JSON,
+    XML,
+    CSV
+}
+
+# Options for `upload`, extending the upload options with the content
+# serialization format.
+public type UploadContentOptions record {|
+    *UploadOptions;
+    # The serialization format for `json`, `record {}`, and `record {}[]` content; when
+    # absent, the format is inferred from the destination path's extension (`.json`,
+    # `.xml`, `.csv`)
+    FileFormat fileFormat?;
+|};
+
+# Options for the download operations (`download`, `getFile`).
 public type DownloadOptions record {|
     # Download only this byte range instead of the whole file
     Range range?;
@@ -180,46 +166,10 @@ public type CopyOptions record {|
     # User-defined metadata to set on the destination; when absent, the metadata is copied
     # from the source file
     map<string> metadata?;
-    # An SDDL permission string to apply to the destination; setting it requires
-    # `permissionCopyMode` to be `OVERRIDE`
-    string filePermission?;
-    # SMB properties to apply to the destination
-    SmbProperties smbProperties?;
-    # How the destination file's permission is determined; when absent, the security
-    # descriptor is copied from the source file (`SOURCE` behaviour)
-    PermissionCopyMode permissionCopyMode?;
-    # Copy even if the destination has the read-only attribute set; when `false`, a read-only
-    # file at the destination fails the copy
-    boolean ignoreReadOnly = false;
 |};
 
 # Options for `Client.listRanges` and `Client.listRangesDiff`.
 public type RangeListOptions record {|
     # Restrict the listing to this byte range
     Range range?;
-|};
-
-# Options for `Client.setFileProperties`. Only what is set is changed; every omitted field
-# leaves the file's current value in place.
-public type FileSetPropertiesOptions record {|
-    # Content headers to set on the file
-    ContentHeaders contentHeaders?;
-    # SMB properties to apply
-    SmbProperties smbProperties?;
-    # An SDDL (Security Descriptor Definition Language) permission string to apply
-    string filePermission?;
-    # A new size for the file, in bytes
-    int newFileSizeBytes?;
-    # POSIX owner, group, and mode to apply (NFS shares only)
-    PosixProperties posixProperties?;
-|};
-
-# Options for `Client.setDirectoryProperties`. Only what is set is changed.
-public type DirectorySetPropertiesOptions record {|
-    # SMB properties to apply
-    SmbProperties smbProperties?;
-    # An SDDL (Security Descriptor Definition Language) permission string to apply
-    string filePermission?;
-    # POSIX owner, group, and mode to apply (NFS shares only)
-    PosixProperties posixProperties?;
 |};

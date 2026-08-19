@@ -44,9 +44,13 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.getDiagnos
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.isRemoteFunction;
 
 /**
- * Validates the optional {@code onError} handler: it must be remote, take an {@code error} (or a
- * subtype of the module's {@code Error}) as its first parameter, may take the {@code Caller} as an
- * optional second parameter, and must return {@code error?}.
+ * Validates the optional {@code onError} handler: it must be remote, take exactly {@code error} or
+ * the module's {@code Error} as its first parameter, may take the {@code Caller} as an optional
+ * second parameter, and must return {@code error?}.
+ *
+ * <p>A narrower parameter is rejected because {@code onError} is notified of poll failures, read
+ * failures, and content-binding failures alike: a handler declaring one subtype could not receive
+ * the others, and the dispatch would fail its type check at runtime.
  */
 public class OnErrorFunctionValidator {
 
@@ -59,7 +63,6 @@ public class OnErrorFunctionValidator {
     }
 
     public void validate() {
-        // If the function is not remote, report a diagnostic.
         if (!isRemoteFunction(context, functionDefinitionNode)) {
             context.reportDiagnostic(getDiagnostic(CONTENT_METHOD_MUST_BE_REMOTE,
                     DiagnosticSeverity.ERROR, functionDefinitionNode.location(), ON_ERROR_FUNC));
@@ -68,13 +71,11 @@ public class OnErrorFunctionValidator {
 
         SeparatedNodeList<ParameterNode> parameters = functionDefinitionNode.functionSignature().parameters();
         int paramCount = parameters.size();
-        // If the function has no parameters, report a diagnostic.
         if (paramCount == 0) {
             context.reportDiagnostic(getDiagnostic(INVALID_ON_ERROR_FIRST_PARAMETER,
                     DiagnosticSeverity.ERROR, functionDefinitionNode.location()));
             return;
         }
-        // If the function has more than 2 parameters, report a diagnostic.
         if (paramCount > 2) {
             context.reportDiagnostic(getDiagnostic(TOO_MANY_PARAMETERS_ON_ERROR,
                     DiagnosticSeverity.ERROR, functionDefinitionNode.location()));
@@ -83,9 +84,7 @@ public class OnErrorFunctionValidator {
 
         validateErrorParameter(parameters.get(0));
 
-        // If the function has two parameters, validate the Caller parameter.
         if (paramCount == 2) {
-            // If the Caller parameter is not valid, report a diagnostic.
             ParameterNode secondParamNode = parameters.get(1);
             if (!PluginUtils.validateCallerParameter(secondParamNode, context)) {
                 context.reportDiagnostic(getDiagnostic(INVALID_ON_ERROR_SECOND_PARAMETER,
@@ -98,7 +97,6 @@ public class OnErrorFunctionValidator {
 
     private void validateErrorParameter(ParameterNode parameterNode) {
         Optional<TypeSymbol> paramType = PluginUtils.getParameterTypeSymbol(parameterNode, context);
-        // If the parameter type is not present, report a diagnostic.
         if (paramType.isEmpty()) {
             context.reportDiagnostic(getDiagnostic(INVALID_ON_ERROR_FIRST_PARAMETER,
                     DiagnosticSeverity.ERROR, parameterNode.location()));
@@ -108,30 +106,26 @@ public class OnErrorFunctionValidator {
         TypeSymbol normalizedParamType = unwrapTypeReference(paramType.get());
         boolean isError = normalizedParamType.subtypeOf(semanticModel.types().ERROR)
                 && semanticModel.types().ERROR.subtypeOf(normalizedParamType);
-        boolean isModuleErrorSubtype = findModuleErrorTypeSymbol(semanticModel)
+        boolean isModuleError = findModuleErrorTypeSymbol(semanticModel)
                 .map(this::unwrapTypeReference)
-                .map(normalizedParamType::subtypeOf)
+                .map(moduleError -> normalizedParamType.subtypeOf(moduleError)
+                        && moduleError.subtypeOf(normalizedParamType))
                 .orElse(false);
-        // If the parameter type is not an error or a module error subtype, report a diagnostic.
-        if (!isError && !isModuleErrorSubtype) {
+        if (!isError && !isModuleError) {
             context.reportDiagnostic(getDiagnostic(INVALID_ON_ERROR_FIRST_PARAMETER,
                     DiagnosticSeverity.ERROR, parameterNode.location()));
         }
     }
 
     private Optional<TypeSymbol> findModuleErrorTypeSymbol(SemanticModel semanticModel) {
-        Optional<Symbol> errorSymbol = semanticModel.types()
-                .getTypeByName(PACKAGE_ORG, PACKAGE_PREFIX, "", ERROR_TYPE);
-        // If the error symbol is not present, return empty.
+        Optional<Symbol> errorSymbol = semanticModel.types().getTypeByName(PACKAGE_ORG, PACKAGE_PREFIX, "", ERROR_TYPE);
         if (errorSymbol.isEmpty()) {
             return Optional.empty();
         }
         Symbol symbol = errorSymbol.get();
-        // If the symbol is a type definition symbol, return the type descriptor.
         if (symbol instanceof TypeDefinitionSymbol typeDefinitionSymbol) {
             return Optional.of(typeDefinitionSymbol.typeDescriptor());
         }
-        // If the symbol is a type symbol, return the type symbol.
         if (symbol instanceof TypeSymbol typeSymbol) {
             return Optional.of(typeSymbol);
         }

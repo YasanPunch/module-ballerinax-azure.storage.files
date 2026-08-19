@@ -17,10 +17,6 @@
 import ballerina/crypto;
 import ballerina/time;
 
-// ---------------------------------------------------------------------------
-// Data-model records (results returned by operations)
-// ---------------------------------------------------------------------------
-
 # One share as returned by `AdminClient.listShares`.
 public type ShareInfo record {|
     # The share name
@@ -78,10 +74,6 @@ public type DirectoryProperties record {|
     map<string> metadata?;
     # Whether the service has encrypted the directory at rest
     boolean isServerEncrypted;
-    # SMB-specific properties; populated on SMB shares, absent on NFS shares
-    SmbProperties smbProperties?;
-    # POSIX/NFS-specific properties (NFS shares only)
-    PosixProperties posixProperties?;
 |};
 
 # Properties of a file. A point-in-time snapshot; call `getFileProperties` again for
@@ -122,10 +114,6 @@ public type FileProperties record {|
     string copyId?;
     # Progress of the most recent copy operation, if any
     CopyProgress copyProgress?;
-    # SMB-specific properties
-    SmbProperties smbProperties?;
-    # POSIX/NFS-specific properties (NFS shares only)
-    PosixProperties posixProperties?;
 |};
 
 # Progress of an asynchronous copy operation.
@@ -172,42 +160,6 @@ public type FileInfo record {|
     string eTag;
     # The last-modified time (UTC)
     time:Utc lastModified;
-|};
-
-# SMB-specific properties of a file or directory. Populated on SMB shares and absent on
-# NFS shares.
-public type SmbProperties record {|
-    # The NTFS attributes of the file or directory. More than one attribute can be set at a
-    # time (e.g. read-only and hidden)
-    NtfsFileAttribute[] ntfsFileAttributes?;
-    # The key of a permission (SDDL string) stored in the share's permission store
-    string filePermissionKey?;
-    # The creation time (UTC)
-    time:Utc fileCreationTime?;
-    # The last-write time (UTC): the last time data was written to the file, excluding
-    # metadata changes
-    time:Utc fileLastWriteTime?;
-    # The change time (UTC): the last time the file's content or metadata (permissions,
-    # size, attributes) was modified
-    time:Utc fileChangeTime?;
-    # The file identifier
-    string fileId?;
-    # The parent directory identifier
-    string parentId?;
-|};
-
-# POSIX/NFS-specific properties of a file or directory. Present only on NFS shares.
-public type PosixProperties record {|
-    # The owner user id (UID)
-    string owner?;
-    # The owning group id (GID)
-    string group?;
-    # The file mode (permissions), octal or symbolic
-    string fileMode?;
-    # The NFS file type (regular file, directory, or symbolic link)
-    NfsFileType fileType?;
-    # The number of hard links to the file (number of references to the file)
-    int linkCount?;
 |};
 
 # The result of starting a copy operation. Copies are asynchronous.
@@ -321,52 +273,6 @@ public type ShareSnapshotInfo record {|
     time:Utc lastModified;
 |};
 
-# A stored access policy with its identifier. Share SAS tokens can reference the policy
-# by `id`.
-public type SignedIdentifier record {|
-    # The policy identifier referenced by SAS tokens (at most 64 characters)
-    string id;
-    # The policy itself: validity window and permissions
-    AccessPolicy accessPolicy;
-|};
-
-# A stored access policy's validity window and permissions.
-public type AccessPolicy record {|
-    # The start of the policy's validity period (UTC); omit for immediately valid
-    time:Utc startsOn?;
-    # The end of the policy's validity period (UTC); omit for no expiry
-    time:Utc expiresOn?;
-    # The permission string, in the service's fixed letter order (e.g. `rwdl` for read,
-    # write, delete, list)
-    string permissions;
-|};
-
-# One open SMB handle on a file or directory.
-public type HandleInfo record {|
-    # The handle identifier; pass to the force-close operations to close just this handle
-    string handleId;
-    # The share-relative path the handle is open on
-    string path;
-    # The identifier of the file or directory the handle is open on
-    string fileId?;
-    # The SMB session identifier the handle belongs to
-    string sessionId?;
-    # The IP address of the client holding the handle
-    string clientIp?;
-    # When the handle was opened (UTC)
-    time:Utc openTime?;
-    # When the client last reconnected the handle (UTC)
-    time:Utc lastReconnectTime?;
-|};
-
-# The result of force-closing SMB handles.
-public type CloseHandlesInfo record {|
-    # The number of handles that were closed
-    int closedHandles;
-    # The number of handles that could not be closed
-    int failedHandles;
-|};
-
 # The result of `Client.listRangesDiff`: how a file's ranges changed since a share snapshot.
 public type RangeDiff record {|
     # The ranges written since the baseline snapshot
@@ -374,10 +280,6 @@ public type RangeDiff record {|
     # The ranges cleared since the baseline snapshot
     Range[] clearRanges;
 |};
-
-// ---------------------------------------------------------------------------
-// SAS signature values
-// ---------------------------------------------------------------------------
 
 # The inputs for generating an account-level SAS via `AdminClient.generateAccountSas`.
 public type AccountSasSignatureValues record {|
@@ -430,9 +332,10 @@ public type AccountSasResourceTypes record {|
 public type ShareSasSignatureValues record {|
     # The end of the SAS validity period (UTC). May be omitted only when `identifier`
     # references a stored access policy that carries an expiry
-    time:Utc expiryTime;
-    # The permissions the SAS grants
-    ShareSasPermissions permissions;
+    time:Utc expiryTime?;
+    # The permissions the SAS grants. May be omitted only when `identifier` references a
+    # stored access policy that carries permissions
+    ShareSasPermissions permissions?;
     # The start of the SAS validity period (UTC); omit for immediately valid
     time:Utc startTime?;
     # The protocols a request presenting the SAS may use; omit to allow HTTPS and HTTP
@@ -440,7 +343,8 @@ public type ShareSasSignatureValues record {|
     # An IP address or range the requests must come from (e.g. `168.1.5.60-168.1.5.70`)
     string ipRange?;
     # The identifier of a stored access policy on the share, as an alternative to spelling
-    # out expiry and permissions here
+    # out expiry and permissions here. Not valid for the user delegation variants, which
+    # reject it
     string identifier?;
 |};
 
@@ -463,9 +367,10 @@ public type ShareSasPermissions record {|
 public type FileSasSignatureValues record {|
     # The end of the SAS validity period (UTC). May be omitted only when `identifier`
     # references a stored access policy that carries an expiry
-    time:Utc expiryTime;
-    # The permissions the SAS grants
-    FileSasPermissions permissions;
+    time:Utc expiryTime?;
+    # The permissions the SAS grants. May be omitted only when `identifier` references a
+    # stored access policy that carries permissions
+    FileSasPermissions permissions?;
     # The start of the SAS validity period (UTC); omit for immediately valid
     time:Utc startTime?;
     # The protocols a request presenting the SAS may use; omit to allow HTTPS and HTTP
@@ -473,7 +378,8 @@ public type FileSasSignatureValues record {|
     # An IP address or range the requests must come from (e.g. `168.1.5.60-168.1.5.70`)
     string ipRange?;
     # The identifier of a stored access policy on the share, as an alternative to spelling
-    # out expiry and permissions here
+    # out expiry and permissions here. Not valid for the user delegation variants, which
+    # reject it
     string identifier?;
 |};
 
@@ -488,10 +394,6 @@ public type FileSasPermissions record {|
     # Delete the file
     boolean delete = false;
 |};
-
-// ---------------------------------------------------------------------------
-// Enums
-// ---------------------------------------------------------------------------
 
 # How a share's snapshots are handled when the share is deleted.
 public enum ShareSnapshotsDeleteOption {
@@ -529,43 +431,6 @@ public enum NfsRootSquash {
     ROOT_SQUASH = "RootSquash",
     # All users are mapped to an anonymous user
     ALL_SQUASH = "AllSquash"
-}
-
-# An NTFS attribute of a file or directory. A file or directory can carry several attributes
-# at once, as an `NtfsFileAttribute[]`.
-public enum NtfsFileAttribute {
-    # The file is read-only
-    READ_ONLY = "ReadOnly",
-    # The file is hidden, and excluded from ordinary directory listings
-    HIDDEN = "Hidden",
-    # The file is a system file, used by the operating system
-    SYSTEM = "System",
-    # The file is a standard file with no special attributes; valid only on its own
-    NORMAL = "None",
-    # The entry is a directory rather than a file
-    DIRECTORY = "Directory",
-    # The file is marked for backup or removal
-    ARCHIVE = "Archive",
-    # The file holds temporary data
-    TEMPORARY = "Temporary",
-    # The file's data is not immediately available
-    OFFLINE = "Offline",
-    # The file is excluded from the operating system's content indexing
-    NOT_CONTENT_INDEXED = "NotContentIndexed",
-    # The file is excluded from the data integrity scan
-    NO_SCRUB_DATA = "NoScrubData"
-}
-
-# The type of an NFS file-system entry: a regular file (`Regular`), a directory
-# (`Directory`), or a symbolic link (`SymLink`).
-public enum NfsFileType {
-    # A regular file
-    REGULAR = "Regular",
-    // DIRECTORY is a module-level constant shared with NtfsFileAttribute (enum members merge
-    // when their values match), so its doc line lives on the NtfsFileAttribute member.
-    DIRECTORY = "Directory",
-    # A symbolic link
-    SYMLINK = "SymLink"
 }
 
 # The status of an asynchronous copy operation.
@@ -611,14 +476,6 @@ public enum LeaseDuration {
     FIXED = "fixed"
 }
 
-# How file permissions are handled when copying a file.
-public enum PermissionCopyMode {
-    # Copy the permission from the source file
-    SOURCE = "source",
-    # Override with an explicitly supplied permission
-    OVERRIDE = "override"
-}
-
 # The protocols a request presenting a SAS token may use.
 public enum SasProtocol {
     # HTTPS requests only
@@ -626,10 +483,6 @@ public enum SasProtocol {
     # HTTPS and HTTP requests
     HTTPS_HTTP = "https,http"
 }
-
-// ---------------------------------------------------------------------------
-// Authentication
-// ---------------------------------------------------------------------------
 
 # Shared Key authentication using one of the storage account's access keys.
 public type SharedKeyConfig record {|
@@ -666,10 +519,6 @@ public type ConnectionStringConfig record {|
     # infrastructure tooling
     string connectionString;
 |};
-
-// ---------------------------------------------------------------------------
-// Entra ID authentication
-// ---------------------------------------------------------------------------
 
 # The credential-kind discriminator value selecting `DefaultEntraIdConfig`.
 public const DEFAULT_AZURE_CREDENTIAL = "default";
@@ -761,10 +610,6 @@ public type EntraIdConfig DefaultEntraIdConfig|ManagedIdentityConfig|ClientSecre
 # The authentication configuration: one credential-artifact record (an account key, a bare SAS
 # token, a full SAS URL, a connection string, or a Microsoft Entra ID identity).
 public type AuthConfig SharedKeyConfig|SasConfig|SasUrlConfig|ConnectionStringConfig|EntraIdConfig;
-
-// ---------------------------------------------------------------------------
-// Resilience and transport
-// ---------------------------------------------------------------------------
 
 # The retry policy kinds: `EXPONENTIAL` grows the delay between tries exponentially;
 # `FIXED` keeps the same delay between every try.

@@ -19,6 +19,11 @@ import ballerinax/azure.storage.files as files;
 listener files:Listener lsn = new ("share", auth = {accountName: "acc", accountKey: "a2V5"});
 
 service /incoming on lsn {
-    remote function onFileJson(map<json>[] content) returns error? {
+    remote function onFile(byte[] content) returns error? {
+    }
+
+    // onError is notified of poll, read, and binding failures, so a narrower parameter type
+    // than files:Error is rejected.
+    remote function onError(files:ConflictError err) returns error? {
     }
 }

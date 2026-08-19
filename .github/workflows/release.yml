@@ -14,6 +14,3 @@ jobs:
     with:
       package-name: azure.storage.files
       package-org: ballerinax
-      additional-build-flags: "-x :azure.storage.files-examples:build"
-      additional-release-flags: "-x :azure.storage.files-examples:build"
-      additional-publish-flags: "-x :azure.storage.files-examples:build"

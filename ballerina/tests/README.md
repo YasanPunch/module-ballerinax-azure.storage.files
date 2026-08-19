@@ -11,7 +11,7 @@ bal test
 
 `backend.bal` reads `liveAccountName`/`liveAccountKey` from Config.toml, or from the `LIVE_ACCOUNT_NAME`/`LIVE_ACCOUNT_KEY` environment variables (a Config.toml entry takes precedence). A live run never silently falls back to the mock. To force a mock run on a machine that has credentials, move `tests/Config.toml` aside for that run.
 
-A few tests deviate from the one-backend rule for physical reasons and self-select, so no action is needed: `testErrorCodeMapping`, `testRetryAndTransportConfig`, and `testSmbHandles` always use the mock; the user-delegation and Entra tests need the Entra credentials below when live; `testNfsLinks` needs a premium account when live. The comment on each of these tests states its reason.
+A few tests deviate from the one-backend rule for physical reasons and self-select, so no action is needed: `testErrorCodeMapping` and `testRetryAndTransportConfig` always use the mock; the user-delegation and Entra tests need the Entra credentials below when live. The comment on each of these tests states its reason.
 
 ## The mock
 
@@ -19,6 +19,8 @@ A few tests deviate from the one-backend rule for physical reasons and self-sele
 
 - The mock is a non `isolated` service: requests dispatch serially, so its in-memory state needs no locking (the compiler hint about this is expected).
 - A path segment of the form `__err-<status>-<AzureErrorCode>` (for example `/__err-403-ShareSizeLimitReached`) makes the mock return that error response; the error-mapping test uses this.
+- `mockRequestLog` records every request as `METHOD /segments comp=<comp> host=<host header>`; a test clears it by assignment and filters by its own share name (the retry and range-count tests use this).
+- Setting `mockFaultRemaining` to N makes the next N requests, of any operation, fail with `mockFaultStatus`/`mockFaultCode` (default 500 `InternalError`); unlike the listing-only `mockListFaultCode` hook it counts down on its own, but reset it after asserting so a test failure cannot leak faults into the next test.
 - HEAD responses must carry the file's real content, so the mock's HTTP layer computes the correct `Content-Length` (the body is stripped on the wire).
 
 ## Live runs
@@ -29,7 +31,7 @@ A few tests deviate from the one-backend rule for physical reasons and self-sele
 2. Keep **Allow storage account key access** enabled (it is by default); the tests authenticate with the account key.
 3. After deployment, open **Security + networking** > **Access keys** and copy the storage account name and the key1 value.
 
-Pointed at a **premium (FileStorage)** account instead, the suite adapts its tier and quota assertions and `testNfsLinks` runs live against a real NFS share, as an optional second pass for the premium-specific behaviors. Two premium account settings matter: create it with the **provisioned v2** billing model (v1's 100 GiB minimum share size is above what the suite provisions), and **disable share soft delete** on it, because a soft-deleted premium share keeps holding its provisioned IOPS against the account-wide limit, so retained shares from earlier runs would starve later ones. Because soft delete is off there, the share-lifecycle test exercises its undelete tail only on standard accounts and the mock.
+Pointed at a **premium (FileStorage)** account instead, the suite adapts its tier and quota assertions, as an optional second pass for the premium-specific behaviors. Two premium account settings matter: create it with the **provisioned v2** billing model (v1's 100 GiB minimum share size is above what the suite provisions), and **disable share soft delete** on it, because a soft-deleted premium share keeps holding its provisioned IOPS against the account-wide limit, so retained shares from earlier runs would starve later ones. Because soft delete is off there, the share-lifecycle test exercises its undelete tail only on standard accounts and the mock.
 
 ### Configure and run
 

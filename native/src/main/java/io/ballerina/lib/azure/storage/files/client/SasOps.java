@@ -28,8 +28,9 @@ import com.azure.storage.file.share.models.UserDelegationKey;
 import com.azure.storage.file.share.sas.ShareFileSasPermission;
 import com.azure.storage.file.share.sas.ShareSasPermission;
 import com.azure.storage.file.share.sas.ShareServiceSasSignatureValues;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
+import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.utils.StringUtils;
@@ -44,7 +45,7 @@ import java.util.function.Function;
 /**
  * Native implementations of the SAS-generation operations. Every operation signs locally
  * (with the account key or a user-delegation key); no request reaches Azure, but signing
- * still runs through {@link SdkInvoker#invoke} so failures surface as typed errors.
+ * still runs through {@link BallerinaAzureClient#invoke} so failures surface as typed errors.
  */
 public final class SasOps {
 
@@ -74,34 +75,34 @@ public final class SasOps {
 
     /** Generates a service SAS token scoped to the bound share. */
     public static Object generateShareSas(Environment env, BObject self, BMap<BString, Object> values) {
-        return SdkInvoker.invoke(env, () -> StringUtils.fromString(
-                SdkInvoker.shareClient(self).generateSas(shareSasValues(values, true))));
+        return BallerinaAzureClient.invoke(env, () -> StringUtils.fromString(
+                BallerinaAzureClient.getShareClient(self).generateSas(shareSasValues(values, true, false))));
     }
 
     /** Generates a service SAS token scoped to one file. */
     public static Object generateSas(Environment env, BObject self, BString path, BMap<BString, Object> values) {
-        return SdkInvoker.invoke(env, () -> StringUtils.fromString(
-                FileOps.fileClient(self, path).generateSas(shareSasValues(values, false))));
+        return BallerinaAzureClient.invoke(env, () -> StringUtils.fromString(
+                FileOps.fileClient(self, path).generateSas(shareSasValues(values, false, false))));
     }
 
     /** Generates a user-delegation SAS token scoped to the bound share. */
     public static Object generateShareUserDelegationSas(Environment env, BObject self,
             BMap<BString, Object> values, BMap<BString, Object> key) {
-        return SdkInvoker.invoke(env, () -> StringUtils.fromString(
-                SdkInvoker.shareClient(self).generateUserDelegationSas(shareSasValues(values, true),
+        return BallerinaAzureClient.invoke(env, () -> StringUtils.fromString(
+                BallerinaAzureClient.getShareClient(self).generateUserDelegationSas(shareSasValues(values, true, true),
                         delegationKey(key))));
     }
 
     /** Generates a user-delegation SAS token scoped to one file. */
     public static Object generateUserDelegationSas(Environment env, BObject self, BString path,
             BMap<BString, Object> values, BMap<BString, Object> key) {
-        return SdkInvoker.invoke(env, () -> StringUtils.fromString(FileOps.fileClient(self, path)
-                .generateUserDelegationSas(shareSasValues(values, false), delegationKey(key))));
+        return BallerinaAzureClient.invoke(env, () -> StringUtils.fromString(FileOps.fileClient(self, path)
+                .generateUserDelegationSas(shareSasValues(values, false, true), delegationKey(key))));
     }
 
     /** Generates an account SAS token for the file service. */
     public static Object generateAccountSas(Environment env, BObject self, BMap<BString, Object> values) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             @SuppressWarnings("unchecked")
             BMap<BString, Object> permissions = (BMap<BString, Object>) values.get(RecordMapper.PERMISSIONS);
             AccountSasPermission sasPermission = new AccountSasPermission()
@@ -126,35 +127,66 @@ public final class SasOps {
                     new AccountSasService().setFileAccess(true),
                     sasResourceTypes);
             applyCommon(values, sdkValues::setStartTime, sdkValues::setProtocol, sdkValues::setSasIpRange);
-            return StringUtils.fromString(SdkInvoker.serviceClient(self).generateAccountSas(sdkValues));
+            return StringUtils.fromString(BallerinaAzureClient.getServiceClient(self).generateAccountSas(sdkValues));
         });
     }
 
-    private static ShareServiceSasSignatureValues shareSasValues(BMap<BString, Object> values, boolean shareScope) {
+    private static ShareServiceSasSignatureValues shareSasValues(BMap<BString, Object> values, boolean shareScope,
+            boolean userDelegation) {
         @SuppressWarnings("unchecked")
         BMap<BString, Object> permissions = (BMap<BString, Object>) values.get(RecordMapper.PERMISSIONS);
-        OffsetDateTime expiry = ValueUtils.fromUtc((BArray) values.get(EXPIRY_TIME));
+        Object expiryValue = values.get(EXPIRY_TIME);
+        String identifier = ValueUtils.optString(values, IDENTIFIER);
+        if (userDelegation) {
+            if (identifier != null) {
+                throw FilesErrorCreator.clientError(
+                        "a user delegation SAS cannot use a stored access policy identifier", null);
+            }
+            if (expiryValue == null || permissions == null) {
+                throw FilesErrorCreator.clientError(
+                        "expiryTime and permissions must be set for a user delegation SAS", null);
+            }
+        } else if (identifier == null && (expiryValue == null || permissions == null)) {
+            throw FilesErrorCreator.clientError("either identifier, or expiryTime and permissions, must be set", null);
+        }
         ShareServiceSasSignatureValues sdkValues;
-        if (shareScope) {
-            sdkValues = new ShareServiceSasSignatureValues(expiry, new ShareSasPermission()
-                    .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
-                    .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
-                    .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
-                    .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE))
-                    .setListPermission(permissions.getBooleanValue(PERMISSION_LIST)));
+        if (identifier != null) {
+            sdkValues = new ShareServiceSasSignatureValues(identifier);
+            if (expiryValue != null) {
+                sdkValues.setExpiryTime(ValueUtils.fromUtc((BArray) expiryValue));
+            }
+            if (permissions != null) {
+                if (shareScope) {
+                    sdkValues.setPermissions(sharePermissions(permissions));
+                } else {
+                    sdkValues.setPermissions(filePermissions(permissions));
+                }
+            }
         } else {
-            sdkValues = new ShareServiceSasSignatureValues(expiry, new ShareFileSasPermission()
-                    .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
-                    .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
-                    .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
-                    .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE)));
+            OffsetDateTime expiry = ValueUtils.fromUtc((BArray) expiryValue);
+            sdkValues = shareScope
+                    ? new ShareServiceSasSignatureValues(expiry, sharePermissions(permissions))
+                    : new ShareServiceSasSignatureValues(expiry, filePermissions(permissions));
         }
         applyCommon(values, sdkValues::setStartTime, sdkValues::setProtocol, sdkValues::setSasIpRange);
-        String identifier = ValueUtils.optString(values, IDENTIFIER);
-        if (identifier != null) {
-            sdkValues.setIdentifier(identifier);
-        }
         return sdkValues;
+    }
+
+    private static ShareSasPermission sharePermissions(BMap<BString, Object> permissions) {
+        return new ShareSasPermission()
+                .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
+                .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
+                .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
+                .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE))
+                .setListPermission(permissions.getBooleanValue(PERMISSION_LIST));
+    }
+
+    private static ShareFileSasPermission filePermissions(BMap<BString, Object> permissions) {
+        return new ShareFileSasPermission()
+                .setReadPermission(permissions.getBooleanValue(PERMISSION_READ))
+                .setCreatePermission(permissions.getBooleanValue(PERMISSION_CREATE))
+                .setWritePermission(permissions.getBooleanValue(PERMISSION_WRITE))
+                .setDeletePermission(permissions.getBooleanValue(PERMISSION_DELETE));
     }
 
     private static void applyCommon(BMap<BString, Object> values,

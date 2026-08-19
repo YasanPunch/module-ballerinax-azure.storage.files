@@ -1,5 +1,0 @@
-[package]
-org = "azure_files_test"
-name = "valid_on_file_json_map_array"
-version = "0.9.0"
-distribution = "2201.12.0"

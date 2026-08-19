@@ -50,8 +50,7 @@ public final class ErrorMapper {
                     "AuthorizationPermissionMismatch", "AuthorizationSourceIPMismatch", "AuthorizationProtocolMismatch",
                     "AuthorizationServiceMismatch", "AuthorizationResourceTypeMismatch", "InvalidAuthenticationInfo",
                     "AccountIsDisabled");
-    private static final Set<String> QUOTA_CODES =
-            Set.of("ShareSizeLimitReached", "SmbShareFull");
+    private static final Set<String> QUOTA_CODES = Set.of("ShareSizeLimitReached", "SmbShareFull");
 
     /**
      * Converts a service exception into the matching typed Ballerina error.
@@ -84,6 +83,6 @@ public final class ErrorMapper {
         if ("InvalidRange".equals(code)) {
             return "RangeNotSatisfiableError";
         }
-        return "Error";
+        return "ServiceError";
     }
 }

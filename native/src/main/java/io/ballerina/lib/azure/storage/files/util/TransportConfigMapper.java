@@ -217,8 +217,8 @@ public final class TransportConfigMapper {
                 }
             });
         } catch (GeneralSecurityException | IOException e) {
-            throw FilesErrorCreator.processingError(
-                    "invalid secureSocket configuration: " + SdkInvoker.describe(e), e);
+            throw FilesErrorCreator.clientError(
+                    "invalid secureSocket configuration: " + BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -232,7 +232,7 @@ public final class TransportConfigMapper {
         Object cert = secureSocket.get(CERT);
         boolean validateRevocation = secureSocket.getBooleanValue(VALIDATE_REVOCATION);
         if (cert == null && validateRevocation) {
-            throw FilesErrorCreator.processingError(
+            throw FilesErrorCreator.clientError(
                     "validateRevocation requires trust material (`cert`) to validate against", null);
         }
         if (cert == null) {
@@ -255,10 +255,8 @@ public final class TransportConfigMapper {
         TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance("PKIX");
         if (validateRevocation) {
             CertPathBuilder certPathBuilder = CertPathBuilder.getInstance("PKIX");
-            PKIXRevocationChecker revocationChecker =
-                    (PKIXRevocationChecker) certPathBuilder.getRevocationChecker();
-            PKIXBuilderParameters pkixParameters =
-                    new PKIXBuilderParameters(trustStore, new X509CertSelector());
+            PKIXRevocationChecker revocationChecker = (PKIXRevocationChecker) certPathBuilder.getRevocationChecker();
+            PKIXBuilderParameters pkixParameters = new PKIXBuilderParameters(trustStore, new X509CertSelector());
             pkixParameters.addCertPathChecker(revocationChecker);
             trustManagerFactory.init(new CertPathTrustManagerParameters(pkixParameters));
         } else {
@@ -280,20 +278,17 @@ public final class TransportConfigMapper {
             String keyFile = keyRecord.getStringValue(KEY_FILE).getValue();
             requireFile(certFile, "key.certFile");
             requireFile(keyFile, "key.keyFile");
-            sslBuilder.keyManager(new File(certFile), new File(keyFile),
-                    ValueUtils.optString(keyRecord, KEY_PASSWORD));
+            sslBuilder.keyManager(new File(certFile), new File(keyFile), ValueUtils.optString(keyRecord, KEY_PASSWORD));
             return;
         }
         String password = keyRecord.getStringValue(PASSWORD).getValue();
         KeyStore keyStore = loadKeyStore(keyRecord.getStringValue(STORE_PATH).getValue(), password);
-        KeyManagerFactory keyManagerFactory =
-                KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
         keyManagerFactory.init(keyStore, password.toCharArray());
         sslBuilder.keyManager(keyManagerFactory);
     }
 
-    private static KeyStore loadKeyStore(String path, String password)
-            throws GeneralSecurityException, IOException { 
+    private static KeyStore loadKeyStore(String path, String password) throws GeneralSecurityException, IOException {
         requireFile(path, "store path");
         for (String type : new String[] {"PKCS12", "JKS"}) {
             KeyStore store = KeyStore.getInstance(type);
@@ -304,7 +299,7 @@ public final class TransportConfigMapper {
                 // Wrong store format (or password); try the next type before giving up.
             }
         }
-        throw FilesErrorCreator.processingError(
+        throw FilesErrorCreator.clientError(
                 "cannot load the certificate store at " + path + " as PKCS12 or JKS (check the password)", null);
     }
 
@@ -315,7 +310,7 @@ public final class TransportConfigMapper {
         try (InputStream input = new FileInputStream(pemPath)) {
             Collection<? extends Certificate> certificates = factory.generateCertificates(input);
             if (certificates.isEmpty()) {
-                throw FilesErrorCreator.processingError("no certificates found in " + pemPath, null);
+                throw FilesErrorCreator.clientError("no certificates found in " + pemPath, null);
             }
             int index = 0;
             for (Certificate certificate : certificates) {
@@ -327,8 +322,7 @@ public final class TransportConfigMapper {
 
     private static void requireFile(String path, String fieldName) {
         if (!new File(path).isFile()) {
-            throw FilesErrorCreator.processingError(
-                    fieldName + " does not point to a readable file: " + path, null);
+            throw FilesErrorCreator.clientError(fieldName + " does not point to a readable file: " + path, null);
         }
     }
 

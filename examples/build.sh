@@ -66,7 +66,8 @@ for dir in "$BAL_EXAMPLES_DIR"/*/; do
   fi
 done
 
-# Remove generated JAR files
-find "$BAL_HOME_DIR" -maxdepth 2 -type f -name "*.jar" | while read -r JAR_FILE; do
+# Remove generated JAR files at the package root only: the path-based platform jars live
+# in lib/ and the build needs them (the template's maxdepth 1, not 2).
+find "$BAL_HOME_DIR" -maxdepth 1 -type f -name "*.jar" | while read -r JAR_FILE; do
   rm "$JAR_FILE"
 done

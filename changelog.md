@@ -6,10 +6,10 @@ This file documents all notable changes to the Ballerina Azure Files package. Th
 
 ### Added
 
-- Initial `Client` and `AdminClient` surface: share, directory, file, transfer, copy, and range operations, plus leases, snapshots, SMB handles, access policies, SDDL share permissions, SAS generation, NFS links, and service properties
+- Initial `Client` and `AdminClient` surface: share, directory, file, transfer, copy, and range operations, plus share snapshots, SAS generation, and account service configuration
 - Shared key, SAS token, SAS URL, connection string, and Microsoft Entra ID authentication, with configurable retry, proxy, connection-pool, and TLS transport settings
 - A polling `Listener` and `Caller` for event-style consumption: the listener watches the path given by the service's attach point (the share root when absent) and dispatches each present file to a content handler (`onFile`, or the typed `onFileText`, `onFileJson`, `onFileXml`, and `onFileCsv` variants) by file extension, with optional `@files:ServiceConfig` filters and `@files:FunctionConfig` auto-consume actions (delete or move)
-- Typed content binding through the Ballerina data modules, with XML and CSV record binding, byte and CSV stream content forms, a `laxDataBinding` option, and fail-safe CSV processing (`csvFailSafe`) that quarantines malformed records to an error log
+- Typed content binding through the Ballerina data modules, following the shared file-modules databinding contract: matching `UploadContent` and `RetrievableType` unions (`byte[]`, `string`, `json`, `xml`, records, record arrays, and the byte and CSV record stream forms), format resolution from a `fileFormat` override or the path extension, records-only CSV binding, and a `laxDataBinding` option on the listener
 - An optional `onError` service handler notified of poll failures (as typed errors) and content-binding failures, alongside poll errors surfacing through the listener's log
 - A compiler plugin that validates a listener service at compile time (a valid content-handler set, each handler's signature, and the listener annotations)
 - A test suite that runs against an in-process mock of the Azure Files REST service without credentials, and against a live storage account when credentials are configured

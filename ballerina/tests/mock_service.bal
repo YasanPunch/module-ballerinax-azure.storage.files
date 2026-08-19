@@ -38,7 +38,6 @@ type MockFile record {|
     string lastModified;
     string copyId?;
     string? leaseId = ();
-    string? linkText = ();
 |};
 
 // The current time in the RFC 1123 shape Azure uses for Last-Modified.
@@ -60,8 +59,6 @@ type MockShare record {|
     map<MockDir> dirs = {};
     string? leaseId = ();
     string leaseDuration = "infinite";
-    string aclXml = "<?xml version=\"1.0\" encoding=\"utf-8\"?><SignedIdentifiers />";
-    map<string> permissions = {};
 |};
 
 type MockResponse record {|
@@ -77,14 +74,20 @@ map<MockShare> mockDeletedShares = {};
 map<MockShare> mockShareSnapshots = {};
 int mockEtagCounter = 0;
 int mockCopyCounter = 0;
-int mockLeaseCounter = 0;
 int mockSnapshotCounter = 0;
-int mockPermissionCounter = 0;
 string mockServicePropsXml = string `<?xml version="1.0" encoding="utf-8"?><StorageServiceProperties />`;
 // Forced listing-fault hook for the listener poll-failure tests: while the code is set,
 // every directory listing fails with it (and mockListFaultStatus) until cleared.
 string? mockListFaultCode = ();
 int mockListFaultStatus = 403;
+// Every request appends "METHOD /segments comp=<comp> host=<host header>" here; tests
+// filter by their unique share name and clear the log by assignment.
+string[] mockRequestLog = [];
+// Count-based fault hook: while positive, each incoming request (any operation) consumes
+// one count and fails with the configured status and code.
+int mockFaultRemaining = 0;
+int mockFaultStatus = 500;
+string mockFaultCode = "InternalError";
 
 function snapshotKey(string shareName, string snapshotId) returns string {
     return shareName + "\n" + snapshotId;
@@ -144,10 +147,18 @@ service / on mockListener {
 function dispatch(string method, string[] segments, string comp, string restype,
         string include, string prefix, string snapshotParam, string prevSnapshotParam,
         map<string> headers, byte[] payload) returns MockResponse {
-    // Forced-error escape hatch for the error-mapping tests.
-    foreach string segment in segments {
-        if segment.startsWith("__err-") {
-            string[] parts = re `-`.split(segment);
+    mockRequestLog.push(method + " /" + string:'join("/", ...segments) + " comp=" + comp
+            + " host=" + (headers["host"] ?: ""));
+    if mockFaultRemaining > 0 {
+        mockFaultRemaining -= 1;
+        return errorResponse(mockFaultStatus, mockFaultCode);
+    }
+    // Forced-error escape hatch for the error-mapping tests. Splits on "/" as well because
+    // the SDK encodes the slashes of a nested file path, so several path components can
+    // arrive inside one decoded segment.
+    foreach string component in re `/`.split(string:'join("/", ...segments)) {
+        if component.startsWith("__err-") {
+            string[] parts = re `-`.split(component);
             if parts.length() >= 3 {
                 int status = checkpanic int:fromString(parts[1]);
                 return errorResponse(status, parts[2]);
@@ -183,14 +194,12 @@ function dispatch(string method, string[] segments, string comp, string restype,
     // restype=directory must win over the one-segment share fallback: a root-directory
     // listing addresses /{share}?restype=directory&comp=list with a single segment.
     if restype == "directory" {
-        return directoryDispatch(method, shareName, path, comp, include, prefix,
-                snapshotParam, headers);
+        return directoryDispatch(method, shareName, path, comp, include, prefix, snapshotParam, headers);
     }
     if restype == "share" || (segments.length() == 1 && comp != "") {
         return shareDispatch(method, shareName, comp, snapshotParam, headers, payload);
     }
-    return fileDispatch(method, shareName, path, comp, restype, snapshotParam,
-            prevSnapshotParam, headers, payload);
+    return fileDispatch(method, shareName, path, comp, restype, snapshotParam, prevSnapshotParam, headers, payload);
 }
 
 function extractTag(string body, string tag) returns string {
@@ -320,75 +329,10 @@ function shareDispatch(string method, string shareName, string comp, string snap
         _ = mockShareSnapshots.remove(snapshotKey(shareName, snapshotParam));
         return okResponse(202);
     }
-    if method == "PUT" && comp == "lease" {
-        [MockResponse, string?, boolean] [response, newLeaseId, apply] = leaseAction(share.leaseId, headers);
-        if apply {
-            share.leaseId = newLeaseId;
-            if (headers["x-ms-lease-action"] ?: "") == "acquire" {
-                share.leaseDuration = (headers["x-ms-lease-duration"] ?: "-1") == "-1"
-                    ? "infinite" : "fixed";
-            }
-        }
-        return response;
-    }
     if method == "PUT" && comp == "metadata" {
         share.metadata = metadataFrom(headers);
         share.etag = nextEtag();
         return okResponse(200);
-    }
-    if method == "PUT" && comp == "properties" {
-        string? quota = headers["x-ms-share-quota"];
-        if quota is string {
-            share.quota = checkpanic int:fromString(quota);
-        }
-        string? tier = headers["x-ms-access-tier"];
-        if tier is string {
-            share.accessTier = tier;
-        }
-        share.etag = nextEtag();
-        return okResponse(200);
-    }
-    if comp == "acl" {
-        if method == "PUT" {
-            share.aclXml = checkpanic string:fromBytes(payload);
-            return okResponse(200);
-        }
-        return {
-            status: 200,
-            headers: {"x-ms-request-id": "mock"},
-            body: share.aclXml.toBytes(),
-            contentType: "application/xml"
-        };
-    }
-    if comp == "filepermission" {
-        if method == "PUT" {
-            string bodyText = checkpanic string:fromBytes(payload);
-            json body = checkpanic bodyText.fromJsonString();
-            if body is map<json> && body["permission"] is string {
-                mockPermissionCounter += 1;
-                string key = string `mock-permission-key-${mockPermissionCounter}`;
-                share.permissions[key] = <string>body["permission"];
-                return okResponse(201, {"x-ms-file-permission-key": key});
-            }
-            return errorResponse(400, "InvalidHeaderValue");
-        }
-        string requestedKey = headers["x-ms-file-permission-key"] ?: "";
-        string? sddl = share.permissions[requestedKey];
-        if sddl is () {
-            return errorResponse(404, "ResourceNotFound");
-        }
-        return {
-            status: 200,
-            headers: {"x-ms-request-id": "mock"},
-            body: string `{"permission":${sddl.toJsonString()}}`.toBytes(),
-            contentType: "application/json"
-        };
-    }
-    if comp == "listhandles" {
-        return listHandlesResponse(share, "");
-    }
-    if method == "PUT" && comp == "forceclosehandles" {
-        return forceCloseHandlesResponse(share, "");
     }
     if (method == "GET" || method == "HEAD") && comp == "stats" {
         int usage = 0;
@@ -430,8 +374,7 @@ function listSharesResponse(string prefix, string include) returns MockResponse 
             foreach [string, MockShare] [key, snapshotShare] in mockShareSnapshots.entries() {
                 string[] parts = re `\n`.split(key);
                 if parts[0] == name {
-                    entries += shareElement(name, snapshotShare, false,
-                            include.includes("metadata"), parts[1]);
+                    entries += shareElement(name, snapshotShare, false, include.includes("metadata"), parts[1]);
                 }
             }
         }
@@ -479,8 +422,7 @@ function directoryDispatch(string method, string shareName, string path, string 
         returns MockResponse {
     MockShare? resolved = resolveShare(shareName, snapshotParam);
     if resolved is () {
-        return errorResponse(404,
-                snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
+        return errorResponse(404, snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
     }
     MockShare share = resolved;
     if method == "PUT" && comp == "rename" {
@@ -505,23 +447,6 @@ function directoryDispatch(string method, string shareName, string path, string 
         dir.etag = nextEtag();
         return okResponse(200);
     }
-    if method == "PUT" && comp == "properties" {
-        if path != "" && !share.dirs.hasKey(path) {
-            return errorResponse(404, "ResourceNotFound");
-        }
-        // Azure requires a directory's attribute set to include the Directory flag.
-        string attributes = headers["x-ms-file-attributes"] ?: "";
-        if attributes != "" && !attributes.includes("Directory") {
-            return errorResponse(400, "InvalidHeaderValue");
-        }
-        return okResponse(200);
-    }
-    if comp == "listhandles" {
-        return listHandlesResponse(share, path);
-    }
-    if method == "PUT" && comp == "forceclosehandles" {
-        return forceCloseHandlesResponse(share, path);
-    }
     if method == "GET" && comp == "list" {
         string? faultCode = mockListFaultCode;
         if faultCode is string {
@@ -530,7 +455,7 @@ function directoryDispatch(string method, string shareName, string path, string 
         return listDirectoryResponse(shareName, share, path, prefix, include);
     }
     if method == "GET" || method == "HEAD" {
-        map<string> extra = {"x-ms-server-encrypted": "true", "x-ms-file-attributes": "Directory"};
+        map<string> extra = {"x-ms-server-encrypted": "true"};
         string etag = nextEtag();
         if path != "" {
             MockDir dir = share.dirs.get(path);
@@ -603,58 +528,14 @@ function fileDispatch(string method, string shareName, string path, string comp,
         byte[] payload) returns MockResponse {
     MockShare? resolved = resolveShare(shareName, snapshotParam);
     if resolved is () {
-        return errorResponse(404,
-                snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
+        return errorResponse(404, snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
     }
     MockShare share = resolved;
-    if restype == "hardlink" && method == "PUT" {
-        // The target header is the share-relative path of the existing file, not including
-        // the share name (a leading slash, if any, is tolerated).
-        string targetHeader = checkpanic url:decode(headers["x-ms-file-target-file"] ?: "", "UTF-8");
-        string targetKey = targetHeader.startsWith("/") ? targetHeader.substring(1) : targetHeader;
-        if !share.files.hasKey(targetKey) {
-            return errorResponse(404, "ResourceNotFound");
-        }
-        // Storing the same record makes both paths one file, which is what a hard link is.
-        share.files[path] = share.files.get(targetKey);
-        return okResponse(201);
-    }
-    if restype == "symboliclink" {
-        if method == "PUT" {
-            share.files[path] = {
-                size: 0,
-                content: [],
-                metadata: metadataFrom(headers),
-                contentHeaders: {},
-                etag: nextEtag(),
-                lastModified: rfcNow(),
-                // The SDK sends the link text raw in this header; store it verbatim.
-                linkText: headers["x-ms-link-text"] ?: ""
-            };
-            return okResponse(201);
-        }
-        MockFile? linkFile = share.files[path];
-        if linkFile is () {
-            return errorResponse(404, "ResourceNotFound");
-        }
-        string? linkText = linkFile.linkText;
-        if linkText is () {
-            return errorResponse(409, "InvalidResourceType");
-        }
-        // Azure serves the link text percent-encoded.
-        return okResponse(200, {"x-ms-link-text": checkpanic url:encode(linkText, "UTF-8")});
-    }
     if method == "PUT" && comp == "rename" {
         return renameEntry(share, shareName, path, headers, false);
     }
     if method == "PUT" && comp == "range" {
         return putRange(share, path, headers, payload);
-    }
-    if comp == "listhandles" {
-        return listHandlesResponse(share, path);
-    }
-    if method == "PUT" && comp == "forceclosehandles" {
-        return forceCloseHandlesResponse(share, path);
     }
     if method == "PUT" && comp == "copy" {
         // Abort copy: every mock copy completes synchronously, so there is nothing pending.
@@ -691,13 +572,6 @@ function fileDispatch(string method, string shareName, string path, string comp,
         return errorResponse(404, "ResourceNotFound");
     }
     MockFile file = share.files.get(path);
-    if method == "PUT" && comp == "lease" {
-        [MockResponse, string?, boolean] [response, newLeaseId, apply] = leaseAction(file.leaseId, headers);
-        if apply {
-            file.leaseId = newLeaseId;
-        }
-        return response;
-    }
     if method == "PUT" && comp == "metadata" {
         file.metadata = metadataFrom(headers);
         file.etag = nextEtag();
@@ -802,44 +676,7 @@ function fileHeaders(MockFile file) returns map<string> {
     return result;
 }
 
-// The shared lease protocol: one PUT with an x-ms-lease-action header drives the whole
-// lifecycle. Returns the response, the lease id after the action, and whether to apply it.
-function leaseAction(string? current, map<string> headers) returns [MockResponse, string?, boolean] {
-    string action = headers["x-ms-lease-action"] ?: "";
-    if action == "acquire" {
-        if current is string {
-            return [errorResponse(409, "LeaseAlreadyPresent"), (), false];
-        }
-        mockLeaseCounter += 1;
-        string id = headers["x-ms-proposed-lease-id"] ?: string `mock-lease-${mockLeaseCounter}`;
-        return [okResponse(201, {"x-ms-lease-id": id}), id, true];
-    }
-    if current is () {
-        return [errorResponse(409, "LeaseNotPresentWithLeaseOperation"), (), false];
-    }
-    if action == "break" {
-        string breakPeriod = headers["x-ms-lease-break-period"] ?: "0";
-        return [okResponse(202, {"x-ms-lease-time": breakPeriod}), (), true];
-    }
-    string presented = headers["x-ms-lease-id"] ?: "";
-    if presented != current {
-        return [errorResponse(409, "LeaseIdMismatchWithLeaseOperation"), (), false];
-    }
-    if action == "renew" {
-        return [okResponse(200, {"x-ms-lease-id": current}), current, true];
-    }
-    if action == "release" {
-        return [okResponse(200), (), true];
-    }
-    if action == "change" {
-        string proposed = headers["x-ms-proposed-lease-id"] ?: current;
-        return [okResponse(200, {"x-ms-lease-id": proposed}), proposed, true];
-    }
-    return [errorResponse(400, "InvalidHeaderValue"), (), false];
-}
-
-function downloadOrProps(string method, MockFile file, map<string> headers)
-        returns MockResponse {
+function downloadOrProps(string method, MockFile file, map<string> headers) returns MockResponse {
     map<string> responseHeaders = fileHeaders(file);
     if method == "HEAD" {
         // The listener recomputes Content-Length from the entity, so the properties response
@@ -863,8 +700,7 @@ function downloadOrProps(string method, MockFile file, map<string> headers)
     return {status: 206, headers: responseHeaders, body: slice};
 }
 
-function putRange(MockShare share, string path, map<string> headers, byte[] payload)
-        returns MockResponse {
+function putRange(MockShare share, string path, map<string> headers, byte[] payload) returns MockResponse {
     if !share.files.hasKey(path) {
         return errorResponse(404, "ResourceNotFound");
     }
@@ -900,37 +736,6 @@ function rangeListResponse(MockFile file) returns MockResponse {
     return xmlResponse(string `<Ranges>${ranges}</Ranges>`);
 }
 
-// SMB handles: any file whose name is held.txt reports one canned open handle; everything
-// else reports none. Enough to exercise listing, per-handle close, and recursive close.
-function heldHandlePaths(MockShare share, string path) returns string[] {
-    if share.files.hasKey(path) {
-        return path.endsWith("held.txt") ? [path] : [];
-    }
-    string[] matches = [];
-    foreach string filePath in share.files.keys() {
-        if filePath.endsWith("held.txt") && (path == "" || filePath.startsWith(path + "/")) {
-            matches.push(filePath);
-        }
-    }
-    return matches;
-}
-
-function listHandlesResponse(MockShare share, string path) returns MockResponse {
-    string entries = "";
-    foreach string heldPath in heldHandlePaths(share, path) {
-        entries += string `<Handle><HandleId>1</HandleId><Path>${heldPath}</Path><FileId>2</FileId><SessionId>3</SessionId><ClientIp>10.0.0.1</ClientIp><OpenTime>${LAST_MODIFIED}</OpenTime></Handle>`;
-    }
-    return xmlResponse(string `<EnumerationResults><Entries>${entries}</Entries><NextMarker /></EnumerationResults>`);
-}
-
-function forceCloseHandlesResponse(MockShare share, string path) returns MockResponse {
-    int closed = heldHandlePaths(share, path).length();
-    return okResponse(200, {
-        "x-ms-number-of-handles-closed": closed.toString(),
-        "x-ms-number-of-handles-failed": "0"
-    });
-}
-
 // Byte-scan diff between the live file and its snapshot baseline: contiguous regions where
 // the live content differs and is nonzero become Ranges, regions where snapshot content was
 // overwritten with zeros become ClearRanges.
@@ -951,8 +756,7 @@ function rangeDiffResponse(MockFile live, MockFile? baseline) returns MockRespon
             ranges += string `<Range><Start>${rangeStart}</Start><End>${i - 1}</End></Range>`;
         } else if liveByte == 0 && snapByte != 0 {
             int clearStart = i;
-            while i < live.size && live.content[i] == 0
-                    && (i < snapContent.length() ? snapContent[i] : 0) != 0 {
+            while i < live.size && live.content[i] == 0 && (i < snapContent.length() ? snapContent[i] : 0) != 0 {
                 i += 1;
             }
             clearRanges += string `<ClearRange><Start>${clearStart}</Start><End>${i - 1}</End></ClearRange>`;

@@ -16,28 +16,26 @@
 
 import ballerina/jballerina.java;
 
-// ---------------------------------------------------------------------------
-// Client lifecycle
-// ---------------------------------------------------------------------------
-
-isolated function initAdminClient(AdminClient adminClient, ClientConfiguration config)
-        returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.util.ClientInit"
+isolated function initAdminClient(AdminClient adminClient, ClientConfiguration config) returns Error? = @java:Method {
+    'class: "io.ballerina.lib.azure.storage.files.client.ClientInit"
 } external;
 
 isolated function initClient(Client fileClient, string shareName, ClientConfiguration config)
         returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.util.ClientInit"
+    'class: "io.ballerina.lib.azure.storage.files.client.ClientInit"
 } external;
 
-isolated function readFileBytes(Client fileClient, string path, DownloadOptions? options)
-        returns byte[]|Error = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
+// Writes already-serialized upload content; record content is serialized in Ballerina
+// before reaching this call (see Client.upload).
+isolated function externUpload(Client fileClient, byte[]|string|xml|string[][] content,
+        string destinationPath, UploadContentOptions? options) returns Error? = @java:Method {
+    name: "upload", 'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;
 
-// ---------------------------------------------------------------------------
-// Stream upload plumbing
-// ---------------------------------------------------------------------------
+// The Azure Files Put Range cap: one range write is at most 4 MiB, HTTP 413 above it
+// (learn.microsoft.com/rest/api/storageservices/put-range). Buffered source chunks flush
+// at this size.
+const int MAX_RANGE_BYTES = 4 * 1024 * 1024;
 
 isolated function prepareStreamUpload(Client fileClient, string destinationPath, int contentLength,
         UploadOptions? options) returns Error? = @java:Method {
@@ -49,9 +47,11 @@ isolated function writeStreamChunk(Client fileClient, string destinationPath, in
     'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
 } external;
 
-// ---------------------------------------------------------------------------
-// Entry listing stream
-// ---------------------------------------------------------------------------
+# One entry of the listing stream returned by `Client.list`.
+type ListStreamEntry record {|
+    # The listed entry
+    Entry value;
+|};
 
 # Backs the lazy stream returned by `Client.list`, pulling one entry per pull.
 isolated class EntryStreamGenerator {
@@ -59,7 +59,7 @@ isolated class EntryStreamGenerator {
     # Pulls the next listed entry from the service-backed iterator.
     #
     # + return - The next `Entry`, `()` when the listing is exhausted, or an `Error`
-    public isolated function next() returns record {|Entry value;|}|Error? {
+    public isolated function next() returns ListStreamEntry|Error? {
         Entry|Error? entry = nextEntry(self);
         if entry is Entry {
             return {value: entry};
@@ -88,17 +88,13 @@ isolated function closeEntryIterator(EntryStreamGenerator generator) returns Err
     'class: "io.ballerina.lib.azure.storage.files.client.ListOps"
 } external;
 
-// ---------------------------------------------------------------------------
-// Content download stream
-// ---------------------------------------------------------------------------
-
-# Backs the lazy byte stream returned by `Client.getFileContent`.
+# Backs the lazy byte stream a `Client.getFile` stream target returns.
 isolated class ContentStreamGenerator {
 
     # Reads the next chunk of the file content.
     #
     # + return - The next chunk, `()` at the end of the content, or an `Error`
-    public isolated function next() returns record {|byte[] value;|}|Error? {
+    public isolated function next() returns ContentStreamEntry|Error? {
         byte[]|Error? chunk = nextContentChunk(self);
         if chunk is byte[] {
             return {value: chunk};
@@ -113,11 +109,6 @@ isolated class ContentStreamGenerator {
         return closeContentStream(self);
     }
 }
-
-isolated function openContentStream(Client fileClient, ContentStreamGenerator generator,
-        string path, DownloadOptions? options) returns Error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
-} external;
 
 isolated function nextContentChunk(ContentStreamGenerator generator) returns byte[]|Error? = @java:Method {
     'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"

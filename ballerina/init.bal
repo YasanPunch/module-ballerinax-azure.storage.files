@@ -16,7 +16,6 @@
 
 import ballerina/jballerina.java;
 
-// Captures the module reference for the native layer during module initialization.
 function init() {
     setModule();
 }

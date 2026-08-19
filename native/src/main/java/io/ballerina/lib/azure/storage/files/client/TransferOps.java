@@ -21,18 +21,15 @@ package io.ballerina.lib.azure.storage.files.client;
 import com.azure.storage.file.share.ShareFileClient;
 import com.azure.storage.file.share.StorageFileInputStream;
 import com.azure.storage.file.share.models.ShareFileUploadRangeOptions;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
-import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.creators.ValueCreator;
 import io.ballerina.runtime.api.types.ArrayType;
-import io.ballerina.runtime.api.types.Type;
-import io.ballerina.runtime.api.utils.StringUtils;
+import io.ballerina.runtime.api.types.TypeTags;
 import io.ballerina.runtime.api.utils.TypeUtils;
 import io.ballerina.runtime.api.values.BArray;
-import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
 import io.ballerina.runtime.api.values.BString;
 import io.ballerina.runtime.api.values.BXml;
@@ -59,24 +56,28 @@ public final class TransferOps {
     private TransferOps() {
     }
 
-    /** The service's maximum size for one range write: 4 MiB. */
+    /**
+     * The service's maximum size for one range write: 4 MiB. Put Range rejects larger ranges
+     * with HTTP 413 (learn.microsoft.com/rest/api/storageservices/put-range); the SDK exposes
+     * no public constant for the limit.
+     */
     private static final int MAX_RANGE_BYTES = 4 * 1024 * 1024;
     /** The chunk size handed to Ballerina byte-stream consumers. */
     private static final int READ_CHUNK_BYTES = 64 * 1024;
 
     /** Uploads a local file to the share, creating the destination at the source's size. */
-    public static Object uploadFile(Environment env, BObject self, BString sourcePath,
+    public static Object uploadFromFile(Environment env, BObject self, BString sourcePath,
                                     BString destinationPath, Object options) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             Path localPath = Path.of(sourcePath.getValue());
             long size;
             try {
                 size = Files.size(localPath);
             } catch (NoSuchFileException e) {
-                throw FilesErrorCreator.processingError(
+                throw FilesErrorCreator.clientError(
                         "local file not found: " + sourcePath.getValue(), e);
             } catch (IOException e) {
-                throw FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+                throw FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
             }
             ShareFileClient client = FileOps.fileClient(self, destinationPath);
             client.createWithResponse(FileOps.createOptions(size, options), null, null);
@@ -85,10 +86,13 @@ public final class TransferOps {
         });
     }
 
-    /** Uploads in-memory content (bytes, string, XML, or JSON) as a new file. */
-    public static Object uploadContent(Environment env, BObject self, Object content,
+    /**
+     * Uploads in-memory content (bytes, text, an XML document, or CSV rows) as a new file.
+     * Record content never reaches this call: it is serialized on the Ballerina side first.
+     */
+    public static Object upload(Environment env, BObject self, Object content,
                                        BString destinationPath, Object options) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             byte[] bytes = contentBytes(content);
             ShareFileClient client = FileOps.fileClient(self, destinationPath);
             client.createWithResponse(FileOps.createOptions(bytes.length, options), null, null);
@@ -102,7 +106,7 @@ public final class TransferOps {
     /** Creates the pre-allocated destination file for a stream upload. */
     public static Object prepareStreamUpload(Environment env, BObject self, BString destinationPath,
                                              long contentLength, Object options) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             FileOps.fileClient(self, destinationPath)
                     .createWithResponse(FileOps.createOptions(contentLength, options), null, null);
             return null;
@@ -112,7 +116,7 @@ public final class TransferOps {
     /** Writes one stream chunk at the given offset, splitting it into service-compliant ranges. */
     public static Object writeStreamChunk(Environment env, BObject self, BString destinationPath,
                                           long offset, BArray chunk) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             byte[] bytes = chunk.getBytes();
             ShareFileClient client = FileOps.fileClient(self, destinationPath);
             long position = offset;
@@ -131,29 +135,22 @@ public final class TransferOps {
     }
 
     /** Downloads a share file (or a range of it) to a local file. */
-    public static Object downloadFile(Environment env, BObject self, BString sourcePath,
+    public static Object download(Environment env, BObject self, BString sourcePath,
                                       BString destinationPath, Object options) {
-        return SdkInvoker.invoke(env, () -> {
-            Object range = null;
-            String snapshotId = null;
-            if (options != null) {
-                @SuppressWarnings("unchecked")
-                BMap<BString, Object> record = (BMap<BString, Object>) options;
-                range = record.get(OptionsReader.RANGE);
-                snapshotId = ValueUtils.optString(record, OptionsReader.SNAPSHOT_ID);
-            }
-            ShareFileClient client = FileOps.fileClient(self, sourcePath, snapshotId);
+        return BallerinaAzureClient.invoke(env, () -> {
+            OptionsReader.DownloadArgs args = OptionsReader.downloadArgs(options);
+            ShareFileClient client = FileOps.fileClient(self, sourcePath, args.snapshotId());
             try {
-                if (range == null) {
+                if (args.range() == null) {
                     client.downloadToFile(destinationPath.getValue());
                 } else {
                     client.downloadToFileWithResponse(destinationPath.getValue(),
-                            OptionsReader.range(range), null, null);
+                            OptionsReader.range(args.range()), null, null);
                 }
             } catch (UncheckedIOException e) {
-                throw FilesErrorCreator.processingError(
+                throw FilesErrorCreator.clientError(
                         "cannot write local file " + destinationPath.getValue() + ": "
-                                + SdkInvoker.describe(e.getCause()),
+                                + BallerinaAzureClient.describe(e.getCause()),
                         e);
             }
             return null;
@@ -163,19 +160,12 @@ public final class TransferOps {
     /** Opens the file's content stream and stores it on the Ballerina stream generator object. */
     public static Object openContentStream(Environment env, BObject self, BObject generator,
                                            BString path, Object options) {
-        return SdkInvoker.invoke(env, () -> {
-            Object range = null;
-            String snapshotId = null;
-            if (options != null) {
-                @SuppressWarnings("unchecked")
-                BMap<BString, Object> record = (BMap<BString, Object>) options;
-                range = record.get(OptionsReader.RANGE);
-                snapshotId = ValueUtils.optString(record, OptionsReader.SNAPSHOT_ID);
-            }
-            ShareFileClient client = FileOps.fileClient(self, path, snapshotId);
-            StorageFileInputStream stream = range == null
+        return BallerinaAzureClient.invoke(env, () -> {
+            OptionsReader.DownloadArgs args = OptionsReader.downloadArgs(options);
+            ShareFileClient client = FileOps.fileClient(self, path, args.snapshotId());
+            StorageFileInputStream stream = args.range() == null
                     ? client.openInputStream()
-                    : client.openInputStream(OptionsReader.range(range));
+                    : client.openInputStream(OptionsReader.range(args.range()));
             generator.addNativeData(NATIVE_INPUT_STREAM, stream);
             return null;
         });
@@ -183,7 +173,7 @@ public final class TransferOps {
 
     /** Reads the next chunk from an open content stream; {@code null} signals the end. */
     public static Object nextContentChunk(Environment env, BObject generator) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             StorageFileInputStream stream =
                     (StorageFileInputStream) generator.getNativeData(NATIVE_INPUT_STREAM);
             if (stream == null) {
@@ -200,7 +190,7 @@ public final class TransferOps {
                 return ValueCreator.createArrayValue(chunk);
             } catch (IOException e) {
                 closeQuietly(generator);
-                throw FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+                throw FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
             }
         });
     }
@@ -212,8 +202,7 @@ public final class TransferOps {
     }
 
     private static void closeQuietly(BObject generator) {
-        StorageFileInputStream stream =
-                (StorageFileInputStream) generator.getNativeData(NATIVE_INPUT_STREAM);
+        StorageFileInputStream stream = (StorageFileInputStream) generator.getNativeData(NATIVE_INPUT_STREAM);
         if (stream != null) {
             generator.addNativeData(NATIVE_INPUT_STREAM, null);
             stream.close();
@@ -222,30 +211,24 @@ public final class TransferOps {
 
     private static byte[] contentBytes(Object content) {
         if (content instanceof BArray array) {
-            // Of the union's array members, only string[][] has an array element type; an empty
-            // literal lands on either branch, and both produce a zero-byte file.
-            Type elementType = TypeUtils.getReferredType(((ArrayType) TypeUtils.getReferredType(
-                    array.getType())).getElementType());
-            if (elementType instanceof ArrayType) {
-                return csvBytes(array);
+            // A byte-element array is raw content; every other list value is the string[][]
+            // CSV rows the Ballerina-side record serialization produces. An empty array
+            // serializes to a zero-byte file on either branch.
+            if (TypeUtils.getReferredType(array.getType()) instanceof ArrayType arrayType
+                    && TypeUtils.getReferredType(arrayType.getElementType()).getTag() == TypeTags.BYTE_TAG) {
+                return array.getBytes();
             }
-            return array.getBytes();
+            return csvBytes(array);
         }
         if (content instanceof BString string) {
             return string.getValue().getBytes(StandardCharsets.UTF_8);
         }
-        if (content instanceof BXml xml) {
-            return xml.toString().getBytes(StandardCharsets.UTF_8);
-        }
-        return StringUtils.getJsonString(content).getBytes(StandardCharsets.UTF_8);
+        return ((BXml) content).toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    // Serializes string[][] rows as CSV text (the data.csv module parses only, it does not
-    // serialize), in the dialect data.csv reads by default: a field is quoted when it contains
-    // a comma, quote, backslash, or line break, and embedded quotes and backslashes are
-    // backslash-escaped (data.csv's escapeChar default, not RFC 4180 quote doubling). Fields
-    // join with commas and rows with a newline, with no trailing newline, so an empty outer
-    // array yields a zero-byte file.
+    // Serializes CSV rows in the dialect data.csv reads by default: quote on comma, quote,
+    // backslash, or line break, with backslash escaping (not RFC 4180 quote doubling); no
+    // trailing newline, so an empty outer array yields a zero-byte file.
     private static byte[] csvBytes(BArray rows) {
         StringBuilder csv = new StringBuilder();
         for (int i = 0; i < rows.size(); i++) {

@@ -22,9 +22,9 @@ import com.azure.storage.file.share.ShareClient;
 import com.azure.storage.file.share.ShareDirectoryClient;
 import com.azure.storage.file.share.models.ShareFileItem;
 import com.azure.storage.file.share.options.ShareListFilesAndDirectoriesOptions;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BMap;
@@ -49,19 +49,19 @@ public final class ListOps {
 
     /**
      * Attaches a fresh listing iterator to the Ballerina stream generator object. Runs off the
-     * scheduler via {@link SdkInvoker#invoke} because the SDK's paged iterable fetches its first page
+     * scheduler via {@link BallerinaAzureClient#invoke} because the SDK's paged iterable fetches its first page
      * eagerly on construction.
      */
     public static Object newEntryIterator(Environment env, BObject self, BObject generator,
                                           BString directoryPath, BMap<BString, Object> options) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             String prefix = ValueUtils.optString(options, OptionsReader.PREFIX);
             boolean recursive = options.getBooleanValue(OptionsReader.RECURSIVE);
             Integer pageSize = Math.toIntExact((Long) options.get(OptionsReader.PAGE_SIZE));
             boolean extendedInfo = options.getBooleanValue(OptionsReader.INCLUDE_EXTENDED_INFO);
             String snapshotId = ValueUtils.optString(options, OptionsReader.SNAPSHOT_ID);
-            EntryIterator iterator = new EntryIterator(SdkInvoker.shareClient(self, snapshotId),
-                    SdkInvoker.directoryPath(directoryPath), prefix, recursive, pageSize, extendedInfo);
+            EntryIterator iterator = new EntryIterator(BallerinaAzureClient.getShareClient(self, snapshotId),
+                    BallerinaAzureClient.directoryPath(directoryPath), prefix, recursive, pageSize, extendedInfo);
             generator.addNativeData(NATIVE_ITERATOR, iterator);
             return null;
         });
@@ -69,7 +69,7 @@ public final class ListOps {
 
     /** Pulls the next entry: an {@code Entry} record, {@code null} at the end, or an error. */
     public static Object nextEntry(Environment env, BObject generator) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             EntryIterator iterator = (EntryIterator) generator.getNativeData(NATIVE_ITERATOR);
             return iterator == null ? null : iterator.next();
         });
@@ -114,8 +114,7 @@ public final class ListOps {
                 ShareFileItem item = current.items.next();
                 BMap<BString, Object> entry = RecordMapper.entry(item, current.path);
                 if (item.isDirectory() && recursive) {
-                    String childPath = current.path.isEmpty()
-                            ? item.getName() : current.path + "/" + item.getName();
+                    String childPath = current.path.isEmpty() ? item.getName() : current.path + "/" + item.getName();
                     frames.push(new Frame(childPath, listing(childPath)));
                 }
                 return entry;

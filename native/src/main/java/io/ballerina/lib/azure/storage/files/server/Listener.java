@@ -22,13 +22,14 @@ import com.azure.storage.file.share.ShareClient;
 import com.azure.storage.file.share.ShareDirectoryClient;
 import com.azure.storage.file.share.models.ShareFileItem;
 import com.azure.storage.file.share.models.ShareStorageException;
+import com.azure.storage.file.share.options.ShareFileRenameOptions;
 import com.azure.storage.file.share.options.ShareListFilesAndDirectoriesOptions;
 import com.azure.xml.XmlReader;
-import io.ballerina.lib.azure.storage.files.util.ErrorMapper;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
+import io.ballerina.lib.azure.storage.files.util.ContentBinder;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
 import io.ballerina.lib.azure.storage.files.util.ModuleUtils;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.Runtime;
 import io.ballerina.runtime.api.concurrent.StrandMetadata;
@@ -58,6 +59,7 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -75,20 +77,17 @@ import javax.xml.stream.XMLStreamException;
  * Ballerina side), and dispatches each present file to the matching content handler on a
  * virtual thread.
  */
-public final class ShareListenerAdaptor {
+public final class Listener {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ShareListenerAdaptor.class);
+    private static final Logger LOG = LoggerFactory.getLogger(Listener.class);
 
     // Native-data key under which the per-listener context is stored on the listener object.
     private static final String NATIVE_LISTENER_CONTEXT = "listenerContext";
 
     // The Caller type name, matched against a handler's second parameter type.
     private static final String CALLER_TYPE_NAME = "Caller";
-    // The Caller field holding the wrapped Client, whose SDK client the listener reuses.
-    private static final BString CALLER_CLIENT_FIELD = StringUtils.fromString("client");
 
     private static final BString LAX_DATA_BINDING = StringUtils.fromString("laxDataBinding");
-    private static final BString CSV_FAIL_SAFE = StringUtils.fromString("csvFailSafe");
     // The module-level Ballerina helper that binds CSV content on a real strand.
     private static final String BIND_CSV_CONTENT_FUNCTION = "bindCsvContent";
 
@@ -112,15 +111,25 @@ public final class ShareListenerAdaptor {
     private static final String ON_FILE_JSON = "onFileJson";
     private static final String ON_FILE_XML = "onFileXml";
     private static final String ON_FILE_CSV = "onFileCsv";
-    // The optional error-notification handler: not a content handler (no routing, no
-    // afterProcess/afterError semantics of its own).
+    // The optional error-notification handler: not a content handler (no routing), but it
+    // may carry afterProcess/afterError actions of its own for the binding-failure path.
     private static final String ON_ERROR = "onError";
-    private static final Set<String> HANDLER_NAMES =
-            Set.of(ON_FILE, ON_FILE_TEXT, ON_FILE_JSON, ON_FILE_XML, ON_FILE_CSV);
     private static final Map<String, String> EXTENSION_HANDLERS = Map.of(
             "json", ON_FILE_JSON, "xml", ON_FILE_XML, "csv", ON_FILE_CSV, "txt", ON_FILE_TEXT);
+    // Routing patterns are checked in this fixed order (the typed handlers, then the onFile
+    // catch-all), so overlapping patterns resolve the same way on every runtime, independent
+    // of method enumeration order.
+    private static final List<String> ROUTING_PATTERN_ORDER =
+            List.of(ON_FILE_TEXT, ON_FILE_JSON, ON_FILE_XML, ON_FILE_CSV, ON_FILE);
+    private static final Set<String> HANDLER_NAMES = Set.copyOf(ROUTING_PATTERN_ORDER);
+    // The binding-failure message contexts handed to the shared ContentBinder.
+    private static final String JSON_BIND_CONTEXT =
+            "content does not bind to the '" + ON_FILE_JSON + "' handler's declared type";
+    private static final String XML_BIND_CONTEXT =
+            "content does not bind to the '" + ON_FILE_XML + "' handler's declared type";
+    private static final String XML_PARSE_CONTEXT = "content is not valid XML for the '" + ON_FILE_XML + "' handler";
 
-    private ShareListenerAdaptor() {
+    private Listener() {
     }
 
     /**
@@ -138,31 +147,27 @@ public final class ShareListenerAdaptor {
     public static Object initListener(BObject listenerObj, BString shareName,
                                       BMap<BString, Object> config, BObject caller) {
         try {
-            // Every poll parses XML (directory-listing responses). azure-xml's XmlReader picks its
-            // StAX parser once per process, on whichever thread first touches the class, through a
-            // context-classloader lookup; a failure there is permanent (the class stays unusable).
-            // Parse one element here so that one-shot setup runs on the init thread, and any
-            // failure surfaces as an immediate typed init error instead of a dead poll loop.
+            // azure-xml's XmlReader picks its StAX parser once per process and a failure there is
+            // permanent; warming it up here surfaces that as a typed init error, not a dead poll loop.
             try (XmlReader ignored = XmlReader.fromString("<x/>")) {
                 // initialization only
             } catch (XMLStreamException | RuntimeException | Error e) {
-                return FilesErrorCreator.processingError("XML support could not be initialized: "
-                        + SdkInvoker.describe(e) + ". Retry initializing the listener.", e);
+                return FilesErrorCreator.clientError("XML support could not be initialized: "
+                        + BallerinaAzureClient.describe(e) + ". Retry initializing the listener.", e);
             }
 
-            BObject client = caller.getObjectValue(CALLER_CLIENT_FIELD);
-            listenerObj.addNativeData(SdkInvoker.NATIVE_SHARE_CLIENT, SdkInvoker.shareClient(client));
+            BObject client = caller.getObjectValue(BallerinaAzureClient.CALLER_CLIENT_FIELD);
+            listenerObj.addNativeData(BallerinaAzureClient.NATIVE_SHARE_CLIENT,
+                    BallerinaAzureClient.getShareClient(client));
 
             boolean laxDataBinding = Boolean.TRUE.equals(config.get(LAX_DATA_BINDING));
-            @SuppressWarnings("unchecked")
-            BMap<BString, Object> csvFailSafe = (BMap<BString, Object>) config.get(CSV_FAIL_SAFE);
             listenerObj.addNativeData(NATIVE_LISTENER_CONTEXT,
-                    new ListenerContext(caller, shareName.getValue(), laxDataBinding, csvFailSafe));
+                    new ListenerContext(caller, shareName.getValue(), laxDataBinding));
             return null;
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -170,17 +175,15 @@ public final class ShareListenerAdaptor {
      * Attaches the single service to the listener, reading its watch configuration and handlers.
      * A second attach fails: one service per listener.
      *
-     * @param env         the Ballerina runtime environment
      * @param listenerObj the Ballerina listener object
      * @param service     the service being attached
      * @param name        the name of the service
      * @return {@code null} on success, or the validation error
      */
-    public static Object attachService(Environment env, BObject listenerObj, BObject service, Object name) {
+    public static Object attachService(BObject listenerObj, BObject service, Object name) {
         ListenerContext ctx = context(listenerObj);
         if (ctx.service != null) {
-            return FilesErrorCreator.processingError(
-                    "Only one service can be attached to a files:Listener", null);
+            return FilesErrorCreator.clientError("Only one service can be attached to a files:Listener", null);
         }
         try {
             ctx.serviceContext = parseService(service, name);
@@ -189,22 +192,21 @@ public final class ShareListenerAdaptor {
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
         }
     }
 
     /**
      * Detaches the service from the listener.
      *
-     * @param env         the Ballerina runtime environment
      * @param listenerObj the Ballerina listener object
      * @param service     the service being detached
      * @return an error if the given service is not the attached one, otherwise {@code null}
      */
-    public static Object detachService(Environment env, BObject listenerObj, BObject service) {
+    public static Object detachService(BObject listenerObj, BObject service) {
         ListenerContext ctx = context(listenerObj);
-        if (ctx == null || ctx.service != service) {
-            return FilesErrorCreator.processingError("the given service is not attached to this listener", null);
+        if (ctx.service != service) {
+            return FilesErrorCreator.clientError("the given service is not attached to this listener", null);
         }
         ctx.service = null;
         ctx.serviceContext = null;
@@ -223,16 +225,18 @@ public final class ShareListenerAdaptor {
      * @return {@code null} on success, or the mapped scan error
      */
     public static Object poll(Environment env, BObject listenerObj) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             ListenerContext ctx = context(listenerObj);
-            if (ctx == null || ctx.stopped) {
+            // Captured once so a detach on another thread cannot null it mid-poll.
+            ServiceContext serviceContext = ctx.serviceContext;
+            if (ctx.stopped || serviceContext == null) {
                 return null;
             }
             ctx.runtime = env.getRuntime();
             try {
-                scan(listenerObj, ctx, ctx.serviceContext);
+                scan(listenerObj, ctx, serviceContext);
             } catch (Throwable e) {
-                BError mapped = mapScanFailure(e);
+                BError mapped = BallerinaAzureClient.mapFailure(e);
                 invokeOnError(ctx, mapped);
                 return mapped;
             }
@@ -240,55 +244,62 @@ public final class ShareListenerAdaptor {
         });
     }
 
-    // Maps a scan failure to the module's typed error: Azure service failures go through the
-    // code-keyed mapper, and anything else becomes a ProcessingError.
-    private static BError mapScanFailure(Throwable e) {
-        if (e instanceof ShareStorageException storageException) {
-            return ErrorMapper.toBError(storageException);
-        }
-        if (e instanceof BError bError) {
-            return bError;
-        }
-        return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+    // Invokes the optional onError handler on a virtual thread as a pure notification: any
+    // error it returns is printed and swallowed, and no post-processing applies.
+    private static void invokeOnError(ListenerContext ctx, BError error) {
+        invokeOnError(ctx, error, null, null, null, null, null);
     }
 
-    /**
-     * Invokes the service's optional {@code onError} handler with the given error, on a
-     * virtual thread. onError is a notification hook: its own failure is printed and swallowed,
-     * and it never alters the listener's consume behavior or polling cadence.
-     *
-     * @param ctx   the listener context
-     * @param error the error to hand to the handler
-     */
-    private static void invokeOnError(ListenerContext ctx, BError error) {
+    // Invokes the optional onError handler on a virtual thread. When post-process actions are
+    // given (the binding-failure path), onError's own afterProcess applies on a normal return
+    // and its afterError when the handler returns an error or panics. Returns true when that
+    // takeover thread started: it then owns the file's in-progress guard and releases it once
+    // the consume action has landed, so the caller must not release it.
+    private static boolean invokeOnError(ListenerContext ctx, BError error, BObject listenerObj,
+                                      PostAction afterProcess, PostAction afterError,
+                                      String path, String eTag) {
         BObject service = ctx.service;
         ServiceContext serviceContext = ctx.serviceContext;
         int arity = serviceContext == null ? 0 : serviceContext.onErrorArity();
         if (service == null || arity == 0 || ctx.stopped) {
-            return;
+            return false;
         }
         Thread.startVirtualThread(() -> {
-            ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
-            boolean isConcurrentSafe = serviceType.isIsolated() && serviceType.isIsolated(ON_ERROR);
-            StrandMetadata metadata = new StrandMetadata(isConcurrentSafe, null);
-            Object[] args = arity >= 2 ? new Object[]{error, ctx.caller} : new Object[]{error};
-
-            Object result;
-            // Deliberate last line of defense: a failing user onError handler must never take
-            // down the dispatch thread.
             try {
-                result = ctx.runtime.callMethod(service, ON_ERROR, metadata, args);
-            } catch (BError handlerPanic) {
-                handlerPanic.printStackTrace();
-                return;
-            } catch (RuntimeException e) {
-                LOG.warn("azure.storage.files listener: onError invocation failed", e);
-                return;
-            }
-            if (result instanceof BError handlerError) {
-                handlerError.printStackTrace();
+                ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
+                boolean isConcurrentSafe = serviceType.isIsolated() && serviceType.isIsolated(ON_ERROR);
+                StrandMetadata metadata = new StrandMetadata(isConcurrentSafe, null);
+                Object[] args = arity >= 2 ? new Object[]{error, ctx.caller} : new Object[]{error};
+
+                boolean handled;
+                // Deliberate last line of defense: a failing user onError handler must never take
+                // down the dispatch thread.
+                try {
+                    Object result = ctx.runtime.callMethod(service, ON_ERROR, metadata, args);
+                    handled = !(result instanceof BError);
+                    if (result instanceof BError handlerError) {
+                        handlerError.printStackTrace();
+                    }
+                } catch (BError handlerPanic) {
+                    handlerPanic.printStackTrace();
+                    handled = false;
+                } catch (RuntimeException e) {
+                    LOG.warn("azure.storage.files listener: onError invocation failed", e);
+                    handled = false;
+                }
+                if (listenerObj != null) {
+                    PostAction action = handled ? afterProcess : afterError;
+                    postProcess(listenerObj, serviceContext, action, path, eTag);
+                }
+            } finally {
+                // The takeover path holds the guard until its consume action lands, so a
+                // binding-failed file is not re-dispatched while onError is still running.
+                if (listenerObj != null) {
+                    ctx.inProgress.remove(path);
+                }
             }
         });
+        return listenerObj != null;
     }
 
     /**
@@ -307,18 +318,10 @@ public final class ShareListenerAdaptor {
         return null;
     }
 
-    /**
-     * Scans the watched path for files. The service lists one directory per call (no recursive
-     * listing exists on the wire), so recursive watching requires client-side traversal:
-     * iterative DFS with an explicit deque, listing with extended info, timestamps, and ETags.
-     * Checks {@code ctx.stopped} each iteration so a stop ends a long traversal early.
-     *
-     * @param listenerObj    the Ballerina listener object
-     * @param ctx            the listener context
-     * @param serviceContext the attached service's watch configuration
-     */
+    // Scans the watched path (client-side DFS; the wire has no recursive listing), checking
+    // ctx.stopped each iteration so a stop ends a long traversal early.
     private static void scan(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext) {
-        ShareClient share = SdkInvoker.shareClient(listenerObj);
+        ShareClient share = BallerinaAzureClient.getShareClient(listenerObj);
         Deque<String> pending = new ArrayDeque<>();
         pending.push(serviceContext.watchedPath());
         while (!pending.isEmpty()) {
@@ -346,17 +349,8 @@ public final class ShareListenerAdaptor {
         }
     }
 
-    /**
-     * Considers a file for dispatching: applies the service's file name pattern and minimum
-     * file age filters, then dispatches on a virtual thread unless the file is already being
-     * processed (delivery is at-least-once; a skipped file re-fires on a later poll).
-     *
-     * @param listenerObj    the Ballerina listener object
-     * @param ctx            the listener context
-     * @param serviceContext the attached service's watch configuration
-     * @param item           the file item
-     * @param path           the file path
-     */
+    // Applies the pattern and age filters, then dispatches on a virtual thread unless the file
+    // is already in flight (at-least-once: a skipped file re-fires on a later poll).
     private static void consider(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext,
                                  ShareFileItem item, String path) {
         String name = item.getName();
@@ -366,36 +360,27 @@ public final class ShareListenerAdaptor {
         // The minimum-age filter skips files that may still be being written.
         if (serviceContext.minFileAgeSeconds() != null && item.getProperties() != null
                 && item.getProperties().getLastModified() != null) {
-            long age = Duration.between(item.getProperties().getLastModified().toInstant(), Instant.now())
-                    .getSeconds();
+            long age = Duration.between(item.getProperties().getLastModified().toInstant(), Instant.now()).getSeconds();
             if (age < serviceContext.minFileAgeSeconds()) {
                 return;
             }
         }
-        String eTag = (item.getProperties() == null || item.getProperties().getETag() == null)
-                ? "" : item.getProperties().getETag();
-        // The in-progress guard: a file whose dispatch is still running is not dispatched again.
-        String key = path + "|" + eTag;
-        if (ctx.stopped || !ctx.inProgress.add(key)) {
+        // The in-progress guard: a path whose dispatch is still running is not dispatched
+        // again, even when an overwrite has given it a new ETag; the new version arrives on
+        // a later poll once the current handling finishes.
+        if (ctx.stopped || !ctx.inProgress.add(path)) {
             return;
         }
-        Thread.startVirtualThread(() -> dispatch(listenerObj, ctx, serviceContext, item, path, key));
+        Thread.startVirtualThread(() -> dispatch(listenerObj, ctx, serviceContext, item, path));
     }
 
-    /**
-     * Dispatches a file to its handler: downloads or opens the content, binds it to the
-     * handler's declared type, invokes the handler, and applies the configured post-process
-     * action.
-     *
-     * @param listenerObj    the Ballerina listener object
-     * @param ctx            the listener context
-     * @param serviceContext the attached service's watch configuration and handler set
-     * @param item           the file item
-     * @param path           the file path
-     * @param key            the deduplication key
-     */
+    // Downloads or opens the content, binds it to the handler's declared type, invokes the
+    // handler, and applies the configured post-process action.
     private static void dispatch(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext,
-                                 ShareFileItem item, String path, String key) {
+                                 ShareFileItem item, String path) {
+        // Set when a binding failure hands the file to the onError takeover thread, which then
+        // owns the in-progress guard and releases it after its consume action.
+        boolean handedOff = false;
         try {
             // Snapshot the service so a concurrent detach cannot null it mid-dispatch; if it is
             // already gone, leave the file unconsumed for a later poll.
@@ -417,9 +402,11 @@ public final class ShareListenerAdaptor {
                 // A stream handler skips the eager download: the file is read chunk by chunk.
                 InputStream inputStream;
                 try {
-                    inputStream = SdkInvoker.shareClient(listenerObj).getFileClient(path).openInputStream();
+                    inputStream = BallerinaAzureClient.getShareClient(listenerObj)
+                            .getFileClient(path).openInputStream();
                 } catch (RuntimeException e) {
                     LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
+                    invokeOnError(ctx, BallerinaAzureClient.mapFailure(e));
                     return;
                 }
                 try {
@@ -430,7 +417,7 @@ public final class ShareListenerAdaptor {
                                     streamContentType.getConstrainedType());
                 } catch (RuntimeException e) {
                     closeQuietly(inputStream);
-                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, path, e);
+                    handedOff = handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e, null);
                     return;
                 }
             } else {
@@ -439,12 +426,13 @@ public final class ShareListenerAdaptor {
                     bytes = download(listenerObj, path);
                 } catch (RuntimeException e) {
                     LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
+                    invokeOnError(ctx, BallerinaAzureClient.mapFailure(e));
                     return;
                 }
                 try {
-                    content = bindContent(ctx, handler, bytes, item.getName());
+                    content = bindContent(ctx, handler, bytes);
                 } catch (RuntimeException e) {
-                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, path, e);
+                    handedOff = handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e, bytes);
                     return;
                 }
             }
@@ -459,29 +447,51 @@ public final class ShareListenerAdaptor {
                 // The handler already saw its own error, so onError is not notified; the error is
                 // printed so the failure stays visible without a logging backend.
                 error.printStackTrace();
-                postProcess(listenerObj, serviceContext, handler.afterError(), path);
+                postProcess(listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
             } else {
-                postProcess(listenerObj, serviceContext, handler.afterProcess(), path);
+                postProcess(listenerObj, serviceContext, handler.afterProcess(), path, listedETag(item));
             }
         } catch (Throwable e) {
             LOG.error("azure.storage.files listener: unexpected dispatch failure for {}", path, e);
         } finally {
-            ctx.inProgress.remove(key);
+            // Released here unless the onError takeover thread took ownership of the guard.
+            if (!handedOff) {
+                ctx.inProgress.remove(path);
+            }
         }
     }
 
-    // A content-binding failure notifies onError (when declared) and post-processes (afterError)
-    // the file; without an onError the error is printed so the failure stays visible.
-    private static void handleBindingFailure(BObject listenerObj, ListenerContext ctx,
+    // A content-binding failure raises a ContentBindingError naming the file. With an onError
+    // declared, onError is invoked and ITS OWN afterProcess/afterError disposes of the file;
+    // the content handler's afterError is not applied. Without an onError the error is printed
+    // and the content handler's afterError applies, so a bad file cannot re-fire forever.
+    private static boolean handleBindingFailure(BObject listenerObj, ListenerContext ctx,
                                              ServiceContext serviceContext, HandlerConfig handler,
-                                             String path, RuntimeException e) {
-        BError bindingError = e instanceof BError bError
-                ? bError : FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+                                             ShareFileItem item, String path, RuntimeException e,
+                                             byte[] content) {
+        String message = e instanceof BError bError
+                ? bError.getErrorMessage().getValue() : BallerinaAzureClient.describe(e);
+        BError bindingError = FilesErrorCreator.contentBindingError(message, e, "/" + path, content);
         if (serviceContext.onErrorArity() == 0) {
             bindingError.printStackTrace();
+            postProcess(listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
+            return false;
         }
-        invokeOnError(ctx, bindingError);
-        postProcess(listenerObj, serviceContext, handler.afterError(), path);
+        return invokeOnError(ctx, bindingError, listenerObj, serviceContext.onErrorAfterProcess(),
+                serviceContext.onErrorAfterError(), path, listedETag(item));
+    }
+
+    private static String listedETag(ShareFileItem item) {
+        return item.getProperties() == null ? null : item.getProperties().getETag();
+    }
+
+    // The SDK serves the listing's entity tag quoted and the properties read's unquoted, so
+    // the two forms only compare equal once the quotes are stripped.
+    private static String unquoteETag(String eTag) {
+        if (eTag != null && eTag.length() >= 2 && eTag.startsWith("\"") && eTag.endsWith("\"")) {
+            return eTag.substring(1, eTag.length() - 1);
+        }
+        return eTag;
     }
 
     private static void closeQuietly(InputStream inputStream) {
@@ -495,9 +505,10 @@ public final class ShareListenerAdaptor {
     // Resolves the handler for a file: a per-handler routing pattern wins, then the extension
     // mapping, then the onFile fallback.
     private static HandlerConfig resolveHandler(ServiceContext serviceContext, String fileName) {
-        for (HandlerConfig handler : serviceContext.handlers().values()) {
-            Pattern routing = handler.routingPattern();
-            if (routing != null && routing.matcher(fileName).matches()) {
+        for (String methodName : ROUTING_PATTERN_ORDER) {
+            HandlerConfig handler = serviceContext.handlers().get(methodName);
+            if (handler != null && handler.routingPattern() != null
+                    && handler.routingPattern().matcher(fileName).matches()) {
                 return handler;
             }
         }
@@ -508,16 +519,18 @@ public final class ShareListenerAdaptor {
         return serviceContext.handlers().get(ON_FILE);
     }
 
-    private static Object bindContent(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String fileName) {
+    private static Object bindContent(ListenerContext ctx, HandlerConfig handler, byte[] bytes) {
         switch (handler.methodName()) {
             case ON_FILE_TEXT:
                 return StringUtils.fromString(new String(bytes, StandardCharsets.UTF_8));
             case ON_FILE_JSON:
-                return ContentBinder.bindJson(bytes, handler.contentType(), ctx.laxDataBinding);
+                return ContentBinder.bindJson(ValueCreator.createArrayValue(bytes),
+                        handler.contentType(), ctx.laxDataBinding, JSON_BIND_CONTEXT);
             case ON_FILE_XML:
-                return ContentBinder.bindXml(bytes, handler.contentType(), ctx.laxDataBinding);
+                return ContentBinder.bindXml(ValueCreator.createArrayValue(bytes),
+                        handler.contentType(), ctx.laxDataBinding, XML_BIND_CONTEXT, XML_PARSE_CONTEXT);
             case ON_FILE_CSV:
-                return bindCsv(ctx, handler, bytes, fileName);
+                return bindCsv(ctx, handler, bytes);
             default:
                 return ValueCreator.createArrayValue(bytes);
         }
@@ -525,17 +538,14 @@ public final class ShareListenerAdaptor {
 
     // Binds CSV content on a real Ballerina strand through the module-level bindCsvContent helper,
     // because the data.csv parser needs the runtime environment of a strand.
-    private static Object bindCsv(ListenerContext ctx, HandlerConfig handler, byte[] bytes, String fileName) {
-        String prefix = fileName.replaceAll("\\.[^.]+$", "");
+    private static Object bindCsv(ListenerContext ctx, HandlerConfig handler, byte[] bytes) {
         Object result = ctx.runtime.callFunction(ModuleUtils.getModule(), BIND_CSV_CONTENT_FUNCTION,
                 new StrandMetadata(true, null),
                 ValueCreator.createArrayValue(bytes),
                 ValueCreator.createTypedescValue(TypeUtils.getReferredType(handler.contentType())),
-                ctx.laxDataBinding,
-                ctx.csvFailSafe,
-                StringUtils.fromString(prefix));
+                ctx.laxDataBinding);
         if (result instanceof BError bError) {
-            throw FilesErrorCreator.processingError("content does not bind to the '" + ON_FILE_CSV
+            throw FilesErrorCreator.clientError("content does not bind to the '" + ON_FILE_CSV
                     + "' handler's declared type: " + bError.getErrorMessage(), bError);
         }
         return result;
@@ -564,23 +574,37 @@ public final class ShareListenerAdaptor {
     // Applies a post-process action (delete, or move to a target directory). A failure is
     // logged and left alone so the file re-fires on a later poll.
     private static void postProcess(BObject listenerObj, ServiceContext serviceContext, PostAction action,
-                                    String path) {
+                                    String path, String expectedETag) {
         if (action == null) {
             return;
         }
         try {
-            ShareClient share = SdkInvoker.shareClient(listenerObj);
+            ShareClient share = BallerinaAzureClient.getShareClient(listenerObj);
+            // A changed entity tag means content no dispatch has seen; leave the file for the
+            // next poll. Azure Files has no conditional deletes or renames, so the moment
+            // between this check and the action stays unguarded.
+            if (expectedETag != null) {
+                String currentETag = share.getFileClient(path).getProperties().getETag();
+                if (!unquoteETag(expectedETag).equals(unquoteETag(currentETag))) {
+                    LOG.debug("azure.storage.files listener: {} changed since dispatch; "
+                            + "leaving it for the next poll", path);
+                    return;
+                }
+            }
             if (action.isDelete()) {
                 share.getFileClient(path).delete();
                 return;
             }
-            String moveRoot = SdkInvoker.directoryPath(StringUtils.fromString(action.moveTo()));
+            String moveRoot = BallerinaAzureClient.directoryPath(StringUtils.fromString(action.moveTo()));
             String destination = action.preserveSubDirs()
                     ? join(moveRoot, relativeTo(path, serviceContext.watchedPath()))
                     : join(moveRoot, path.substring(path.lastIndexOf('/') + 1));
             int slash = destination.lastIndexOf('/');
             ensureDirectory(share, slash < 0 ? "" : destination.substring(0, slash));
-            share.getFileClient(path).rename(destination);
+            // A same-named file already at the destination is replaced: a failing rename would
+            // leave the source in the watched path, re-dispatching it on every later poll.
+            share.getFileClient(path).renameWithResponse(
+                    new ShareFileRenameOptions(destination).setReplaceIfExists(true), null, null);
         } catch (RuntimeException e) {
             LOG.warn("azure.storage.files listener: post-process failed for {}", path, e);
         }
@@ -609,20 +633,12 @@ public final class ShareListenerAdaptor {
 
     private static byte[] download(BObject listenerObj, String path) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        SdkInvoker.shareClient(listenerObj).getFileClient(path).download(out);
+        BallerinaAzureClient.getShareClient(listenerObj).getFileClient(path).download(out);
         return out.toByteArray();
     }
 
-    /**
-     * Parses the attached service's watch configuration and handler set. The watched path is
-     * the service's attach point, carried in {@code name} (a string, a resource path's segment
-     * array, or nil); a service with no attach point watches the share root. The optional
-     * {@code @files:ServiceConfig} annotation supplies only the filters.
-     *
-     * @param service the service being attached
-     * @param name    the service's attach point
-     * @return the immutable per-attach service context
-     */
+    // Parses the attached service's watch configuration and handler set; the watched path is
+    // the service's attach point (nil watches the share root).
     private static ServiceContext parseService(BObject service, Object name) {
         String watchedPath = watchedPathFrom(name);
         ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
@@ -642,10 +658,17 @@ public final class ShareListenerAdaptor {
 
         Map<String, HandlerConfig> handlers = new LinkedHashMap<>();
         int onErrorArity = 0;
+        PostAction onErrorAfterProcess = null;
+        PostAction onErrorAfterError = null;
         for (MethodType method : serviceType.getMethods()) {
             String methodName = method.getName();
             if (ON_ERROR.equals(methodName)) {
                 onErrorArity = method.getParameters().length;
+                BMap<BString, Object> onErrorConfig = annotation(method.getAnnotations(), FUNCTION_CONFIG_ANNOTATION);
+                if (onErrorConfig != null) {
+                    onErrorAfterProcess = readAction(onErrorConfig, FUNCTION_CONFIG_AFTER_PROCESS);
+                    onErrorAfterError = readAction(onErrorConfig, FUNCTION_CONFIG_AFTER_ERROR);
+                }
                 continue;
             }
             if (!HANDLER_NAMES.contains(methodName)) {
@@ -670,14 +693,12 @@ public final class ShareListenerAdaptor {
             handlers.put(methodName, new HandlerConfig(methodName, routing, afterProcess, afterError,
                     params.length, secondIsCaller, contentType));
         }
-        return new ServiceContext(watchedPath, recursive, fileNamePattern, minFileAgeSeconds,
-                handlers, onErrorArity);
+        return new ServiceContext(watchedPath, recursive, fileNamePattern, minFileAgeSeconds, handlers,
+                onErrorArity, onErrorAfterProcess, onErrorAfterError);
     }
 
-    // Resolves the watched path from the service's attach point: a resource path's segments
-    // join with a slash, a string normalizes (trimmed, double slashes collapsed, leading and
-    // trailing slashes stripped to the internal share-relative form), and nil or an empty
-    // value is the share root.
+    // Resolves the watched path from the attach point: segments join with a slash, strings
+    // normalize to the internal share-relative form, nil or empty is the share root.
     private static String watchedPathFrom(Object name) {
         if (name instanceof BArray segments) {
             StringBuilder joined = new StringBuilder();
@@ -687,14 +708,14 @@ public final class ShareListenerAdaptor {
                 }
                 joined.append(segments.getBString(i).getValue());
             }
-            return SdkInvoker.directoryPath(StringUtils.fromString(joined.toString()));
+            return BallerinaAzureClient.directoryPath(StringUtils.fromString(joined.toString()));
         }
         if (name instanceof BString path) {
             String collapsed = path.getValue().strip();
             while (collapsed.contains("//")) {
                 collapsed = collapsed.replace("//", "/");
             }
-            return SdkInvoker.directoryPath(StringUtils.fromString(collapsed));
+            return BallerinaAzureClient.directoryPath(StringUtils.fromString(collapsed));
         }
         return "";
     }
@@ -708,7 +729,7 @@ public final class ShareListenerAdaptor {
             if (ACTION_DELETE.equals(action.getValue())) {
                 return new PostAction(true, null, false);
             }
-            throw FilesErrorCreator.processingError("unknown post-process action: " + action.getValue(), null);
+            throw FilesErrorCreator.clientError("unknown post-process action: " + action.getValue(), null);
         }
         @SuppressWarnings("unchecked")
         BMap<BString, Object> move = (BMap<BString, Object>) value;
@@ -738,7 +759,7 @@ public final class ShareListenerAdaptor {
         try {
             return Pattern.compile(pattern);
         } catch (PatternSyntaxException e) {
-            throw FilesErrorCreator.processingError("invalid regular expression: " + pattern, e);
+            throw FilesErrorCreator.clientError("invalid regular expression: " + pattern, e);
         }
     }
 
@@ -772,30 +793,25 @@ public final class ShareListenerAdaptor {
         private final BObject caller;
         private final String shareName;
         private final boolean laxDataBinding;
-        private final BMap<BString, Object> csvFailSafe;
 
-        // Files whose dispatch is still running, keyed by path and ETag.
+        // Files whose dispatch is still running, keyed by path: one file, one invocation at
+        // a time, regardless of version changes while handling runs.
         private final Set<String> inProgress = ConcurrentHashMap.newKeySet();
 
         // The Ballerina runtime, captured from the polling strand on each poll.
         private volatile Runtime runtime;
 
-        // The attached service.
         private volatile BObject service;
 
-        // The attached service's parsed watch configuration and handler set, immutable per attach:
-        // set when the service attaches and cleared when it detaches.
         private volatile ServiceContext serviceContext;
 
         // The stopped flag: set by a stop, checked by the scan and dispatch paths.
         private volatile boolean stopped;
 
-        private ListenerContext(BObject caller, String shareName,
-                                boolean laxDataBinding, BMap<BString, Object> csvFailSafe) {
+        private ListenerContext(BObject caller, String shareName, boolean laxDataBinding) {
             this.caller = caller;
             this.shareName = shareName;
             this.laxDataBinding = laxDataBinding;
-            this.csvFailSafe = csvFailSafe;
         }
     }
 
@@ -803,13 +819,12 @@ public final class ShareListenerAdaptor {
     // set when the service attaches and cleared when it detaches.
     private record ServiceContext(String watchedPath, boolean recursive, Pattern fileNamePattern,
                                   Double minFileAgeSeconds, Map<String, HandlerConfig> handlers,
-                                  int onErrorArity) {
+                                  int onErrorArity, PostAction onErrorAfterProcess,
+                                  PostAction onErrorAfterError) {
     }
 
-    // One content handler: its resolved routing pattern, post-process actions, the shape of its
-    // parameter list (how many it declares, and whether a two-parameter handler's second parameter
-    // is the Caller rather than the FileInfo), and its declared content parameter type (used to
-    // bind typed content, e.g. a map<json>, a record, or an array of them for onFileJson).
+    // One content handler: its routing pattern, post-process actions, parameter-list shape,
+    // and declared content parameter type.
     private record HandlerConfig(String methodName, Pattern routingPattern,
                                  PostAction afterProcess, PostAction afterError,
                                  int arity, boolean secondParamIsCaller, Type contentType) {

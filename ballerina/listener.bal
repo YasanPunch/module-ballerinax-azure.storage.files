@@ -22,7 +22,7 @@ import ballerina/task;
 public type ListenerConfiguration record {|
     # The authentication configuration (see `AuthConfig`)
     AuthConfig auth;
-    # How often the watched path is polled, in seconds
+    # How often the watched path is polled, in seconds. Must be greater than zero
     decimal pollingInterval = 60;
     # Retry behaviour for service requests; omit for the service defaults
     RetryConfig retryConfig?;
@@ -31,26 +31,7 @@ public type ListenerConfiguration record {|
     # Relaxed data binding for the typed content handlers: JSON, XML, and CSV record binding
     # treat a null value as an optional field and an absent field as a nilable field
     boolean laxDataBinding = false;
-    # Fail safe CSV processing: a malformed CSV record is skipped and appended to an error
-    # log file, instead of failing the whole binding.
-    FailSafeOptions csvFailSafe?;
 |};
-
-# Configuration for fail safe CSV content processing.
-public type FailSafeOptions record {|
-    # What each skipped CSV record's error log entry carries
-    ErrorLogContentType contentType = METADATA;
-|};
-
-# The content of a fail safe CSV error log entry.
-public enum ErrorLogContentType {
-    # Log only the metadata of the failure (position and message)
-    METADATA,
-    # Log only the raw content that caused the failure
-    RAW,
-    # Log both the raw content and the metadata
-    RAW_AND_METADATA
-}
 
 # Optional per-service filters, supplied through the `@files:ServiceConfig` annotation. The
 # watched path itself is the service's attach point (for example `service /invoices on lsn`),
@@ -71,7 +52,8 @@ public annotation ServiceConfiguration ServiceConfig on service;
 # The auto-consume action that deletes the file after the handler runs.
 public const DELETE = "DELETE";
 
-# The auto-consume action that moves the file after the handler runs.
+# The auto-consume action that moves the file after the handler runs. A move onto an
+# existing same-named file replaces it.
 public type Move record {|
     # The target directory the file is moved into (the file keeps its name); the directory
     # is created if it does not exist
@@ -81,16 +63,21 @@ public type Move record {|
     boolean preserveSubDirs = true;
 |};
 
+# The `Move` action's named form, used in the post-process action unions.
+public type MOVE Move;
+
 # The per-handler configuration, supplied through the `@files:FunctionConfig` annotation. It
 # routes files to a handler by name pattern and auto-consumes a file after the handler runs.
+# On `onError`, the consume actions apply to the content-binding failures it handles, and
+# `fileNamePattern` is ignored.
 public type FunctionConfiguration record {|
     # A regular expression matched against the file name that routes matching files to this handler
     string fileNamePattern?;
     # The action applied after the handler returns normally: delete the file, or move it
-    DELETE|Move afterProcess?;
-    # The action applied after the handler returns or panics with an error (including a
-    # content-binding failure for a typed handler): delete the file, or move it
-    DELETE|Move afterError?;
+    DELETE|MOVE afterProcess?;
+    # The action applied after the handler returns or panics with an error: delete the file, or
+    # move it. Also covers a typed handler's content-binding failures when no `onError` is declared
+    DELETE|MOVE afterError?;
 |};
 
 # Declares the configuration of a listener handler.
@@ -114,10 +101,12 @@ public isolated class Listener {
     # + return - An `Error` if the listener could not be initialized, otherwise `()`
     public isolated function init(string shareName, *ListenerConfiguration config) returns Error? {
         self.shareName = shareName;
+        if config.pollingInterval <= 0d {
+            return error Error("pollingInterval must be greater than zero");
+        }
         task:Listener|task:Error taskListener = new (trigger = {interval: config.pollingInterval});
         if taskListener is task:Error {
-            return error ProcessingError("failed to initialize the polling scheduler", taskListener,
-                    errorCode = "ProcessingError");
+            return error Error("failed to initialize the polling scheduler", taskListener);
         }
         self.taskListener = taskListener;
 
@@ -132,8 +121,7 @@ public isolated class Listener {
         }
 
         // One connection stack per listener: the Caller's Client also backs the poller.
-        Client fileClient = check new (shareName, clientConfig);
-        Caller caller = new (fileClient);
+        Caller caller = check new (shareName, clientConfig);
         return externInit(self, shareName, config, caller);
     }
 
@@ -238,26 +226,22 @@ isolated function createPollService(Listener l) returns task:Service {
 
 isolated function externInit(Listener listenerObj, string shareName, ListenerConfiguration config,
         Caller caller) returns Error? = @java:Method {
-    name: "initListener",
-    'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
+    name: "initListener", 'class: "io.ballerina.lib.azure.storage.files.server.Listener"
 } external;
 
 isolated function externAttach(Listener listenerObj, Service serviceRef, string[]|string? name)
         returns error? = @java:Method {
-    name: "attachService",
-    'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
+    name: "attachService", 'class: "io.ballerina.lib.azure.storage.files.server.Listener"
 } external;
 
 isolated function externDetach(Listener listenerObj, Service serviceRef) returns error? = @java:Method {
-    name: "detachService",
-    'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
+    name: "detachService", 'class: "io.ballerina.lib.azure.storage.files.server.Listener"
 } external;
 
 isolated function externStop(Listener listenerObj) returns error? = @java:Method {
-    name: "stopListener",
-    'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
+    name: "stopListener", 'class: "io.ballerina.lib.azure.storage.files.server.Listener"
 } external;
 
 isolated function poll(Listener listenerObj) returns error? = @java:Method {
-    'class: "io.ballerina.lib.azure.storage.files.server.ShareListenerAdaptor"
+    'class: "io.ballerina.lib.azure.storage.files.server.Listener"
 } external;

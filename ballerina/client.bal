@@ -32,10 +32,6 @@ public isolated client class Client {
         return initClient(self, shareName, config);
     }
 
-    // -----------------------------------------------------------------------
-    // Share operations
-    // -----------------------------------------------------------------------
-
     # Gets the properties of the bound share.
     #
     # + return - The `ShareProperties`, or an `Error`
@@ -58,14 +54,10 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.client.ShareOps"
     } external;
 
-    // -----------------------------------------------------------------------
-    // Directory operations
-    // -----------------------------------------------------------------------
-
     # Creates a directory in the bound share.
     #
     # + directoryPath - The share-relative path of the directory to create
-    # + options - Optional creation options (metadata, permission, SMB properties)
+    # + options - Optional creation options (metadata)
     # + return - An `Error` if the directory could not be created, otherwise `()`
     isolated remote function createDirectory(string directoryPath, DirectoryCreateOptions? options = ())
             returns Error? = @java:Method {
@@ -113,8 +105,7 @@ public isolated client class Client {
     # + directoryPath - The share-relative path of the directory to list
     # + options - Optional listing options (prefix, recursion, extended info)
     # + return - A stream of `Entry`, or an `Error`
-    isolated remote function list(string directoryPath, ListOptions? options = ())
-            returns stream<Entry, Error?>|Error {
+    isolated remote function list(string directoryPath, ListOptions? options = ()) returns stream<Entry, Error?>|Error {
         EntryStreamGenerator generator = new;
         Error? result = newEntryIterator(self, generator, directoryPath, options ?: {});
         if result is Error {
@@ -127,22 +118,18 @@ public isolated client class Client {
     #
     # + sourcePath - The current share-relative path of the directory
     # + destinationPath - The new share-relative path
-    # + options - Optional rename options (overwrite, permission, metadata)
+    # + options - Optional rename options (overwrite, metadata)
     # + return - An `Error` if the directory could not be renamed, otherwise `()`
     isolated remote function renameDirectory(string sourcePath, string destinationPath,
             RenameOptions? options = ()) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.DirectoryOps"
     } external;
 
-    // -----------------------------------------------------------------------
-    // File basics
-    // -----------------------------------------------------------------------
-
     # Creates an empty file of a fixed size.
     #
     # + path - The share-relative path of the file to create
     # + sizeInBytes - The size of the file, in bytes
-    # + options - Optional creation options (headers, metadata, permission, SMB properties)
+    # + options - Optional creation options (headers, metadata)
     # + return - An `Error` if the file could not be created, otherwise `()`
     isolated remote function createFile(string path, int sizeInBytes, CreateOptions? options = ())
             returns Error? = @java:Method {
@@ -198,84 +185,132 @@ public isolated client class Client {
     #
     # + sourcePath - The current share-relative path of the file
     # + destinationPath - The new share-relative path
-    # + options - Optional rename options (overwrite, permission, metadata)
+    # + options - Optional rename options (overwrite, metadata)
     # + return - An `Error` if the file could not be renamed, otherwise `()`
     isolated remote function renameFile(string sourcePath, string destinationPath,
             RenameOptions? options = ()) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.FileOps"
     } external;
 
-    // -----------------------------------------------------------------------
-    // File transfer
-    // -----------------------------------------------------------------------
-
     # Uploads a local file to the bound share.
     #
     # ```ballerina
     # // ./reports/q1.pdf (local disk) --> /2026/q1/report.pdf (on the share)
-    # check fileClient->uploadFile("./reports/q1.pdf", "/2026/q1/report.pdf");
+    # check fileClient->uploadFromFile("./reports/q1.pdf", "/2026/q1/report.pdf");
     # ```
     #
     # + sourcePath - The path of the local file to upload, including the file name
     # + destinationPath - The share-relative path the file is written to, including the file name
-    # + options - Optional upload options (headers, metadata, permission, SMB properties)
+    # + options - Optional upload options (headers, metadata)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadFile(string sourcePath, string destinationPath,
+    isolated remote function uploadFromFile(string sourcePath, string destinationPath,
             UploadOptions? options = ()) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
 
-    # Uploads in-memory content to the bound share. A `byte[]` is written as-is, a `string`
-    # as raw text, an `xml` value as its textual form, a `map<json>` as a JSON document, and
-    # a `string[][]` as CSV rows.
+    # Uploads in-memory content to the bound share.
     #
     # ```ballerina
-    # check fileClient->uploadContent({revenue: 1250000, growth: 0.12}, "/2026/q1/metrics.json");
+    # Metrics metrics = {revenue: 1250000, growth: 0.12};
+    # check fileClient->upload(metrics, "/2026/q1/metrics.json");
     # ```
     #
-    # + content - The content to upload
+    # + content - The content to upload. A record, a record array, or another `json` value is
+    #             serialized per the resolved file format
     # + destinationPath - The share-relative path the content is written to, including the file name
-    # + options - Optional upload options (headers, metadata, permission, SMB properties)
+    # + options - Optional upload options (headers, metadata, format override)
     # + return - An `Error` if the upload failed, otherwise `()`
-    isolated remote function uploadContent(byte[]|string|xml|map<json>|string[][] content,
-            string destinationPath, UploadOptions? options = ()) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
-    } external;
+    isolated remote function upload(UploadContent content,
+            string destinationPath, UploadContentOptions? options = ()) returns Error? {
+        byte[]|string|xml|string[][] payload;
+        if content is record {} {
+            payload = check serializeRecord(content, destinationPath, options?.fileFormat);
+        } else if content is record {}[] {
+            payload = check serializeRecordArray(content, destinationPath, options?.fileFormat);
+        } else if content is byte[]|string|xml {
+            payload = content;
+        } else {
+            // The compiler does not subtract the record shapes from the union here, but
+            // both are handled above, so the residual json value is cast-safe.
+            payload = check serializeJson(<json>content, destinationPath, options?.fileFormat);
+        }
+        return externUpload(self, payload, destinationPath, options);
+    }
 
-    # Uploads a byte stream to the bound share. The total content length must be known
-    # up front.
+    # Uploads a byte stream to the bound share. The total content length is required. There
+    # is no record stream upload, so collect records into a `record {}[]` and use `upload`.
     #
     # + content - The byte stream to upload
     # + contentLength - The total length of the content, in bytes
     # + destinationPath - The share-relative path the content is written to, including the file name
-    # + options - Optional upload options (headers, metadata, permission, SMB properties)
+    # + options - Optional upload options (headers, metadata)
     # + return - An `Error` if the upload failed, otherwise `()`
     isolated remote function uploadFromStream(stream<byte[], error?> content,
             int contentLength, string destinationPath, UploadOptions? options = ()) returns Error? {
+        if contentLength < 0 {
+            closeByteStreamQuietly(content);
+            return error Error(string `contentLength must not be negative: ${contentLength}`);
+        }
+        Error? result = self.pumpStream(content, contentLength, destinationPath, options);
+        if result is Error {
+            closeByteStreamQuietly(content);
+        }
+        return result;
+    }
+
+    // Drives the stream upload: source chunks coalesce into writes of the service's maximum
+    // range size, so the request count tracks the content size rather than the source's
+    // chunking. The buffer fills to at most one range per iteration with the remainder
+    // carried, so memory stays bounded even when one source chunk exceeds the range size.
+    private isolated function pumpStream(stream<byte[], error?> content, int contentLength,
+            string destinationPath, UploadOptions? options) returns Error? {
         check prepareStreamUpload(self, destinationPath, contentLength, options);
+        byte[] buffer = [];
+        byte[] carry = [];
         int offset = 0;
         while true {
-            record {|byte[] value;|}|error? chunk = content.next();
-            if chunk is () {
-                break;
+            byte[] bytes;
+            if carry.length() > 0 {
+                bytes = carry;
+                carry = [];
+            } else {
+                ContentStreamEntry|error? chunk = content.next();
+                if chunk is () {
+                    break;
+                }
+                if chunk is error {
+                    return error Error("the source stream failed: " + chunk.message(), chunk);
+                }
+                bytes = chunk.value;
             }
-            if chunk is error {
-                return error ProcessingError("the source stream failed: " + chunk.message(),
-                        chunk, errorCode = "ProcessingError");
+            if offset + buffer.length() + bytes.length() > contentLength {
+                return error Error(
+                        string `the source stream exceeded the declared contentLength of ${contentLength} bytes`);
             }
-            byte[] bytes = chunk.value;
-            if offset + bytes.length() > contentLength {
-                return error ProcessingError(
-                        string `the source stream exceeded the declared contentLength of ${contentLength} bytes`,
-                        errorCode = "ProcessingError");
+            int room = MAX_RANGE_BYTES - buffer.length();
+            boolean sliced = false;
+            if bytes.length() > room {
+                carry = bytes.slice(room);
+                bytes = bytes.slice(0, room);
+                sliced = true;
             }
-            check writeStreamChunk(self, destinationPath, offset, bytes);
-            offset += bytes.length();
+            if sliced && buffer.length() == 0 {
+                buffer = bytes;
+            } else {
+                buffer.push(...bytes);
+            }
+            if buffer.length() >= MAX_RANGE_BYTES {
+                check writeStreamChunk(self, destinationPath, offset, buffer);
+                offset += buffer.length();
+                buffer = [];
+            }
         }
-        if offset != contentLength {
-            return error ProcessingError(
-                    string `the source stream ended at ${offset} bytes but contentLength is ${contentLength}`,
-                    errorCode = "ProcessingError");
+        if offset + buffer.length() != contentLength {
+            int actual = offset + buffer.length();
+            return error Error(string `source stream ended at ${actual} bytes but contentLength is ${contentLength}`);
+        }
+        if buffer.length() > 0 {
+            check writeStreamChunk(self, destinationPath, offset, buffer);
         }
         return;
     }
@@ -285,103 +320,50 @@ public isolated client class Client {
     #
     # ```ballerina
     # // /2026/q1/report.pdf (on the share) --> ./reports/q1.pdf (local disk)
-    # check fileClient->downloadFile("/2026/q1/report.pdf", "./reports/q1.pdf");
+    # check fileClient->download("/2026/q1/report.pdf", "./reports/q1.pdf");
     # ```
     #
     # + sourcePath - The share-relative path of the file to download, including the file name
     # + destinationPath - The local path to write the downloaded file to (must not exist)
     # + options - Optional download options (range)
     # + return - An `Error` if the download failed, otherwise `()`
-    isolated remote function downloadFile(string sourcePath, string destinationPath,
+    isolated remote function download(string sourcePath, string destinationPath,
             DownloadOptions? options = ()) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
 
-    # Opens a file's content as a byte stream.
+    # Retrieves a file's content in the form the target type selects. CSV content binds to
+    # record array and record stream targets only. Binding is strict: content that does not
+    # match the target fails with a client side `Error`.
     #
     # ```ballerina
-    # stream<byte[], files:Error?> contentStream = check fileClient->getFileContent("/2026/q1/data.json");
-    # byte[] content = [];
-    # check contentStream.forEach(function(byte[] chunk) {
-    #     content.push(...chunk);
-    # });
+    # byte[] raw = check fileClient->getFile("/2026/q1/report.pdf");
+    # Person[] people = check fileClient->getFile("/2026/q1/people.csv");
+    # stream<byte[], error?> chunks = check fileClient->getFile("/2026/q1/large.bin");
     # ```
     #
     # + path - The source share-relative path
-    # + options - Optional download options (range)
-    # + return - A byte stream over the file content, or an `Error`
-    isolated remote function getFileContent(string path, DownloadOptions? options = ())
-            returns stream<byte[], Error?>|Error {
-        ContentStreamGenerator generator = new;
-        Error? result = openContentStream(self, generator, path, options);
-        if result is Error {
-            return result;
-        }
-        return new stream<byte[], Error?>(generator);
-    }
-
-    # Reads a file's full content as UTF-8 text.
-    #
-    # + path - The source share-relative path
-    # + options - Optional download options (range, snapshot)
-    # + return - The file content as a string, or an `Error`
-    isolated remote function getFileText(string path, DownloadOptions? options = ())
-            returns string|Error {
-        byte[] bytes = check readFileBytes(self, path, options);
-        string|error text = string:fromBytes(bytes);
-        if text is error {
-            return error ProcessingError("the file content is not valid UTF-8 text: "
-                    + text.message(), text, errorCode = "ProcessingError");
-        }
-        return text;
-    }
-
-    # Reads a file's full content and binds it as JSON to the target type. Binding is strict:
-    # the content must match the target type exactly.
-    #
-    # + path - The source share-relative path
-    # + options - Optional download options (range, snapshot)
-    # + targetType - The type to bind the content to, a `json` form or a record
-    # + return - The bound value, or an `Error`
-    isolated remote function getFileJson(string path, DownloadOptions? options = (),
-            typedesc<json|record {}> targetType = <>) returns targetType|Error = @java:Method {
+    # + options - Optional retrieval options (range, snapshot, record binding format)
+    # + targetType - Expected return type (to be used for automatic data binding).
+    #                Supported types:
+    #                - Raw bytes (`byte[]`) or UTF-8 text (`string`)
+    #                - A `json` or `xml` value
+    #                - Custom records (e.g., `Person`, `Person[]`), bound per `GetFileOptions.fileFormat`,
+    #                  else the path's extension (`.json`, `.xml`, `.csv`)
+    #                - A lazy byte stream (`stream<byte[], error?>`)
+    #                - A lazy stream of CSV-bound records (e.g., `stream<Person, error?>`)
+    # + return - The content in the requested form, or an `Error` on a failed retrieval or a data binding failure
+    isolated remote function getFile(string path, GetFileOptions? options = (),
+            typedesc<RetrievableType> targetType = <>) returns targetType|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
     } external;
-
-    # Reads a file's full content and binds it as XML: to an `xml` value, or to a record
-    # projected from the document. Binding is strict.
-    #
-    # + path - The source share-relative path
-    # + options - Optional download options (range, snapshot)
-    # + targetType - The type to bind the content to, `xml` or a record
-    # + return - The bound value, or an `Error`
-    isolated remote function getFileXml(string path, DownloadOptions? options = (),
-            typedesc<xml|record {}> targetType = <>) returns targetType|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
-    } external;
-
-    # Reads a file's full content and binds it as CSV: to `string[][]` rows, or to a record
-    # array whose field names are taken from the header row. Binding is strict.
-    #
-    # + path - The source share-relative path
-    # + options - Optional download options (range, snapshot)
-    # + targetType - The type to bind the content to, `string[][]` or a record array
-    # + return - The bound value, or an `Error`
-    isolated remote function getFileCsv(string path, DownloadOptions? options = (),
-            typedesc<string[][]|record {}[]> targetType = <>) returns targetType|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.TypedReadOps"
-    } external;
-
-    // -----------------------------------------------------------------------
-    // File copy
-    // -----------------------------------------------------------------------
 
     # Copies a file within the bound share. The copy is asynchronous; inspect the returned
     # `CopyInfo.copyStatus` for its state.
     #
     # + sourcePath - The source share-relative path
     # + destinationPath - The destination share-relative path
-    # + options - Optional copy options (metadata, permission handling)
+    # + options - Optional copy options (metadata)
     # + return - The `CopyInfo` for the started copy, or an `Error`
     isolated remote function copyFile(string sourcePath, string destinationPath,
             CopyOptions? options = ()) returns CopyInfo|Error = @java:Method {
@@ -393,7 +375,7 @@ public isolated client class Client {
     #
     # + sourceUrl - The URL of the source file
     # + destinationPath - The destination share-relative path
-    # + options - Optional copy options (metadata, permission handling)
+    # + options - Optional copy options (metadata)
     # + return - The `CopyInfo` for the started copy, or an `Error`
     isolated remote function copyFileFromUrl(string sourceUrl, string destinationPath,
             CopyOptions? options = ()) returns CopyInfo|Error = @java:Method {
@@ -417,10 +399,6 @@ public isolated client class Client {
     isolated remote function abortCopy(string path, string copyId) returns Error? = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.CopyOps"
     } external;
-
-    // -----------------------------------------------------------------------
-    // File ranges
-    // -----------------------------------------------------------------------
 
     # Writes a range of bytes into a file at a given offset. A single range write is capped
     # at 4 MiB by the service.
@@ -453,11 +431,8 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.client.RangeOps"
     } external;
 
-    // -----------------------------------------------------------------------
-    // Share snapshots
-    // -----------------------------------------------------------------------
-
-    # Creates a point-in-time, read-only snapshot of the bound share.
+    # Creates a point-in-time, read-only snapshot of the bound share. Requires account-level
+    # credentials.
     #
     # + metadata - Optional metadata to set on the snapshot; when absent, the share's
     #              metadata is copied to the snapshot
@@ -493,225 +468,11 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.client.SnapshotOps"
     } external;
 
-    // -----------------------------------------------------------------------
-    // Leases
-    // -----------------------------------------------------------------------
-
-    # Acquires a lease on the bound share, locking it against deletion by anyone not holding
-    # the lease id.
-    #
-    # + leaseDurationSeconds - The lease duration: 15 to 60 seconds, or -1 for an infinite lease
-    # + proposedLeaseId - A proposed lease id (a UUID string); when absent, the service generates one
-    # + return - The lease id to present with subsequent operations, or an `Error`
-    isolated remote function acquireShareLease(int leaseDurationSeconds,
-            string? proposedLeaseId = ()) returns string|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.LeaseOps"
-    } external;
-
-    # Renews a fixed-duration lease on the bound share, restarting its duration.
-    #
-    # + leaseId - The id of the lease to renew
-    # + return - An `Error` if the lease could not be renewed, otherwise `()`
-    isolated remote function renewShareLease(string leaseId) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.LeaseOps"
-    } external;
-
-    # Releases a lease on the bound share, unlocking it immediately.
-    #
-    # + leaseId - The id of the lease to release
-    # + return - An `Error` if the lease could not be released, otherwise `()`
-    isolated remote function releaseShareLease(string leaseId) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.LeaseOps"
-    } external;
-
-    # Breaks the lease on the bound share without needing its id.
-    #
-    # + breakPeriodSeconds - How long the lease keeps running before it is broken; when
-    #                        absent, the lease's own remaining time applies (0 for infinite)
-    # + return - The remaining seconds until the lease is broken, or an `Error`
-    isolated remote function breakShareLease(int? breakPeriodSeconds = ()) returns int|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.LeaseOps"
-    } external;
-
-    # Changes the id of the active lease on the bound share.
-    #
-    # + leaseId - The current lease id
-    # + proposedLeaseId - The new lease id (a UUID string)
-    # + return - The new lease id, or an `Error`
-    isolated remote function changeShareLease(string leaseId, string proposedLeaseId)
-            returns string|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.LeaseOps"
-    } external;
-
-    # Acquires a lease on a file, locking it against writes and deletion by anyone not
-    # holding the lease id. A file lease is always infinite.
-    #
-    # + path - The share-relative path of the file
-    # + proposedLeaseId - A proposed lease id (a UUID string); when absent, the service generates one
-    # + return - The lease id to present with subsequent operations, or an `Error`
-    isolated remote function acquireLease(string path, string? proposedLeaseId = ())
-            returns string|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.LeaseOps"
-    } external;
-
-    # Releases a lease on a file, unlocking it immediately.
-    #
-    # + path - The share-relative path of the file
-    # + leaseId - The id of the lease to release
-    # + return - An `Error` if the lease could not be released, otherwise `()`
-    isolated remote function releaseLease(string path, string leaseId) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.LeaseOps"
-    } external;
-
-    # Breaks the lease on a file without needing its id. The break is immediate.
-    #
-    # + path - The share-relative path of the file
-    # + return - An `Error` if the lease could not be broken, otherwise `()`
-    isolated remote function breakLease(string path) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.LeaseOps"
-    } external;
-
-    # Changes the id of the active lease on a file.
-    #
-    # + path - The share-relative path of the file
-    # + leaseId - The current lease id
-    # + proposedLeaseId - The new lease id (a UUID string)
-    # + return - The new lease id, or an `Error`
-    isolated remote function changeLease(string path, string leaseId, string proposedLeaseId)
-            returns string|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.LeaseOps"
-    } external;
-
-    // -----------------------------------------------------------------------
-    // SMB handles
-    // -----------------------------------------------------------------------
-
-    # Lists the open SMB handles on a file.
-    #
-    # + path - The share-relative path of the file
-    # + return - The open handles, or an `Error`
-    isolated remote function listFileHandles(string path) returns HandleInfo[]|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.HandleOps"
-    } external;
-
-    # Force-closes open SMB handles on a file.
-    #
-    # + path - The share-relative path of the file
-    # + handleId - The id of one handle to close (from `listFileHandles`); when absent, all
-    #              handles on the file are closed
-    # + return - The `CloseHandlesInfo` (closed and failed counts), or an `Error`
-    isolated remote function forceCloseFileHandles(string path, string? handleId = ())
-            returns CloseHandlesInfo|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.HandleOps"
-    } external;
-
-    # Lists the open SMB handles on a directory.
-    #
-    # + directoryPath - The share-relative path of the directory
-    # + return - The open handles, or an `Error`
-    isolated remote function listDirectoryHandles(string directoryPath)
-            returns HandleInfo[]|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.HandleOps"
-    } external;
-
-    # Force-closes open SMB handles on a directory.
-    #
-    # + directoryPath - The share-relative path of the directory
-    # + handleId - The id of one handle to close (from `listDirectoryHandles`); when absent,
-    #              all handles on the directory are closed
-    # + recursive - Also close handles on the directory's files and subdirectories
-    # + return - The `CloseHandlesInfo` (closed and failed counts), or an `Error`
-    isolated remote function forceCloseDirectoryHandles(string directoryPath,
-            string? handleId = (), boolean recursive = false)
-            returns CloseHandlesInfo|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.HandleOps"
-    } external;
-
-    // -----------------------------------------------------------------------
-    // Property setters
-    // -----------------------------------------------------------------------
-
-    # Changes the bound share's quota or access tier. Requires account key credentials.
-    #
-    # + options - The properties to change; only what is set is changed
-    # + return - An `Error` if the properties could not be changed, otherwise `()`
-    isolated remote function setShareProperties(ShareSetPropertiesOptions options)
-            returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.ShareOps"
-    } external;
-
-    # Updates a file's properties after creation. Only what is set is changed.
-    #
-    # + path - The share-relative path of the file
-    # + options - The properties to change
-    # + return - An `Error` if the properties could not be changed, otherwise `()`
-    isolated remote function setFileProperties(string path, FileSetPropertiesOptions options)
-            returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.FileOps"
-    } external;
-
-    # Updates a directory's properties after creation. Only what is set is changed.
-    #
-    # + directoryPath - The share-relative path of the directory
-    # + options - The properties to change
-    # + return - An `Error` if the properties could not be changed, otherwise `()`
-    isolated remote function setDirectoryProperties(string directoryPath,
-            DirectorySetPropertiesOptions options) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.DirectoryOps"
-    } external;
-
-    // -----------------------------------------------------------------------
-    // Access policy
-    // -----------------------------------------------------------------------
-
-    # Gets the bound share's stored access policies.
-    #
-    # + return - The share's stored access policies, or an `Error`
-    isolated remote function getShareAccessPolicy() returns SignedIdentifier[]|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.PolicyOps"
-    } external;
-
-    # Replaces the bound share's stored access policies. Removing or editing a policy
-    # immediately affects every SAS token minted against it.
-    #
-    # + identifiers - The complete set of policies the share should carry
-    # + return - An `Error` if the policies could not be set, otherwise `()`
-    isolated remote function setShareAccessPolicy(SignedIdentifier[] identifiers)
-            returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.PolicyOps"
-    } external;
-
-    // -----------------------------------------------------------------------
-    // Permissions (SDDL)
-    // -----------------------------------------------------------------------
-
-    # Gets a security descriptor (SDDL string) from the bound share's permission store.
-    #
-    # + permissionKey - The key of the stored permission
-    # + return - The SDDL permission string, or an `Error`
-    isolated remote function getSharePermission(string permissionKey) returns string|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.PolicyOps"
-    } external;
-
-    # Stores a security descriptor (SDDL string) in the bound share's permission store and
-    # returns its key.
-    #
-    # + sddlPermission - The SDDL (Security Descriptor Definition Language) string to store
-    # + return - The key of the stored permission, or an `Error`
-    isolated remote function createSharePermission(string sddlPermission) returns string|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.PolicyOps"
-    } external;
-
-    // -----------------------------------------------------------------------
-    // SAS generation
-    // -----------------------------------------------------------------------
-
     # Generates a SAS (Shared Access Signature) token scoped to the bound share. Requires shared key credentials.
     #
     # + values - What the SAS grants: validity window and permissions, or a stored policy reference
     # + return - The SAS token, or an `Error`
-    public isolated function generateShareSas(ShareSasSignatureValues values)
-            returns string|Error = @java:Method {
+    public isolated function generateShareSas(ShareSasSignatureValues values) returns string|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.SasOps"
     } external;
 
@@ -745,35 +506,5 @@ public isolated client class Client {
             FileSasSignatureValues values, UserDelegationKey key)
             returns string|Error = @java:Method {
         'class: "io.ballerina.lib.azure.storage.files.client.SasOps"
-    } external;
-
-    // -----------------------------------------------------------------------
-    // NFS links
-    // -----------------------------------------------------------------------
-
-    # Creates a hard link to an existing file (NFS shares only).
-    #
-    # + path - The share-relative path of the new link
-    # + targetPath - The share-relative path of the existing file to link to
-    # + return - An `Error` if the link could not be created, otherwise `()`
-    isolated remote function createHardLink(string path, string targetPath) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.FileOps"
-    } external;
-
-    # Creates a symbolic link (NFS shares only). The target need not exist.
-    #
-    # + path - The share-relative path of the new link
-    # + linkTarget - The path the link points to
-    # + return - An `Error` if the link could not be created, otherwise `()`
-    isolated remote function createSymbolicLink(string path, string linkTarget) returns Error? = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.FileOps"
-    } external;
-
-    # Reads the target of a symbolic link (NFS shares only).
-    #
-    # + path - The share-relative path of the link
-    # + return - The path the link points to, or an `Error`
-    isolated remote function getSymbolicLink(string path) returns string|Error = @java:Method {
-        'class: "io.ballerina.lib.azure.storage.files.client.FileOps"
     } external;
 }

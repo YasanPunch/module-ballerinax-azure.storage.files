@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package io.ballerina.lib.azure.storage.files.util;
+package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.core.credential.AzureNamedKeyCredential;
 import com.azure.core.credential.AzureSasCredential;
@@ -31,6 +31,10 @@ import com.azure.identity.WorkloadIdentityCredentialBuilder;
 import com.azure.storage.file.share.ShareServiceClient;
 import com.azure.storage.file.share.ShareServiceClientBuilder;
 import com.azure.storage.file.share.models.ShareTokenIntent;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
+import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
+import io.ballerina.lib.azure.storage.files.util.TransportConfigMapper;
+import io.ballerina.lib.azure.storage.files.util.ValueUtils;
 import io.ballerina.runtime.api.utils.StringUtils;
 import io.ballerina.runtime.api.values.BError;
 import io.ballerina.runtime.api.values.BMap;
@@ -82,12 +86,12 @@ public final class ClientInit {
      */
     public static Object initAdminClient(BObject self, BMap<BString, Object> config) {
         try {
-            self.addNativeData(SdkInvoker.NATIVE_SERVICE_CLIENT, buildServiceClient(config));
+            self.addNativeData(BallerinaAzureClient.NATIVE_SERVICE_CLIENT, buildServiceClient(config));
             return null;
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -103,16 +107,16 @@ public final class ClientInit {
         try {
             String share = shareName.getValue().strip();
             if (share.isEmpty()) {
-                return FilesErrorCreator.processingError("shareName must not be empty", null);
+                return FilesErrorCreator.clientError("shareName must not be empty", null);
             }
             ShareServiceClient serviceClient = buildServiceClient(config);
-            self.addNativeData(SdkInvoker.NATIVE_SERVICE_CLIENT, serviceClient);
-            self.addNativeData(SdkInvoker.NATIVE_SHARE_CLIENT, serviceClient.getShareClient(share));
+            self.addNativeData(BallerinaAzureClient.NATIVE_SERVICE_CLIENT, serviceClient);
+            self.addNativeData(BallerinaAzureClient.NATIVE_SHARE_CLIENT, serviceClient.getShareClient(share));
             return null;
         } catch (BError e) {
             return e;
         } catch (Exception e) {
-            return FilesErrorCreator.processingError(SdkInvoker.describe(e), e);
+            return FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -149,7 +153,7 @@ public final class ClientInit {
         try {
             return builder.buildClient();
         } catch (IllegalArgumentException | IllegalStateException e) {
-            throw FilesErrorCreator.processingError("invalid client configuration: " + SdkInvoker.describe(e), e);
+            throw FilesErrorCreator.clientError("invalid client configuration: " + BallerinaAzureClient.describe(e), e);
         }
     }
 
@@ -159,21 +163,33 @@ public final class ClientInit {
         try {
             Base64.getDecoder().decode(accountKey);
         } catch (IllegalArgumentException e) {
-            throw FilesErrorCreator.processingError("accountKey is not a valid base64 string", e);
+            throw FilesErrorCreator.clientError("accountKey is not a valid base64 string", e);
         }
         String serviceUrl = ValueUtils.optString(auth, SERVICE_URL);
-        builder.endpoint(serviceUrl == null ? defaultEndpoint(accountName) : validateUrl(serviceUrl, "serviceUrl"))
-                .credential(new AzureNamedKeyCredential(accountName, accountKey));
-        if (serviceUrl != null) {
-            addPortOverride(builder, serviceUrl);
-        }
+        applyEndpoint(builder, accountName, serviceUrl);
+        builder.credential(new AzureNamedKeyCredential(accountName, accountKey));
     }
 
     /*
      * The SDK's endpoint parsing keeps only the URL's scheme and host, so an endpoint carrying
      * an explicit port (a private endpoint, a tunnel, or a local test service) would silently
-     * lose it. This policy restores the configured authority on every outgoing request.
+     * lose it. This policy restores the configured authority on requests still aimed at the
+     * configured host. A request whose host already differs is a retry the storage retry policy
+     * re-targeted at the configured secondary host, and is left untouched (the policy runs per
+     * retry, after that swap). One shape stays unguarded: a secondary sharing the primary's
+     * host and differing only in port is indistinguishable here and still gets rewritten.
      */
+    /**
+     * Applies the service endpoint: the validated explicit {@code serviceUrl} (with its port
+     * override) when given, or the account's default endpoint.
+     */
+    private static void applyEndpoint(ShareServiceClientBuilder builder, String accountName, String serviceUrl) {
+        builder.endpoint(serviceUrl == null ? defaultEndpoint(accountName) : validateUrl(serviceUrl, "serviceUrl"));
+        if (serviceUrl != null) {
+            addPortOverride(builder, serviceUrl);
+        }
+    }
+
     private static void addPortOverride(ShareServiceClientBuilder builder, String url) {
         URI uri = URI.create(url);
         int port = uri.getPort();
@@ -184,6 +200,9 @@ public final class ClientInit {
         String host = uri.getHost();
         HttpPipelinePolicy override = (context, next) -> {
             UrlBuilder requestUrl = UrlBuilder.parse(context.getHttpRequest().getUrl());
+            if (!host.equalsIgnoreCase(requestUrl.getHost())) {
+                return next.process();
+            }
             requestUrl.setScheme(scheme).setHost(host).setPort(port);
             context.getHttpRequest().setUrl(requestUrl.toString());
             return next.process();
@@ -207,7 +226,7 @@ public final class ClientInit {
         } else if (auth.containsKey(CERTIFICATE_PATH)) {
             String certificatePath = requireNonEmpty(auth, CERTIFICATE_PATH);
             if (!Files.isRegularFile(Path.of(certificatePath))) {
-                throw FilesErrorCreator.processingError(
+                throw FilesErrorCreator.clientError(
                         "certificatePath does not point to a readable file: " + certificatePath, null);
             }
             ClientCertificateCredentialBuilder certificateBuilder = new ClientCertificateCredentialBuilder()
@@ -236,12 +255,8 @@ public final class ClientInit {
         }
         String accountName = requireNonEmpty(auth, ACCOUNT_NAME);
         String serviceUrl = ValueUtils.optString(auth, SERVICE_URL);
-        builder.endpoint(serviceUrl == null ? defaultEndpoint(accountName) : validateUrl(serviceUrl, "serviceUrl"))
-                .credential(credential)
-                .shareTokenIntent(ShareTokenIntent.BACKUP);
-        if (serviceUrl != null) {
-            addPortOverride(builder, serviceUrl);
-        }
+        applyEndpoint(builder, accountName, serviceUrl);
+        builder.credential(credential).shareTokenIntent(ShareTokenIntent.BACKUP);
     }
 
     private static void configureSas(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
@@ -256,16 +271,16 @@ public final class ClientInit {
         try {
             uri = new URI(sasUrl);
         } catch (URISyntaxException e) {
-            throw FilesErrorCreator.processingError("sasUrl is not a valid URL", e);
+            throw FilesErrorCreator.clientError("sasUrl is not a valid URL", e);
         }
         if (uri.getScheme() == null || !(uri.getScheme().equals("https") || uri.getScheme().equals("http"))) {
-            throw FilesErrorCreator.processingError("sasUrl must use the http or https scheme", null);
+            throw FilesErrorCreator.clientError("sasUrl must use the http or https scheme", null);
         }
         if (uri.getRawQuery() == null || !uri.getRawQuery().contains("sig=")) {
-            throw FilesErrorCreator.processingError(
+            throw FilesErrorCreator.clientError(
                     "sasUrl carries no SAS token (no `sig=` in its query); for a bare token use SasConfig", null);
         }
-        String base = uri.getRawQuery() == null ? sasUrl : sasUrl.substring(0, sasUrl.indexOf('?'));
+        String base = sasUrl.substring(0, sasUrl.indexOf('?'));
         builder.endpoint(base).credential(new AzureSasCredential(uri.getRawQuery()));
         addPortOverride(builder, base);
     }
@@ -273,14 +288,14 @@ public final class ClientInit {
     private static void configureConnectionString(ShareServiceClientBuilder builder, BMap<BString, Object> auth) {
         String connectionString = requireNonEmpty(auth, CONNECTION_STRING);
         if (!connectionString.contains("FileEndpoint=") && !connectionString.contains("AccountName=")) {
-            throw FilesErrorCreator.processingError(
+            throw FilesErrorCreator.clientError(
                     "the connection string must include FileEndpoint= or AccountName= so the file-service "
                             + "endpoint can be derived", null);
         }
         try {
             builder.connectionString(connectionString);
         } catch (IllegalArgumentException e) {
-            throw FilesErrorCreator.processingError("invalid connection string: " + SdkInvoker.describe(e), e);
+            throw FilesErrorCreator.clientError("invalid connection string: " + BallerinaAzureClient.describe(e), e);
         }
         for (String pair : connectionString.split(";")) {
             if (pair.startsWith("FileEndpoint=")) {
@@ -292,7 +307,7 @@ public final class ClientInit {
     private static String requireNonEmpty(BMap<BString, Object> record, BString field) {
         String value = ValueUtils.optString(record, field);
         if (value == null || value.strip().isEmpty()) {
-            throw FilesErrorCreator.processingError(field.getValue() + " must not be empty", null);
+            throw FilesErrorCreator.clientError(field.getValue() + " must not be empty", null);
         }
         return value.strip();
     }
@@ -305,11 +320,11 @@ public final class ClientInit {
         try {
             URI uri = new URI(url);
             if (uri.getScheme() == null || !(uri.getScheme().equals("https") || uri.getScheme().equals("http"))) {
-                throw FilesErrorCreator.processingError(fieldName + " must use the http or https scheme", null);
+                throw FilesErrorCreator.clientError(fieldName + " must use the http or https scheme", null);
             }
             return url;
         } catch (URISyntaxException e) {
-            throw FilesErrorCreator.processingError(fieldName + " is not a valid URL", e);
+            throw FilesErrorCreator.clientError(fieldName + " is not a valid URL", e);
         }
     }
 }

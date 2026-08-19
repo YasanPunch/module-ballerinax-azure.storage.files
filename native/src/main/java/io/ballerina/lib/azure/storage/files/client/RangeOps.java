@@ -20,9 +20,9 @@ package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.storage.file.share.models.ShareFileRange;
 import com.azure.storage.file.share.models.ShareFileUploadRangeOptions;
+import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.OptionsReader;
 import io.ballerina.lib.azure.storage.files.util.RecordMapper;
-import io.ballerina.lib.azure.storage.files.util.SdkInvoker;
 import io.ballerina.runtime.api.Environment;
 import io.ballerina.runtime.api.values.BArray;
 import io.ballerina.runtime.api.values.BMap;
@@ -41,7 +41,7 @@ public final class RangeOps {
 
     /** Writes bytes into an existing file at the given offset. */
     public static Object uploadRange(Environment env, BObject self, BString path, long offset, BArray content) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             byte[] bytes = content.getBytes();
             FileOps.fileClient(self, path).uploadRangeWithResponse(
                     new ShareFileUploadRangeOptions(new ByteArrayInputStream(bytes), bytes.length)
@@ -53,7 +53,7 @@ public final class RangeOps {
 
     /** Clears (zeroes) a byte range of an existing file. */
     public static Object clearRange(Environment env, BObject self, BString path, long offset, long length) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             FileOps.fileClient(self, path).clearRangeWithResponse(length, offset, null, null);
             return null;
         });
@@ -61,7 +61,7 @@ public final class RangeOps {
 
     /** Lists the valid (written) byte ranges of a file as {@code Range} records. */
     public static Object listRanges(Environment env, BObject self, BString path, Object options) {
-        return SdkInvoker.invoke(env, () -> {
+        return BallerinaAzureClient.invoke(env, () -> {
             ShareFileRange range = null;
             if (options != null) {
                 @SuppressWarnings("unchecked")

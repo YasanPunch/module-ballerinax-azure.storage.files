@@ -49,9 +49,11 @@ def stripBallerinaExtensionVersion(String extVersion) {
 ballerina {
     packageOrganization = packageOrg
     module = packageName
-    langVersion = project.ballerinaLangVersion
     testCoverageParam = "--code-coverage --coverage-format=xml --excludes=\"modules/**/**\""
     platform = "java21"
+    // The connector build: every bal step runs in the released ballerina/ballerina docker
+    // image (tag = ballerinaLangVersion), so no distribution is downloaded or unpacked.
+    isConnector = true
 }
 
 configurations {
@@ -132,12 +134,32 @@ test.dependsOn ":azure.storage.files-native:build"
 build.dependsOn ":azure.storage.files-compiler-plugin:build"
 test.dependsOn ":azure.storage.files-compiler-plugin:build"
 
-// bal and the standard libraries the connector needs come from the unpacked distribution, so
-// unpack it and copy the declared ballerinaStdLibs into it before build and test run bal.
-unpackStdLibs.dependsOn unpackJballerinaTools
-copyStdlibs.dependsOn unpackStdLibs
-build.dependsOn copyStdlibs
-test.dependsOn copyStdlibs
+// The path-based data.* platform jars are copied into ballerina/lib before bal runs.
+build.dependsOn copyToLib
+test.dependsOn copyToLib
+
+// Publishes the packed module to the local repository for the compiler-plugin test
+// fixtures, using the HOST bal: the docker build cannot reach ~/.ballerina, and the
+// plugin tests run on the host JVM against the installed distribution anyway.
+task publishToLocalRepo(type: Exec) {
+    dependsOn build
+    workingDir project.projectDir
+    // The docker pack writes the bala under build/bal_build_target and bal push extracts the bala's platform jars beside the
+    // bala file. The push therefore runs against a copy staged in a host-owned directory.
+    doFirst {
+        def bala = fileTree("${project.projectDir}/build/bal_build_target/bala") {
+            include '*.bala'
+        }.singleFile
+        def stageDir = new File("${project.rootProject.buildDir}/local-push-stage")
+        project.delete stageDir
+        project.mkdir stageDir
+        project.copy {
+            from bala
+            into stageDir
+        }
+        commandLine 'bal', 'push', '--repository=local', new File(stageDir, bala.name).absolutePath
+    }
+}
 
 // The push-to-main build publishes a timestamped snapshot of the package archive to GitHub
 // Packages (the createArtifactZip task comes from the io.ballerina.plugin plugin).
