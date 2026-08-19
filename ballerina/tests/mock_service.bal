@@ -153,10 +153,12 @@ function dispatch(string method, string[] segments, string comp, string restype,
         mockFaultRemaining -= 1;
         return errorResponse(mockFaultStatus, mockFaultCode);
     }
-    // Forced-error escape hatch for the error-mapping tests.
-    foreach string segment in segments {
-        if segment.startsWith("__err-") {
-            string[] parts = re `-`.split(segment);
+    // Forced-error escape hatch for the error-mapping tests. Splits on "/" as well because
+    // the SDK encodes the slashes of a nested file path, so several path components can
+    // arrive inside one decoded segment.
+    foreach string component in re `/`.split(string:'join("/", ...segments)) {
+        if component.startsWith("__err-") {
+            string[] parts = re `-`.split(component);
             if parts.length() >= 3 {
                 int status = checkpanic int:fromString(parts[1]);
                 return errorResponse(status, parts[2]);

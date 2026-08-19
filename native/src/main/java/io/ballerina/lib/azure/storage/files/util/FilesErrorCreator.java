@@ -41,6 +41,11 @@ public final class FilesErrorCreator {
     private static final BString HTTP_STATUS = StringUtils.fromString("httpStatus");
     private static final BString ERROR_CODE = StringUtils.fromString("errorCode");
 
+    private static final String CONTENT_BINDING_ERROR = "ContentBindingError";
+    private static final String CONTENT_BINDING_ERROR_DETAIL = "ContentBindingErrorDetail";
+    private static final BString FILE_PATH = StringUtils.fromString("filePath");
+    private static final BString CONTENT = StringUtils.fromString("content");
+
     /**
      * Creates a typed error for a failure returned by the Azure service.
      *
@@ -71,6 +76,26 @@ public final class FilesErrorCreator {
     public static BError clientError(String message, Throwable cause) {
         return ErrorCreator.createError(ModuleUtils.getModule(), GENERIC_ERROR,
                 StringUtils.fromString(message == null ? "" : message), toCause(cause), null);
+    }
+
+    /**
+     * Creates a {@code ContentBindingError} identifying the file whose content failed to bind.
+     *
+     * @param message  the human-readable message
+     * @param cause    the originating error
+     * @param filePath the share-relative path of the failing file
+     * @param content  the file's raw content, or {@code null} when it was never read
+     * @return the Ballerina error
+     */
+    public static BError contentBindingError(String message, Throwable cause, String filePath, byte[] content) {
+        BMap<BString, Object> detail = ValueCreator.createRecordValue(
+                ModuleUtils.getModule(), CONTENT_BINDING_ERROR_DETAIL);
+        detail.put(FILE_PATH, StringUtils.fromString(filePath));
+        if (content != null) {
+            detail.put(CONTENT, ValueCreator.createArrayValue(content));
+        }
+        return ErrorCreator.createError(ModuleUtils.getModule(), CONTENT_BINDING_ERROR,
+                StringUtils.fromString(message == null ? "" : message), toCause(cause), detail);
     }
 
     private static BError toCause(Throwable cause) {

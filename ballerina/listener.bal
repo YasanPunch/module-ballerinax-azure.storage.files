@@ -68,13 +68,15 @@ public type MOVE Move;
 
 # The per-handler configuration, supplied through the `@files:FunctionConfig` annotation. It
 # routes files to a handler by name pattern and auto-consumes a file after the handler runs.
+# On `onError`, the consume actions apply to the content-binding failures it handles, and
+# `fileNamePattern` is ignored.
 public type FunctionConfiguration record {|
     # A regular expression matched against the file name that routes matching files to this handler
     string fileNamePattern?;
     # The action applied after the handler returns normally: delete the file, or move it
     DELETE|MOVE afterProcess?;
-    # The action applied after the handler returns or panics with an error (including a
-    # content-binding failure for a typed handler): delete the file, or move it
+    # The action applied after the handler returns or panics with an error: delete the file, or
+    # move it. Also covers a typed handler's content-binding failures when no `onError` is declared
     DELETE|MOVE afterError?;
 |};
 

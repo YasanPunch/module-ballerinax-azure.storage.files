@@ -236,7 +236,8 @@ type Metric record {
 };
 
 // The .json extension selects the JSON serialization.
-check fileShare->upload(<Metric>{quarter: "q1", revenue: 1250000}, "/2026/q1/metrics.json");
+Metric q1 = {quarter: "q1", revenue: 1250000};
+check fileShare->upload(q1, "/2026/q1/metrics.json");
 
 // A record array is CSV; the override beats the extension when they disagree.
 Metric[] quarters = [{quarter: "q1", revenue: 1250000}, {quarter: "q2", revenue: 1310000}];
@@ -393,7 +394,7 @@ A service declares at least one content handler, validated at compile time by th
 
 The `FileInfo` and `Caller` parameters are optional trailing parameters: a handler declares its content parameter first, then either, both, or neither of `FileInfo` and `Caller` (with `FileInfo` before `Caller` when both are present), and the listener passes only what the handler declares. `FileInfo` carries what the directory listing provides: the share name, the share relative path, the file name, the size in bytes, the entity tag, and the last modified time.
 
-Routing is by file extension: `txt` to `onFileText`, `json` to `onFileJson`, `xml` to `onFileXml`, `csv` to `onFileCsv`, and everything else to `onFile`. A per handler `@files:FunctionConfig` `fileNamePattern` overrides the extension routing. When more than one routing pattern matches a file name, the winner is fixed: patterns are checked in the order `onFileText`, `onFileJson`, `onFileXml`, `onFileCsv`, then `onFile`, so a typed handler's pattern always beats the catch all's. A file whose extension maps to an undeclared typed handler falls back to `onFile`, and is skipped and logged when `onFile` is absent too. A file routed to a typed handler whose content is malformed raises a content binding error rather than falling through to `onFile` (section 5.5).
+Routing is by file extension: `txt` to `onFileText`, `json` to `onFileJson`, `xml` to `onFileXml`, `csv` to `onFileCsv`, and everything else to `onFile`. A per handler `@files:FunctionConfig` `fileNamePattern` overrides the extension routing. When more than one routing pattern matches a file name, the winner is fixed: patterns are checked in the order `onFileText`, `onFileJson`, `onFileXml`, `onFileCsv`, then `onFile`, so a typed handler's pattern always beats the catch all's. A file whose extension maps to an undeclared typed handler falls back to `onFile`, and is skipped and logged when `onFile` is absent too. A file routed to a typed handler whose content is malformed raises a `ContentBindingError` rather than falling through to `onFile` (section 5.5).
 
 Binding is strict by default. Setting `laxDataBinding` on the listener relaxes it: JSON and CSV record binding treat a null value as an optional field and an absent member as a nilable field, and XML record binding tolerates elements the record does not declare.
 
@@ -404,9 +405,9 @@ The stream content forms read the file from the service in chunks as the handler
 A handler can consume a file declaratively with the `@files:FunctionConfig` annotation's post processing actions, each either `DELETE` or a `Move` record:
 
 * `afterProcess`: applied when the handler returns normally.
-* `afterError`: applied when the handler returns an error or its content binding fails.
+* `afterError`: applied when the handler returns an error. It also covers the handler's content binding failures, but only when the service declares no `onError` handler; with `onError` declared, a binding failure is post processed by `onError`'s own annotation instead (section 5.5).
 
-When neither is set, the file stays and fires again on a later poll. A `Move` names the target directory in `moveTo` (the file keeps its name, and the directory is created if absent); on recursive watches, `preserveSubDirs` (default true) recreates the file's sub path under the target. A move onto an existing same named file replaces it, so a recurring file name moves cleanly every time; with `preserveSubDirs: false`, same named files from different subdirectories land on one destination name and the last move wins, so flattened moves should only be used where names are unique.
+When neither is set, the file stays and fires again on a later poll. The annotation may also sit on `onError`, whose actions post process binding failures (section 5.5). A `Move` names the target directory in `moveTo` (the file keeps its name, and the directory is created if absent); on recursive watches, `preserveSubDirs` (default true) recreates the file's sub path under the target. A move onto an existing same named file replaces it, so a recurring file name moves cleanly every time; with `preserveSubDirs: false`, same named files from different subdirectories land on one destination name and the last move wins, so flattened moves should only be used where names are unique.
 
 ###### Example: Sorting Processed and Failed Drops
 
@@ -421,9 +422,17 @@ service /incoming on dropListener {
 
 ### 5.5 Error Notification
 
-A service may declare an `onError` handler, `remote function onError(files:Error err, files:Caller caller?) returns error?`. It is notified when a poll fails (with the mapped typed error, for example an `AuthorizationError` when the credential lacks access) and when a typed handler's content binding fails (with a client side `Error`). It is not a content handler: it does not satisfy the at least one handler requirement, takes no annotation, and does not change what happens to the file, so a declared `afterError` still applies to a binding failure. An error returned by `onError` itself is swallowed. Errors returned by content handlers do not notify `onError`, and neither does a CSV stream row that fails to bind lazily (that error belongs to the handler draining the stream).
+A service may declare an `onError` handler, `remote function onError(files:Error err, files:Caller caller?) returns error?`. It is notified on every listener side failure:
 
-A failed poll also logs its error, and polling keeps its configured interval, so the next scheduled poll scans again.
+* A failed poll, with the mapped typed error, for example an `AuthorizationError` when the credential lacks access.
+* A failed content read: a file was listed but its content could not be downloaded for dispatch. The file stays for the next poll, so the notification repeats while the read keeps failing.
+* A typed handler's content binding failure, with a `ContentBindingError` whose detail carries the file's share relative path in `filePath` and, when the content had been downloaded before binding failed, its raw bytes in `content` (section 6).
+
+`onError` is not a content handler: it does not satisfy the at least one handler requirement and is never routed a file, so a `fileNamePattern` in its annotation is ignored. Errors returned by content handlers do not notify `onError`, and neither does a CSV stream row that fails to bind lazily (that error belongs to the handler draining the stream).
+
+When `onError` is declared, a binding failure becomes its to handle: the file's fate follows `onError`'s own `@files:FunctionConfig`, with `afterProcess` applied when `onError` returns normally and `afterError` when it returns an error, and the content handler's `afterError` is not applied. With no annotation on `onError`, the file stays and fires again on a later poll. When `onError` is absent, a binding failure is logged and the content handler's `afterError` applies (section 5.4).
+
+The consume actions cover binding failures only. A file whose read failed always stays for the next poll, whatever `onError` returns, since consuming a file that could not be read would discard content over a transient failure. A failed poll also logs its error, and polling keeps its configured interval, so the next scheduled poll scans again.
 
 ### 5.6 Delivery Semantics
 
@@ -439,9 +448,10 @@ A `Caller` is passed to each handler so it can act on the event's file without c
 
 ## 6. Errors
 
-Every error raised by an operation of this module is a subtype of the distinct `Error` type. The hierarchy splits by origin: an error the Azure service raised is a `ServiceError` carrying the HTTP status and the Azure error code of the failed request in its detail, while a client side failure is the generic `Error` with no detail (no server exchange produced a status or a code, and the connector never fabricates them). The service's human readable description becomes the Ballerina error's `message()`.
+Every error raised by an operation of this module is a subtype of the distinct `Error` type. The hierarchy splits by origin: an error the Azure service raised is a `ServiceError` carrying the HTTP status and the Azure error code of the failed request in its detail, while a client side failure is the generic `Error` with no detail (no server exchange produced a status or a code, and the connector never fabricates them). The one client side exception is the listener's `ContentBindingError`, whose detail identifies the file that failed to bind. The service's human readable description becomes the Ballerina error's `message()`.
 
 * **`Error`**: the root type, and the type of every client side failure.
+  * **`ContentBindingError`**: a dispatched file's content did not bind to its handler's declared type, delivered to the service's `onError` handler (section 5.5). Its detail carries the file's share relative path in `filePath` and, when the content had been downloaded before binding failed, its raw bytes in `content`.
 * **`ServiceError`**: any error raised by the Azure service, with `httpStatus` and `errorCode` in its detail. A service failure whose Azure error code maps to none of the subtypes below stays this generic type.
   * **`NotFoundError`**: the requested share, directory, or file was not found (HTTP 404).
   * **`ConflictError`**: the operation conflicts with the current state of the resource, for example creating a share that already exists (HTTP 409).

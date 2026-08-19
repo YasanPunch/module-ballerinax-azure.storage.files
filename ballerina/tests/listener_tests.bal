@@ -1057,8 +1057,12 @@ function testOnErrorFiresOnBindingFailure() returns error? {
         }
 
         remote function onError(Error err) returns error? {
-            if err !is ServiceError {
-                recorder.put("onerror", err.message());
+            if err is ContentBindingError {
+                recorder.put("onerror", err.detail().filePath);
+                byte[]? raw = err.detail()?.content;
+                if raw is byte[] {
+                    recorder.put("content", check string:fromBytes(raw));
+                }
             }
         }
     };
@@ -1069,8 +1073,10 @@ function testOnErrorFiresOnBindingFailure() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.count("json"), 0, "malformed content must not reach the typed handler");
-    test:assertTrue(recorder.count("onerror") >= 1,
-            "a content-binding failure must notify onError with a client-side error");
+    test:assertEquals(recorder.payload("onerror"), "/incoming/broken.json",
+            "the ContentBindingError detail must carry the failing file's path");
+    test:assertEquals(recorder.payload("content"), "{not-json",
+            "the ContentBindingError detail must carry the file's raw content");
 }
 
 @test:Config {}
@@ -1155,17 +1161,15 @@ function testBindingFailureAfterErrorInteraction() returns error? {
     };
     check lsn.attach(svc, "/incoming");
     check lsn.'start();
-    check await(() => recorder.count("onerror") >= 1);
-    check await(function() returns boolean|error {
-        boolean present = check shareClient->hasFile("/incoming/broken.json");
-        return !present;
-    });
+    // Two notifications prove a full re-fire cycle completed without the file being consumed.
+    check await(() => recorder.count("onerror") >= 2);
     check lsn.gracefulStop();
     check lsn.detach(svc);
 
-    test:assertTrue(recorder.count("onerror") >= 1, "a binding failure must notify a declared onError");
+    test:assertTrue(recorder.count("onerror") >= 2, "a binding failure must notify a declared onError");
     boolean stillPresent = check shareClient->hasFile("/incoming/broken.json");
-    test:assertFalse(stillPresent, "afterError must still consume the file when onError is declared");
+    test:assertTrue(stillPresent,
+            "the content handler's afterError must be suppressed when onError is declared");
 }
 
 @test:Config {}
@@ -1178,7 +1182,6 @@ function testOnErrorErrorReturnIsSwallowed() returns error? {
     final Recorder recorder = new;
     Listener lsn = check newListener(share);
     Service svc = service object {
-        @FunctionConfig {afterError: DELETE}
         remote function onFileJson(json content) returns error? {
             recorder.hit("json");
         }
@@ -1201,6 +1204,114 @@ function testOnErrorErrorReturnIsSwallowed() returns error? {
     check await(() => recorder.count("onfile") >= 1);
     check lsn.gracefulStop();
     check lsn.detach(svc);
+}
+
+@test:Config {}
+function testOnErrorAfterProcessConsumesFile() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-onerr-consume");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->upload("{broken", "/incoming/broken.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = service object {
+        remote function onFileJson(json content) returns error? {
+            recorder.hit("json");
+        }
+
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("onerror") >= 1);
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/broken.json");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    boolean stillPresent = check shareClient->hasFile("/incoming/broken.json");
+    test:assertFalse(stillPresent, "onError's own afterProcess must consume the binding-failed file");
+}
+
+@test:Config {}
+function testOnErrorErrorAppliesItsOwnAfterError() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-onerr-ownafter");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->upload("{broken", "/incoming/broken.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = service object {
+        remote function onFileJson(json content) returns error? {
+            recorder.hit("json");
+        }
+
+        @FunctionConfig {afterError: DELETE}
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+            return error("could not handle the file");
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("onerror") >= 1);
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/broken.json");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    boolean stillPresent = check shareClient->hasFile("/incoming/broken.json");
+    test:assertFalse(stillPresent,
+            "when onError returns an error, its own afterError must consume the file");
+}
+
+// Mock-pinned: a per-file read failure cannot be produced on demand on a real account. The
+// file is planted directly in the mock state under a forced-error name, so the listing
+// serves it but every download of it fails.
+@test:Config {}
+function testReadFailureNotifiesOnError() returns error? {
+    [Client, string] setup = check setupMockWatchedShare("lsn-read-fail");
+    string share = setup[1];
+    MockShare mockShare = mockShares.get(share);
+    mockShare.files["incoming/__err-409-SharingViolation.dat"] = {
+        size: 4,
+        content: [1, 2, 3, 4],
+        metadata: {},
+        contentHeaders: {},
+        etag: nextEtag(),
+        lastModified: rfcNow()
+    };
+
+    final Recorder recorder = new;
+    Listener lsn = check newMockListener(share);
+    Service svc = service object {
+        remote function onFile(byte[] content) returns error? {
+            recorder.hit("onfile");
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    // Repeats each poll while the file stays unreadable, like poll failures do.
+    check await(() => recorder.count("onerror") >= 2);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("onfile"), 0, "an unreadable file must not reach a content handler");
+    test:assertTrue(mockShare.files.hasKey("incoming/__err-409-SharingViolation.dat"),
+            "a read failure must leave the file in place for the next poll");
 }
 
 // ===== laxDataBinding and record binding =====

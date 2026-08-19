@@ -25,12 +25,26 @@ public type ServiceErrorDetail record {|
 # The root error type for the connector. Every error raised by an `azure.storage.files`
 # operation is a subtype of this type. A client-side failure (invalid configuration, local
 # I/O, content that fails to bind, or any other failure the Azure service did not raise) is
-# this generic type and carries no detail; errors raised by the service are `ServiceError`s.
+# this generic type and carries no detail, except the listener's `ContentBindingError`;
+# errors raised by the service are `ServiceError`s.
 public type Error distinct error;
 
 # An error raised by the Azure service. Carries a `ServiceErrorDetail` with the HTTP status
 # and the Azure error code of the failed request.
 public type ServiceError distinct (Error & error<ServiceErrorDetail>);
+
+# Structured detail carried by a `ContentBindingError`, identifying the file that failed
+# to bind so an `onError` handler can act on it.
+public type ContentBindingErrorDetail record {|
+    # The share-relative path of the file whose content failed to bind
+    string filePath;
+    # The file's raw content; absent when the failure happened before the content was read
+    byte[] content?;
+|};
+
+# A listener content-binding failure: a dispatched file's content did not bind to the
+# handler's declared type. Delivered to the service's `onError` handler.
+public type ContentBindingError distinct (Error & error<ContentBindingErrorDetail>);
 
 # The requested share, directory, or file was not found (HTTP 404).
 public type NotFoundError distinct ServiceError;

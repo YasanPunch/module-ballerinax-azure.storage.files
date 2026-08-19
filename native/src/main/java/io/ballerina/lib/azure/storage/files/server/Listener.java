@@ -111,8 +111,8 @@ public final class Listener {
     private static final String ON_FILE_JSON = "onFileJson";
     private static final String ON_FILE_XML = "onFileXml";
     private static final String ON_FILE_CSV = "onFileCsv";
-    // The optional error-notification handler: not a content handler (no routing, no
-    // afterProcess/afterError semantics of its own).
+    // The optional error-notification handler: not a content handler (no routing), but it
+    // may carry afterProcess/afterError actions of its own for the binding-failure path.
     private static final String ON_ERROR = "onError";
     private static final Map<String, String> EXTENSION_HANDLERS = Map.of(
             "json", ON_FILE_JSON, "xml", ON_FILE_XML, "csv", ON_FILE_CSV, "txt", ON_FILE_TEXT);
@@ -244,9 +244,18 @@ public final class Listener {
         });
     }
 
-    // Invokes the optional onError handler on a virtual thread. onError is a notification
-    // hook: its own failure is printed and swallowed.
+    // Invokes the optional onError handler on a virtual thread as a pure notification: any
+    // error it returns is printed and swallowed, and no post-processing applies.
     private static void invokeOnError(ListenerContext ctx, BError error) {
+        invokeOnError(ctx, error, null, null, null, null, null);
+    }
+
+    // Invokes the optional onError handler on a virtual thread. When post-process actions are
+    // given (the binding-failure path), onError's own afterProcess applies on a normal return
+    // and its afterError when the handler returns an error or panics.
+    private static void invokeOnError(ListenerContext ctx, BError error, BObject listenerObj,
+                                      PostAction afterProcess, PostAction afterError,
+                                      String path, String eTag) {
         BObject service = ctx.service;
         ServiceContext serviceContext = ctx.serviceContext;
         int arity = serviceContext == null ? 0 : serviceContext.onErrorArity();
@@ -259,20 +268,25 @@ public final class Listener {
             StrandMetadata metadata = new StrandMetadata(isConcurrentSafe, null);
             Object[] args = arity >= 2 ? new Object[]{error, ctx.caller} : new Object[]{error};
 
-            Object result;
+            boolean handled;
             // Deliberate last line of defense: a failing user onError handler must never take
             // down the dispatch thread.
             try {
-                result = ctx.runtime.callMethod(service, ON_ERROR, metadata, args);
+                Object result = ctx.runtime.callMethod(service, ON_ERROR, metadata, args);
+                handled = !(result instanceof BError);
+                if (result instanceof BError handlerError) {
+                    handlerError.printStackTrace();
+                }
             } catch (BError handlerPanic) {
                 handlerPanic.printStackTrace();
-                return;
+                handled = false;
             } catch (RuntimeException e) {
                 LOG.warn("azure.storage.files listener: onError invocation failed", e);
-                return;
+                handled = false;
             }
-            if (result instanceof BError handlerError) {
-                handlerError.printStackTrace();
+            if (listenerObj != null) {
+                PostAction action = handled ? afterProcess : afterError;
+                postProcess(listenerObj, serviceContext, action, path, eTag);
             }
         });
     }
@@ -378,6 +392,7 @@ public final class Listener {
                             .getFileClient(path).openInputStream();
                 } catch (RuntimeException e) {
                     LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
+                    invokeOnError(ctx, asTypedError(e));
                     return;
                 }
                 try {
@@ -388,7 +403,7 @@ public final class Listener {
                                     streamContentType.getConstrainedType());
                 } catch (RuntimeException e) {
                     closeQuietly(inputStream);
-                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e);
+                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e, null);
                     return;
                 }
             } else {
@@ -397,12 +412,13 @@ public final class Listener {
                     bytes = download(listenerObj, path);
                 } catch (RuntimeException e) {
                     LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
+                    invokeOnError(ctx, asTypedError(e));
                     return;
                 }
                 try {
                     content = bindContent(ctx, handler, bytes);
                 } catch (RuntimeException e) {
-                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e);
+                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e, bytes);
                     return;
                 }
             }
@@ -428,18 +444,30 @@ public final class Listener {
         }
     }
 
-    // A content-binding failure notifies onError (when declared) and post-processes (afterError)
-    // the file; without an onError the error is printed so the failure stays visible.
+    // A content-binding failure raises a ContentBindingError naming the file. With an onError
+    // declared, onError is invoked and ITS OWN afterProcess/afterError disposes of the file;
+    // the content handler's afterError is not applied. Without an onError the error is printed
+    // and the content handler's afterError applies, so a bad file cannot re-fire forever.
     private static void handleBindingFailure(BObject listenerObj, ListenerContext ctx,
                                              ServiceContext serviceContext, HandlerConfig handler,
-                                             ShareFileItem item, String path, RuntimeException e) {
-        BError bindingError = e instanceof BError bError
-                ? bError : FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
+                                             ShareFileItem item, String path, RuntimeException e,
+                                             byte[] content) {
+        String message = e instanceof BError bError
+                ? bError.getErrorMessage().getValue() : BallerinaAzureClient.describe(e);
+        BError bindingError = FilesErrorCreator.contentBindingError(message, e, "/" + path, content);
         if (serviceContext.onErrorArity() == 0) {
             bindingError.printStackTrace();
+            postProcess(listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
+            return;
         }
-        invokeOnError(ctx, bindingError);
-        postProcess(listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
+        invokeOnError(ctx, bindingError, listenerObj, serviceContext.onErrorAfterProcess(),
+                serviceContext.onErrorAfterError(), path, listedETag(item));
+    }
+
+    // Wraps a caught failure as a typed connector error for onError notification.
+    private static BError asTypedError(RuntimeException e) {
+        return e instanceof BError bError
+                ? bError : FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
     }
 
     private static String listedETag(ShareFileItem item) {
@@ -619,10 +647,17 @@ public final class Listener {
 
         Map<String, HandlerConfig> handlers = new LinkedHashMap<>();
         int onErrorArity = 0;
+        PostAction onErrorAfterProcess = null;
+        PostAction onErrorAfterError = null;
         for (MethodType method : serviceType.getMethods()) {
             String methodName = method.getName();
             if (ON_ERROR.equals(methodName)) {
                 onErrorArity = method.getParameters().length;
+                BMap<BString, Object> onErrorConfig = annotation(method.getAnnotations(), FUNCTION_CONFIG_ANNOTATION);
+                if (onErrorConfig != null) {
+                    onErrorAfterProcess = readAction(onErrorConfig, FUNCTION_CONFIG_AFTER_PROCESS);
+                    onErrorAfterError = readAction(onErrorConfig, FUNCTION_CONFIG_AFTER_ERROR);
+                }
                 continue;
             }
             if (!HANDLER_NAMES.contains(methodName)) {
@@ -647,7 +682,8 @@ public final class Listener {
             handlers.put(methodName, new HandlerConfig(methodName, routing, afterProcess, afterError,
                     params.length, secondIsCaller, contentType));
         }
-        return new ServiceContext(watchedPath, recursive, fileNamePattern, minFileAgeSeconds, handlers, onErrorArity);
+        return new ServiceContext(watchedPath, recursive, fileNamePattern, minFileAgeSeconds, handlers,
+                onErrorArity, onErrorAfterProcess, onErrorAfterError);
     }
 
     // Resolves the watched path from the attach point: segments join with a slash, strings
@@ -772,7 +808,8 @@ public final class Listener {
     // set when the service attaches and cleared when it detaches.
     private record ServiceContext(String watchedPath, boolean recursive, Pattern fileNamePattern,
                                   Double minFileAgeSeconds, Map<String, HandlerConfig> handlers,
-                                  int onErrorArity) {
+                                  int onErrorArity, PostAction onErrorAfterProcess,
+                                  PostAction onErrorAfterError) {
     }
 
     // One content handler: its routing pattern, post-process actions, parameter-list shape,

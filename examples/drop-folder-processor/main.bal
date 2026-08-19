@@ -33,9 +33,8 @@ listener files:Listener dropListener = new (shareName, auth = {accountName, acco
 // Watches the share's /incoming folder: .json files go to onFileJson, everything else to onFile.
 service /incoming on dropListener {
 
-    // Logs each JSON drop bound to a Person, then deletes it; a .json file that does not
-    // bind is moved to "/failed" instead.
-    @files:FunctionConfig {afterProcess: files:DELETE, afterError: {moveTo: "/failed"}}
+    // Logs each JSON drop bound to a Person, then deletes it.
+    @files:FunctionConfig {afterProcess: files:DELETE}
     remote function onFileJson(Person person, files:FileInfo file, files:Caller caller) returns error? {
         log:printInfo("processed JSON drop", fileName = file.name, sizeBytes = file.sizeBytes,
                 personName = person.name, personAge = person.age);
@@ -48,7 +47,9 @@ service /incoming on dropListener {
                 movedTo = "/processed");
     }
 
-    // Logs poll failures (for example a credential or network problem) and binding failures.
+    // Logs poll and read failures, and handles a .json drop that fails to bind: the
+    // annotation moves it to "/failed" so it stops re-firing.
+    @files:FunctionConfig {afterProcess: {moveTo: "/failed"}}
     remote function onError(files:Error err) returns error? {
         log:printError("drop-folder listener reported an error", 'error = err);
     }

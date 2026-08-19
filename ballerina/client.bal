@@ -211,7 +211,8 @@ public isolated client class Client {
     # Uploads in-memory content to the bound share.
     #
     # ```ballerina
-    # check fileClient->upload(<map<json>>{"revenue": 1250000, "growth": 0.12}, "/2026/q1/metrics.json");
+    # Metrics metrics = {revenue: 1250000, growth: 0.12};
+    # check fileClient->upload(metrics, "/2026/q1/metrics.json");
     # ```
     #
     # + content - The content to upload. A record, a record array, or another `json` value is
