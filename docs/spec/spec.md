@@ -425,7 +425,7 @@ service /incoming on dropListener {
 A service may declare an `onError` handler, `remote function onError(files:Error err, files:Caller caller?) returns error?`. It is notified on every listener side failure:
 
 * A failed poll, with the mapped typed error, for example an `AuthorizationError` when the credential lacks access.
-* A failed content read: a file was listed but its content could not be downloaded for dispatch. The file stays for the next poll, so the notification repeats while the read keeps failing.
+* A failed content read, with the mapped typed error: a file was listed but its content could not be downloaded for dispatch. The file stays for the next poll, so the notification repeats while the read keeps failing.
 * A typed handler's content binding failure, with a `ContentBindingError` whose detail carries the file's share relative path in `filePath` and, when the content had been downloaded before binding failed, its raw bytes in `content` (section 6).
 
 `onError` is not a content handler: it does not satisfy the at least one handler requirement and is never routed a file, so a `fileNamePattern` in its annotation is ignored. Errors returned by content handlers do not notify `onError`, and neither does a CSV stream row that fails to bind lazily (that error belongs to the handler draining the stream).

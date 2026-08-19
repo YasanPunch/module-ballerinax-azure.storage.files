@@ -252,43 +252,54 @@ public final class Listener {
 
     // Invokes the optional onError handler on a virtual thread. When post-process actions are
     // given (the binding-failure path), onError's own afterProcess applies on a normal return
-    // and its afterError when the handler returns an error or panics.
-    private static void invokeOnError(ListenerContext ctx, BError error, BObject listenerObj,
+    // and its afterError when the handler returns an error or panics. Returns true when that
+    // takeover thread started: it then owns the file's in-progress guard and releases it once
+    // the consume action has landed, so the caller must not release it.
+    private static boolean invokeOnError(ListenerContext ctx, BError error, BObject listenerObj,
                                       PostAction afterProcess, PostAction afterError,
                                       String path, String eTag) {
         BObject service = ctx.service;
         ServiceContext serviceContext = ctx.serviceContext;
         int arity = serviceContext == null ? 0 : serviceContext.onErrorArity();
         if (service == null || arity == 0 || ctx.stopped) {
-            return;
+            return false;
         }
         Thread.startVirtualThread(() -> {
-            ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
-            boolean isConcurrentSafe = serviceType.isIsolated() && serviceType.isIsolated(ON_ERROR);
-            StrandMetadata metadata = new StrandMetadata(isConcurrentSafe, null);
-            Object[] args = arity >= 2 ? new Object[]{error, ctx.caller} : new Object[]{error};
-
-            boolean handled;
-            // Deliberate last line of defense: a failing user onError handler must never take
-            // down the dispatch thread.
             try {
-                Object result = ctx.runtime.callMethod(service, ON_ERROR, metadata, args);
-                handled = !(result instanceof BError);
-                if (result instanceof BError handlerError) {
-                    handlerError.printStackTrace();
+                ObjectType serviceType = (ObjectType) TypeUtils.getReferredType(TypeUtils.getType(service));
+                boolean isConcurrentSafe = serviceType.isIsolated() && serviceType.isIsolated(ON_ERROR);
+                StrandMetadata metadata = new StrandMetadata(isConcurrentSafe, null);
+                Object[] args = arity >= 2 ? new Object[]{error, ctx.caller} : new Object[]{error};
+
+                boolean handled;
+                // Deliberate last line of defense: a failing user onError handler must never take
+                // down the dispatch thread.
+                try {
+                    Object result = ctx.runtime.callMethod(service, ON_ERROR, metadata, args);
+                    handled = !(result instanceof BError);
+                    if (result instanceof BError handlerError) {
+                        handlerError.printStackTrace();
+                    }
+                } catch (BError handlerPanic) {
+                    handlerPanic.printStackTrace();
+                    handled = false;
+                } catch (RuntimeException e) {
+                    LOG.warn("azure.storage.files listener: onError invocation failed", e);
+                    handled = false;
                 }
-            } catch (BError handlerPanic) {
-                handlerPanic.printStackTrace();
-                handled = false;
-            } catch (RuntimeException e) {
-                LOG.warn("azure.storage.files listener: onError invocation failed", e);
-                handled = false;
-            }
-            if (listenerObj != null) {
-                PostAction action = handled ? afterProcess : afterError;
-                postProcess(listenerObj, serviceContext, action, path, eTag);
+                if (listenerObj != null) {
+                    PostAction action = handled ? afterProcess : afterError;
+                    postProcess(listenerObj, serviceContext, action, path, eTag);
+                }
+            } finally {
+                // The takeover path holds the guard until its consume action lands, so a
+                // binding-failed file is not re-dispatched while onError is still running.
+                if (listenerObj != null) {
+                    ctx.inProgress.remove(path);
+                }
             }
         });
+        return listenerObj != null;
     }
 
     /**
@@ -367,6 +378,9 @@ public final class Listener {
     // handler, and applies the configured post-process action.
     private static void dispatch(BObject listenerObj, ListenerContext ctx, ServiceContext serviceContext,
                                  ShareFileItem item, String path) {
+        // Set when a binding failure hands the file to the onError takeover thread, which then
+        // owns the in-progress guard and releases it after its consume action.
+        boolean handedOff = false;
         try {
             // Snapshot the service so a concurrent detach cannot null it mid-dispatch; if it is
             // already gone, leave the file unconsumed for a later poll.
@@ -392,7 +406,7 @@ public final class Listener {
                             .getFileClient(path).openInputStream();
                 } catch (RuntimeException e) {
                     LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
-                    invokeOnError(ctx, asTypedError(e));
+                    invokeOnError(ctx, BallerinaAzureClient.mapFailure(e));
                     return;
                 }
                 try {
@@ -403,7 +417,7 @@ public final class Listener {
                                     streamContentType.getConstrainedType());
                 } catch (RuntimeException e) {
                     closeQuietly(inputStream);
-                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e, null);
+                    handedOff = handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e, null);
                     return;
                 }
             } else {
@@ -412,13 +426,13 @@ public final class Listener {
                     bytes = download(listenerObj, path);
                 } catch (RuntimeException e) {
                     LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
-                    invokeOnError(ctx, asTypedError(e));
+                    invokeOnError(ctx, BallerinaAzureClient.mapFailure(e));
                     return;
                 }
                 try {
                     content = bindContent(ctx, handler, bytes);
                 } catch (RuntimeException e) {
-                    handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e, bytes);
+                    handedOff = handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e, bytes);
                     return;
                 }
             }
@@ -440,7 +454,10 @@ public final class Listener {
         } catch (Throwable e) {
             LOG.error("azure.storage.files listener: unexpected dispatch failure for {}", path, e);
         } finally {
-            ctx.inProgress.remove(path);
+            // Released here unless the onError takeover thread took ownership of the guard.
+            if (!handedOff) {
+                ctx.inProgress.remove(path);
+            }
         }
     }
 
@@ -448,7 +465,7 @@ public final class Listener {
     // declared, onError is invoked and ITS OWN afterProcess/afterError disposes of the file;
     // the content handler's afterError is not applied. Without an onError the error is printed
     // and the content handler's afterError applies, so a bad file cannot re-fire forever.
-    private static void handleBindingFailure(BObject listenerObj, ListenerContext ctx,
+    private static boolean handleBindingFailure(BObject listenerObj, ListenerContext ctx,
                                              ServiceContext serviceContext, HandlerConfig handler,
                                              ShareFileItem item, String path, RuntimeException e,
                                              byte[] content) {
@@ -458,16 +475,10 @@ public final class Listener {
         if (serviceContext.onErrorArity() == 0) {
             bindingError.printStackTrace();
             postProcess(listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
-            return;
+            return false;
         }
-        invokeOnError(ctx, bindingError, listenerObj, serviceContext.onErrorAfterProcess(),
+        return invokeOnError(ctx, bindingError, listenerObj, serviceContext.onErrorAfterProcess(),
                 serviceContext.onErrorAfterError(), path, listedETag(item));
-    }
-
-    // Wraps a caught failure as a typed connector error for onError notification.
-    private static BError asTypedError(RuntimeException e) {
-        return e instanceof BError bError
-                ? bError : FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
     }
 
     private static String listedETag(ShareFileItem item) {

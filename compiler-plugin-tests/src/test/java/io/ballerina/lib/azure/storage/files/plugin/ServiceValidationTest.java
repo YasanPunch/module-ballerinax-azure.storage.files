@@ -192,6 +192,13 @@ public class ServiceValidationTest {
     }
 
     @Test
+    public void testInvalidOnErrorNarrowErrorParameter() {
+        DiagnosticResult result = loadPackage("invalid_on_error_narrow_error");
+        assertEquals(result.errorCount(), 1);
+        assertError(result, 0, "AZURE_FILES_112", "The first parameter must be");
+    }
+
+    @Test
     public void testInvalidOnErrorSecondParameter() {
         DiagnosticResult result = loadPackage("invalid_on_error_second_param");
         assertEquals(result.errorCount(), 1);

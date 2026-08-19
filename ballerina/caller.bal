@@ -39,7 +39,9 @@ public isolated client class Caller {
         return self.'client->download(sourcePath, destinationPath, options);
     }
 
-    # Retrieves a file's content in the form the target type selects.
+    # Retrieves a file's content in the form the target type selects. CSV content binds to
+    # record array and record stream targets only. Binding is strict: content that does not
+    # match the target fails with a client side `Error`.
     #
     # + path - The source share-relative path
     # + options - Optional retrieval options (range, snapshot, record binding format)

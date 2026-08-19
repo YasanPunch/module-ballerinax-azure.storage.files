@@ -44,9 +44,13 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.getDiagnos
 import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.isRemoteFunction;
 
 /**
- * Validates the optional {@code onError} handler: it must be remote, take an {@code error} (or a
- * subtype of the module's {@code Error}) as its first parameter, may take the {@code Caller} as an
- * optional second parameter, and must return {@code error?}.
+ * Validates the optional {@code onError} handler: it must be remote, take exactly {@code error} or
+ * the module's {@code Error} as its first parameter, may take the {@code Caller} as an optional
+ * second parameter, and must return {@code error?}.
+ *
+ * <p>A narrower parameter is rejected because {@code onError} is notified of poll failures, read
+ * failures, and content-binding failures alike: a handler declaring one subtype could not receive
+ * the others, and the dispatch would fail its type check at runtime.
  */
 public class OnErrorFunctionValidator {
 
@@ -102,11 +106,12 @@ public class OnErrorFunctionValidator {
         TypeSymbol normalizedParamType = unwrapTypeReference(paramType.get());
         boolean isError = normalizedParamType.subtypeOf(semanticModel.types().ERROR)
                 && semanticModel.types().ERROR.subtypeOf(normalizedParamType);
-        boolean isModuleErrorSubtype = findModuleErrorTypeSymbol(semanticModel)
+        boolean isModuleError = findModuleErrorTypeSymbol(semanticModel)
                 .map(this::unwrapTypeReference)
-                .map(normalizedParamType::subtypeOf)
+                .map(moduleError -> normalizedParamType.subtypeOf(moduleError)
+                        && moduleError.subtypeOf(normalizedParamType))
                 .orElse(false);
-        if (!isError && !isModuleErrorSubtype) {
+        if (!isError && !isModuleError) {
             context.reportDiagnostic(getDiagnostic(INVALID_ON_ERROR_FIRST_PARAMETER,
                     DiagnosticSeverity.ERROR, parameterNode.location()));
         }

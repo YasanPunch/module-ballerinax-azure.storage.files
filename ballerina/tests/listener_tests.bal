@@ -1240,6 +1240,42 @@ function testOnErrorAfterProcessConsumesFile() returns error? {
 }
 
 @test:Config {}
+function testGuardHeldAcrossOnErrorTakeover() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-onerr-guard");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->upload("{broken", "/incoming/broken.json");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = service object {
+        remote function onFileJson(json content) returns error? {
+            recorder.hit("json");
+        }
+
+        // Deliberately slower than the polling interval. The file stays on the watched path
+        // until this returns and its consume action lands, so a guard released at dispatch
+        // would let later polls re-dispatch and re-notify the same file.
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+            runtime:sleep(6);
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("onerror") >= 1);
+    // Several polling intervals elapse while the first onError is still running.
+    runtime:sleep(5);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("onerror"), 1,
+            "the in-progress guard must hold across the onError takeover, so one binding-failed "
+            + "file notifies once");
+}
+
+@test:Config {}
 function testOnErrorErrorAppliesItsOwnAfterError() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-onerr-ownafter");
     Client shareClient = setup[0];
@@ -1282,7 +1318,7 @@ function testReadFailureNotifiesOnError() returns error? {
     [Client, string] setup = check setupMockWatchedShare("lsn-read-fail");
     string share = setup[1];
     MockShare mockShare = mockShares.get(share);
-    mockShare.files["incoming/__err-409-SharingViolation.dat"] = {
+    mockShare.files["incoming/__err-409-SharingViolation"] = {
         size: 4,
         content: [1, 2, 3, 4],
         metadata: {},
@@ -1299,7 +1335,7 @@ function testReadFailureNotifiesOnError() returns error? {
         }
 
         remote function onError(Error err) returns error? {
-            recorder.hit("onerror");
+            recorder.put("onerror", err is ConflictError ? "ConflictError" : "Error");
         }
     };
     check lsn.attach(svc, "/incoming");
@@ -1310,8 +1346,10 @@ function testReadFailureNotifiesOnError() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.count("onfile"), 0, "an unreadable file must not reach a content handler");
-    test:assertTrue(mockShare.files.hasKey("incoming/__err-409-SharingViolation.dat"),
+    test:assertTrue(mockShare.files.hasKey("incoming/__err-409-SharingViolation"),
             "a read failure must leave the file in place for the next poll");
+    test:assertEquals(recorder.payload("onerror"), "ConflictError",
+            "a read failure must reach onError as the mapped typed error, not a bare Error");
 }
 
 // ===== laxDataBinding and record binding =====

@@ -332,7 +332,9 @@ public isolated client class Client {
         'class: "io.ballerina.lib.azure.storage.files.client.TransferOps"
     } external;
 
-    # Retrieves a file's content in the form the target type selects.
+    # Retrieves a file's content in the form the target type selects. CSV content binds to
+    # record array and record stream targets only. Binding is strict: content that does not
+    # match the target fails with a client side `Error`.
     #
     # ```ballerina
     # byte[] raw = check fileClient->getFile("/2026/q1/report.pdf");
