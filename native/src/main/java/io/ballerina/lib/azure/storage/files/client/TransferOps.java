@@ -20,6 +20,7 @@ package io.ballerina.lib.azure.storage.files.client;
 
 import com.azure.storage.file.share.ShareFileClient;
 import com.azure.storage.file.share.StorageFileInputStream;
+import com.azure.storage.file.share.models.ShareFileRange;
 import com.azure.storage.file.share.models.ShareFileUploadRangeOptions;
 import io.ballerina.lib.azure.storage.files.util.BallerinaAzureClient;
 import io.ballerina.lib.azure.storage.files.util.FilesErrorCreator;
@@ -145,7 +146,7 @@ public final class TransferOps {
                     client.downloadToFile(destinationPath.getValue());
                 } else {
                     client.downloadToFileWithResponse(destinationPath.getValue(),
-                            OptionsReader.range(args.range()), null, null);
+                            downloadToFileRange(OptionsReader.range(args.range())), null, null);
                 }
             } catch (UncheckedIOException e) {
                 throw FilesErrorCreator.clientError(
@@ -155,6 +156,21 @@ public final class TransferOps {
             }
             return null;
         });
+    }
+
+    /**
+     * Adjusts an inclusive {@code Range} for {@code downloadToFileWithResponse} alone. That call
+     * splits the range into chunks with {@code pos < range.getEnd()}, treating the end bound as
+     * exclusive, while every other range consumer (the {@code x-ms-range} header behind
+     * {@code downloadWithResponse} and {@code openInputStream}) reads it as inclusive. Shifting
+     * the end by one here keeps the connector's documented inclusive contract identical across
+     * reads, and turns a single-byte range from zero chunks into one.
+     *
+     * @param range the inclusive range
+     * @return the range this SDK call expects
+     */
+    private static ShareFileRange downloadToFileRange(ShareFileRange range) {
+        return new ShareFileRange(range.getStart(), range.getEnd() + 1);
     }
 
     /** Opens the file's content stream and stores it on the Ballerina stream generator object. */
@@ -188,9 +204,11 @@ public final class TransferOps {
                 }
                 byte[] chunk = read == buffer.length ? buffer : Arrays.copyOf(buffer, read);
                 return ValueCreator.createArrayValue(chunk);
-            } catch (IOException e) {
+            } catch (IOException | RuntimeException e) {
+                // A service failure on a chunk read arrives wrapped in a RuntimeException; catching
+                // IOException alone skipped both the close and the typed mapping.
                 closeQuietly(generator);
-                throw FilesErrorCreator.clientError(BallerinaAzureClient.describe(e), e);
+                throw BallerinaAzureClient.mapFailure(e);
             }
         });
     }
@@ -201,7 +219,7 @@ public final class TransferOps {
         return null;
     }
 
-    private static void closeQuietly(BObject generator) {
+    static void closeQuietly(BObject generator) {
         StorageFileInputStream stream = (StorageFileInputStream) generator.getNativeData(NATIVE_INPUT_STREAM);
         if (stream != null) {
             generator.addNativeData(NATIVE_INPUT_STREAM, null);

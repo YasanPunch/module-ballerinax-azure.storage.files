@@ -116,6 +116,8 @@ service / on mockListener {
         string prefix = req.getQueryParamValue("prefix") ?: "";
         string snapshotParam = req.getQueryParamValue("sharesnapshot") ?: "";
         string prevSnapshotParam = req.getQueryParamValue("prevsharesnapshot") ?: "";
+        string marker = req.getQueryParamValue("marker") ?: "";
+        string maxResults = req.getQueryParamValue("maxresults") ?: "";
         map<string> headers = {};
         foreach string name in req.getHeaderNames() {
             string|error value = req.getHeader(name);
@@ -129,7 +131,7 @@ service / on mockListener {
             payload = binaryPayload;
         }
         MockResponse mock = dispatch(method, segments, comp, restype, include, prefix,
-                snapshotParam, prevSnapshotParam, headers, payload);
+                snapshotParam, prevSnapshotParam, marker, maxResults, headers, payload);
         http:Response response = new;
         response.statusCode = mock.status;
         if mock.body.length() > 0 {
@@ -146,7 +148,7 @@ service / on mockListener {
 // module-level state needs no locking.
 function dispatch(string method, string[] segments, string comp, string restype,
         string include, string prefix, string snapshotParam, string prevSnapshotParam,
-        map<string> headers, byte[] payload) returns MockResponse {
+        string marker, string maxResults, map<string> headers, byte[] payload) returns MockResponse {
     mockRequestLog.push(method + " /" + string:'join("/", ...segments) + " comp=" + comp
             + " host=" + (headers["host"] ?: ""));
     if mockFaultRemaining > 0 {
@@ -194,7 +196,8 @@ function dispatch(string method, string[] segments, string comp, string restype,
     // restype=directory must win over the one-segment share fallback: a root-directory
     // listing addresses /{share}?restype=directory&comp=list with a single segment.
     if restype == "directory" {
-        return directoryDispatch(method, shareName, path, comp, include, prefix, snapshotParam, headers);
+        return directoryDispatch(method, shareName, path, comp, include, prefix, snapshotParam,
+                marker, maxResults, headers);
     }
     if restype == "share" || (segments.length() == 1 && comp != "") {
         return shareDispatch(method, shareName, comp, snapshotParam, headers, payload);
@@ -418,8 +421,8 @@ function parentExists(MockShare share, string path) returns boolean {
 }
 
 function directoryDispatch(string method, string shareName, string path, string comp,
-        string include, string prefix, string snapshotParam, map<string> headers)
-        returns MockResponse {
+        string include, string prefix, string snapshotParam, string marker, string maxResults,
+        map<string> headers) returns MockResponse {
     MockShare? resolved = resolveShare(shareName, snapshotParam);
     if resolved is () {
         return errorResponse(404, snapshotParam == "" ? "ShareNotFound" : "ShareSnapshotNotFound");
@@ -452,7 +455,7 @@ function directoryDispatch(string method, string shareName, string path, string 
         if faultCode is string {
             return errorResponse(mockListFaultStatus, faultCode);
         }
-        return listDirectoryResponse(shareName, share, path, prefix, include);
+        return listDirectoryResponse(shareName, share, path, prefix, include, marker, maxResults);
     }
     if method == "GET" || method == "HEAD" {
         map<string> extra = {"x-ms-server-encrypted": "true"};
@@ -495,16 +498,18 @@ function directChildName(string parent, string entryPath) returns string? {
 }
 
 function listDirectoryResponse(string shareName, MockShare share, string path,
-        string prefix, string include) returns MockResponse {
+        string prefix, string include, string marker, string maxResults) returns MockResponse {
     boolean extended = include.includes("Etag") || include.includes("Timestamps");
-    string entries = "";
+    // Name-keyed pages, so a continuation resumes after the last name the previous page served.
+    // Azure pages every listing; without this the SDK's continuation path is never exercised.
+    [string, string][] page = [];
     foreach [string, MockDir] [dirPath, dir] in share.dirs.entries() {
         string? name = directChildName(path, dirPath);
         if name is string && (prefix == "" || name.startsWith(prefix)) {
             string properties = extended
                 ? string `<Properties><Last-Modified>${LAST_MODIFIED}</Last-Modified><Etag>${dir.etag}</Etag></Properties>`
                 : "<Properties />";
-            entries += string `<Directory><Name>${name}</Name><FileId>1</FileId>${properties}</Directory>`;
+            page.push([name, string `<Directory><Name>${name}</Name><FileId>1</FileId>${properties}</Directory>`]);
         }
     }
     foreach [string, MockFile] [filePath, file] in share.files.entries() {
@@ -513,10 +518,36 @@ function listDirectoryResponse(string shareName, MockShare share, string path,
             string extendedProperties = extended
                 ? string `<Last-Modified>${file.lastModified}</Last-Modified><Etag>${file.etag}</Etag>`
                 : "";
-            entries += string `<File><Name>${name}</Name><FileId>2</FileId><Properties><Content-Length>${file.size}</Content-Length>${extendedProperties}</Properties></File>`;
+            page.push([name, string `<File><Name>${name}</Name><FileId>2</FileId><Properties><Content-Length>${file.size}</Content-Length>${extendedProperties}</Properties></File>`]);
         }
     }
-    return xmlResponse(string `<EnumerationResults ServiceEndpoint="http://localhost:${MOCK_PORT}/" ShareName="${shareName}" DirectoryPath="${path}"><Entries>${entries}</Entries><NextMarker /></EnumerationResults>`);
+    [string, string][] ordered = page.sort(key = isolated function([string, string] item) returns string => item[0]);
+    int size = maxResults == "" ? ordered.length() : checkpanic int:fromString(maxResults);
+
+    // Everything the caller has not been served yet, in name order.
+    [string, string][] remaining = [];
+    foreach [string, string] item in ordered {
+        if marker == "" || item[0] > marker {
+            remaining.push(item);
+        }
+    }
+
+    string entries = "";
+    string lastServed = "";
+    int served = 0;
+    foreach [string, string] [name, fragment] in remaining {
+        if served == size {
+            break;
+        }
+        entries += fragment;
+        lastServed = name;
+        served += 1;
+    }
+    // The marker names the last entry served, so the next page resumes strictly after it.
+    string markerElement = remaining.length() > served
+        ? string `<NextMarker>${lastServed}</NextMarker>`
+        : "<NextMarker />";
+    return xmlResponse(string `<EnumerationResults ServiceEndpoint="http://localhost:${MOCK_PORT}/" ShareName="${shareName}" DirectoryPath="${path}"><Entries>${entries}</Entries>${markerElement}</EnumerationResults>`);
 }
 
 // ---------------------------------------------------------------------------

@@ -93,6 +93,7 @@ public isolated class Listener {
     private final task:Listener taskListener;
     private task:Service? pollService = ();
     private boolean running = false;
+    private boolean stopped = false;
 
     # Initializes the listener for a share.
     #
@@ -171,6 +172,11 @@ public isolated class Listener {
             if self.running {
                 return error("the listener is already running");
             }
+            // A stop deregisters the poll job and closes the watch for good; restarting is not
+            // supported, so say so rather than start a listener that would never poll again.
+            if self.stopped {
+                return error("the listener has been stopped and cannot be started again");
+            }
             check self.taskListener.'start();
             self.running = true;
         }
@@ -192,17 +198,21 @@ public isolated class Listener {
 
     private isolated function stopPolling(boolean graceful) returns error? {
         lock {
-            if self.running {
-                if graceful {
-                    check self.taskListener.gracefulStop();
-                } else {
-                    check self.taskListener.immediateStop();
-                }
-                // Stopping the task scheduler deregisters the poll job, so a later detach
-                // must not try to detach it again.
-                self.pollService = ();
-                self.running = false;
+            // Stopping a listener that never started is a no-op: marking it stopped here would
+            // close the watch before it ever opened, leaving nothing to observe it.
+            if !self.running {
+                return ();
             }
+            if graceful {
+                check self.taskListener.gracefulStop();
+            } else {
+                check self.taskListener.immediateStop();
+            }
+            // Stopping the task scheduler deregisters the poll job, so a later detach
+            // must not try to detach it again.
+            self.pollService = ();
+            self.running = false;
+            self.stopped = true;
         }
         return externStop(self);
     }
@@ -222,6 +232,21 @@ isolated function createPollService(Listener l) returns task:Service {
             }
         }
     };
+}
+
+// The listener's Java side reports its diagnostics through these, so they reach the user the same
+// way the poll failure above does. Calling `log` directly from Java would need an slf4j binding,
+// which none of the Ballerina distributions carry, so every such line would be discarded.
+isolated function logListenerWarn(string message) {
+    log:printWarn(message);
+}
+
+isolated function logListenerError(string message) {
+    log:printError(message);
+}
+
+isolated function logListenerDebug(string message) {
+    log:printDebug(message);
 }
 
 isolated function externInit(Listener listenerObj, string shareName, ListenerConfiguration config,

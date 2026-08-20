@@ -138,7 +138,7 @@ function testRetryAndTransportConfig() returns error? {
         accountKey: MOCK_KEY,
         serviceUrl: string `http://localhost:${MOCK_PORT}`
     }, retryConfig = {
-        retryPolicyType: FIXED,
+        retryPolicyType: FIXED_INTERVAL,
         maxTries: 2,
         tryTimeoutSeconds: 10,
         retryDelaySeconds: 1,
@@ -549,6 +549,11 @@ function testUploadContentRecordAsXml() returns error? {
     check fileClient->upload(metric, "/metrics.xml");
     UploadMetric bound = check fileClient->getFile("/metrics.xml");
     test:assertEquals(bound, metric);
+    // Round-tripping through our own reader would pass even if the document were unreadable by
+    // anything else, so pin the bytes actually written to the share.
+    test:assertEquals(check string:fromBytes(check readAll(fileClient, "/metrics.xml")),
+            "<UploadMetric><quarter>q2</quarter><revenue>7</revenue></UploadMetric>",
+            "a record must serialize to the documented XML shape");
 }
 
 @test:Config {}
@@ -936,7 +941,7 @@ function testUploadFromStreamRejectsNegativeLength() returns error? {
 }
 
 @test:Config {}
-function testRangedDownload() returns error? {
+function testRangedGetFile() returns error? {
     AdminClient admin = check newAdmin();
     string share = testShare("range-read");
     check createTestShare(admin, share);
@@ -945,6 +950,83 @@ function testRangedDownload() returns error? {
 
     stream<byte[], Error?> content = check fileClient->getFile("/digits.txt", {range: {startByte: 2, endByte: 5}});
     test:assertEquals(check collectBytes(content), "2345".toBytes());
+}
+
+// Mock-pinned: a real account decides its own page size, so forcing a continuation is only
+// possible against the mock.
+@test:Config {}
+function testListFollowsPaginationMarker() returns error? {
+    AdminClient admin = check newMockAdmin();
+    string share = testShare("list-paged");
+    check createTestShare(admin, share);
+    Client fileClient = check newMockShareClient(share);
+    check fileClient->upload("1", "/one.txt");
+    check fileClient->upload("2", "/two.txt");
+    check fileClient->upload("3", "/three.txt");
+    check fileClient->upload("4", "/four.txt");
+    check fileClient->upload("5", "/five.txt");
+
+    // Two entries per page, driven by the connector's own pageSize so the option is exercised as
+    // well as the continuation: the listing only completes if the marker is followed.
+    stream<Entry, Error?> paged = check fileClient->list("/", {pageSize: 2});
+    Entry[] entries = check collectEntries(paged);
+    test:assertEquals(entryPaths(entries).sort(),
+            ["/five.txt", "/four.txt", "/one.txt", "/three.txt", "/two.txt"],
+            "a paged listing must return every entry, not just the first page");
+}
+
+// Mock-pinned: a failure on a chunk read cannot be produced on demand on a real account.
+@test:Config {}
+function testMidStreamFailureKeepsTypedError() returns error? {
+    AdminClient admin = check newMockAdmin();
+    string share = testShare("stream-fault");
+    check createTestShare(admin, share);
+    Client fileClient = check newMockShareClient(share);
+    check fileClient->upload("0123456789", "/chunky.txt");
+
+    // The stream reads lazily, so the failure lands on a chunk read rather than at open time.
+    // The SDK rethrows the service failure wrapped, and it must still reach the caller as the
+    // mapped typed error rather than collapsing to a bare client-side Error.
+    stream<byte[], Error?> content = check fileClient->getFile("/chunky.txt");
+    mockFaultStatus = 404;
+    mockFaultCode = "ResourceNotFound";
+    mockFaultRemaining = 1;
+    byte[]|error drained = trap collectBytes(content);
+    mockFaultRemaining = 0;
+    mockFaultStatus = 500;
+    mockFaultCode = "InternalError";
+
+    test:assertTrue(drained is error, "a failed chunk read must surface as an error");
+    test:assertTrue(drained is NotFoundError,
+            "an Azure failure raised mid-stream must keep its mapped type, not collapse to Error");
+}
+
+@test:Config {}
+function testRangedDownloadToFile() returns error? {
+    AdminClient admin = check newAdmin();
+    string share = testShare("range-download");
+    check createTestShare(admin, share);
+    Client fileClient = check newShareClient(share);
+    check fileClient->upload("0123456789", "/digits.txt");
+
+    // `Range` is inclusive on both bounds, and must mean the same thing whichever read it is
+    // handed to: this is the byte-for-byte twin of testRangedGetFile.
+    string spanTarget = "target/mock-range-span.txt";
+    if check file:test(spanTarget, file:EXISTS) {
+        check file:remove(spanTarget);
+    }
+    check fileClient->download("/digits.txt", spanTarget, {range: {startByte: 2, endByte: 5}});
+    test:assertEquals(check io:fileReadString(spanTarget), "2345",
+            "an inclusive range handed to download must keep its last byte");
+
+    // A single-byte range is the degenerate case of the same rule.
+    string singleTarget = "target/mock-range-single.txt";
+    if check file:test(singleTarget, file:EXISTS) {
+        check file:remove(singleTarget);
+    }
+    check fileClient->download("/digits.txt", singleTarget, {range: {startByte: 7, endByte: 7}});
+    test:assertEquals(check io:fileReadString(singleTarget), "7",
+            "a single-byte range must download that byte, not an empty file");
 }
 
 // ---------------------------------------------------------------------------
@@ -975,11 +1057,23 @@ function testListFlatAndRecursive() returns error? {
     Entry[] scoped = check collectEntries(entryStream20);
     test:assertEquals(entryPaths(scoped).sort(), ["/a/b", "/a/one.txt"]);
 
+    // Comparing paths alone would pass a connector that mislabelled every entry, so pin the
+    // discriminator itself: in this tree the files are exactly the ".txt" entries.
+    foreach Entry entry in deep {
+        boolean expectedDirectory = !entry.path.endsWith(".txt");
+        test:assertEquals(entry.isDirectory, expectedDirectory,
+                string `expected isDirectory ${expectedDirectory} for ${entry.path}`);
+        if !entry.isDirectory {
+            test:assertEquals(entry.sizeBytes, 1, string `expected the written size for ${entry.path}`);
+        }
+    }
+
     // Extended info brings the eTag along.
     stream<Entry, Error?> entryStream21 = check fileClient->list("/", {includeExtendedInfo: true});
     Entry[] extended = check collectEntries(entryStream21);
     foreach Entry entry in extended {
         test:assertTrue(entry.eTag is string, "expected an eTag with includeExtendedInfo");
+        test:assertTrue(entry.lastModified is time:Utc, "expected a timestamp with includeExtendedInfo");
     }
 }
 
@@ -1018,7 +1112,13 @@ function testCopyWithinShare() returns error? {
 
     // The copy has already completed, so an abort conflicts.
     Error? abort = fileClient->abortCopy("/target.txt", info.copyId);
-    test:assertTrue(abort is Error, "expected abortCopy on a finished copy to fail");
+    // `is Error` alone would pass for a failure raised before the request ever left the client,
+    // so pin the service's own code. `NoPendingCopyOperation` is unmapped, so it stays the
+    // generic ServiceError rather than becoming a ConflictError.
+    test:assertTrue(abort is ServiceError, "expected abortCopy on a finished copy to fail at the service");
+    if abort is ServiceError {
+        test:assertEquals(abort.detail().errorCode, "NoPendingCopyOperation");
+    }
 }
 
 @test:Config {}
@@ -1637,7 +1737,10 @@ function testStreamFailurePaths() returns error? {
         test:assertTrue(missingContent is NotFoundError, "expected opening a missing file to fail as NotFound");
     } else {
         byte[]|error collected = collectBytes(missingContent);
-        test:assertTrue(collected is error, "expected reading a missing file to fail");
+        // Any error would satisfy "it failed"; the contract is that a service failure keeps its
+        // mapped type, so assert the type rather than the mere presence of an error.
+        test:assertTrue(collected is NotFoundError,
+                "expected reading a missing file to fail as NotFound, with its type intact");
     }
 
     stream<byte[], error?> failingSource = new (new FailingByteSource());

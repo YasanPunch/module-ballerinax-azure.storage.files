@@ -180,6 +180,9 @@ public final class TypedReadOps {
                 DataBindingOptions.csvParseOptions(false),
                 ValueCreator.createTypedescValue(constraint));
         if (rows instanceof BError bError) {
+            // The generator already holds an open source stream; the listener's twin of this
+            // branch releases it, and so must this one.
+            TransferOps.closeQuietly(generator);
             return csvFailure(bError);
         }
         return rows;

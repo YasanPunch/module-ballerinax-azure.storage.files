@@ -110,9 +110,21 @@ public final class ContentStreams {
                     ModuleUtils.getModule(), CONTENT_STREAM_ENTRY_RECORD);
             entry.put(FIELD_VALUE, ValueCreator.createArrayValue(chunk));
             return entry;
-        } catch (IOException e) {
-            return FilesErrorCreator.clientError("failed to read the file content stream: "
-                    + BallerinaAzureClient.describe(e), e);
+        } catch (IOException | RuntimeException e) {
+            // The SDK's input stream rethrows a service failure wrapped in a RuntimeException, so
+            // catching IOException alone would let it escape this extern unmapped. Release the
+            // source here too: nothing else will, once the iterator has surfaced an error.
+            closeQuietly(inputStream);
+            return BallerinaAzureClient.mapFailure(e);
+        }
+    }
+
+    /** Releases the source stream on an error path, where a close failure adds nothing. */
+    private static void closeQuietly(InputStream inputStream) {
+        try {
+            inputStream.close();
+        } catch (IOException ignored) {
+            // The read already failed; a close failure on top of it is not actionable.
         }
     }
 
@@ -123,8 +135,8 @@ public final class ContentStreams {
      * @return {@code null}, or an error when the source could not be closed
      */
     public static Object close(BObject iterator) {
-        // The reference stays after closing: a next() after close must surface the closed
-        // stream's IOException as a typed error, and a failed close stays retryable.
+        // The reference stays after closing: a next() after close surfaces the closed stream's
+        // failure as a typed error through streamIterator, and a failed close stays retryable.
         Object inputStream = iterator.getNativeData(NATIVE_INPUT_STREAM);
         if (inputStream != null) {
             try {

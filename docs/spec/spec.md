@@ -109,7 +109,7 @@ Both clients take the same `ClientConfiguration` record: the required `auth` (an
 
 The optional `RetryConfig` record shapes the retry behaviour of service requests; omitting it leaves the service defaults in place. Its fields:
 
-* `retryPolicyType`: how the delay between tries grows, `EXPONENTIAL` or `FIXED`. Defaults to `EXPONENTIAL`.
+* `retryPolicyType`: how the delay between tries grows, `EXPONENTIAL` or `FIXED_INTERVAL`. Defaults to `EXPONENTIAL`.
 * `maxTries`: the maximum number of tries, counting the first attempt. Defaults to 4.
 * `tryTimeoutSeconds`: the timeout applied to each individual try. Defaults to 60.
 * `retryDelaySeconds`: the base delay between tries. Defaults to 4.
@@ -405,7 +405,7 @@ The stream content forms read the file from the service in chunks as the handler
 A handler can consume a file declaratively with the `@files:FunctionConfig` annotation's post processing actions, each either `DELETE` or a `Move` record:
 
 * `afterProcess`: applied when the handler returns normally.
-* `afterError`: applied when the handler returns an error. It also covers the handler's content binding failures, but only when the service declares no `onError` handler; with `onError` declared, a binding failure is post processed by `onError`'s own annotation instead (section 5.5).
+* `afterError`: applied when the handler returns an error or panics. It also covers the handler's content binding failures, but only when the service declares no `onError` handler; with `onError` declared, a binding failure is post processed by `onError`'s own annotation instead (section 5.5).
 
 When neither is set, the file stays and fires again on a later poll. The annotation may also sit on `onError`, whose actions post process binding failures (section 5.5). A `Move` names the target directory in `moveTo` (the file keeps its name, and the directory is created if absent); on recursive watches, `preserveSubDirs` (default true) recreates the file's sub path under the target. A move onto an existing same named file replaces it, so a recurring file name moves cleanly every time; with `preserveSubDirs: false`, same named files from different subdirectories land on one destination name and the last move wins, so flattened moves should only be used where names are unique.
 

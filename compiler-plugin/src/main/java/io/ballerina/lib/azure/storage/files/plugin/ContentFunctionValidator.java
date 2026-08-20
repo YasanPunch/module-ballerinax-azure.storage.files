@@ -36,7 +36,6 @@ import static io.ballerina.compiler.api.symbols.TypeDescKind.JSON;
 import static io.ballerina.compiler.api.symbols.TypeDescKind.RECORD;
 import static io.ballerina.compiler.api.symbols.TypeDescKind.STREAM;
 import static io.ballerina.compiler.api.symbols.TypeDescKind.STRING;
-import static io.ballerina.compiler.api.symbols.TypeDescKind.TYPE_REFERENCE;
 import static io.ballerina.compiler.api.symbols.TypeDescKind.XML;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.CONTENT_METHOD_MUST_BE_REMOTE;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.INVALID_CALLER_PARAMETER;
@@ -126,27 +125,39 @@ public class ContentFunctionValidator {
         if (typeSymbolOpt.isEmpty()) {
             return false;
         }
-        TypeSymbol typeSymbol = typeSymbolOpt.get();
+        // A named type is ordinary Ballerina and the runtime resolves it, so the declared type is
+        // unwrapped to what it refers to before any of the shape checks below.
+        TypeSymbol typeSymbol = unwrapTypeReference(typeSymbolOpt.get());
         TypeDescKind typeKind = typeSymbol.typeKind();
         return switch (contentMethodName) {
             case ON_FILE_FUNC -> isByteArray(typeSymbol, typeKind) || isByteStream(typeSymbol, typeKind);
             case ON_FILE_TEXT_FUNC -> typeKind == STRING;
-            case ON_FILE_JSON_FUNC -> typeKind == JSON || typeKind == RECORD || isRecordTypeReference(typeSymbol);
-            case ON_FILE_XML_FUNC -> typeKind == XML || typeKind == RECORD || isRecordTypeReference(typeSymbol);
+            case ON_FILE_JSON_FUNC -> typeKind == JSON || typeKind == RECORD;
+            case ON_FILE_XML_FUNC -> typeKind == XML || typeKind == RECORD;
             case ON_FILE_CSV_FUNC -> isRecordArray(typeSymbol, typeKind) || isCsvStream(typeSymbol, typeKind);
             default -> false;
         };
     }
 
     private boolean isByteArray(TypeSymbol typeSymbol, TypeDescKind typeKind) {
-        return typeKind == ARRAY && ((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor().typeKind() == BYTE;
+        return typeKind == ARRAY
+                && unwrapTypeReference(((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor()).typeKind() == BYTE;
+    }
+
+    private TypeSymbol unwrapTypeReference(TypeSymbol typeSymbol) {
+        TypeSymbol resolved = typeSymbol;
+        while (resolved.typeKind() == TypeDescKind.TYPE_REFERENCE
+                && resolved instanceof TypeReferenceTypeSymbol typeReferenceTypeSymbol) {
+            resolved = typeReferenceTypeSymbol.typeDescriptor();
+        }
+        return resolved;
     }
 
     private boolean isByteStream(TypeSymbol typeSymbol, TypeDescKind typeKind) {
         if (typeKind != STREAM) {
             return false;
         }
-        TypeSymbol itemType = ((StreamTypeSymbol) typeSymbol).typeParameter();
+        TypeSymbol itemType = unwrapTypeReference(((StreamTypeSymbol) typeSymbol).typeParameter());
         return isByteArray(itemType, itemType.typeKind());
     }
 
@@ -154,24 +165,16 @@ public class ContentFunctionValidator {
         if (typeKind != ARRAY) {
             return false;
         }
-        TypeSymbol member = ((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor();
-        return member.typeKind() == RECORD || isRecordTypeReference(member);
+        TypeSymbol member = unwrapTypeReference(((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor());
+        return member.typeKind() == RECORD;
     }
 
     private boolean isCsvStream(TypeSymbol typeSymbol, TypeDescKind typeKind) {
         if (typeKind != STREAM) {
             return false;
         }
-        TypeSymbol itemType = ((StreamTypeSymbol) typeSymbol).typeParameter();
-        return itemType.typeKind() == RECORD || isRecordTypeReference(itemType);
-    }
-
-    private boolean isRecordTypeReference(TypeSymbol typeSymbol) {
-        if (typeSymbol.typeKind() != TYPE_REFERENCE) {
-            return false;
-        }
-        TypeSymbol referredType = ((TypeReferenceTypeSymbol) typeSymbol).typeDescriptor();
-        return referredType != null && referredType.typeKind() == RECORD;
+        TypeSymbol itemType = unwrapTypeReference(((StreamTypeSymbol) typeSymbol).typeParameter());
+        return itemType.typeKind() == RECORD;
     }
 
     private String expectedContentType() {

@@ -88,6 +88,13 @@ function testListenerOnFileDispatch() returns error? {
     Service svc = service object {
         remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
             recorder.put("onfile", check string:fromBytes(content));
+            // The payload is half the contract; a handler that cannot trust FileInfo cannot act
+            // on the file, so pin the fields rather than only the content.
+            recorder.put("path", info.path);
+            recorder.put("name", info.name);
+            recorder.put("size", info.sizeBytes.toString());
+            recorder.put("share", info.shareName);
+            recorder.put("etag", info.eTag);
             check caller->deleteFile(info.path);
         }
     };
@@ -98,6 +105,12 @@ function testListenerOnFileDispatch() returns error? {
     check lsn.detach(svc);
 
     test:assertEquals(recorder.payload("onfile"), "payload-onfile");
+    test:assertEquals(recorder.payload("path"), "/incoming/note.dat",
+            "FileInfo.path must be the share-relative path");
+    test:assertEquals(recorder.payload("name"), "note.dat", "FileInfo.name must be the file name alone");
+    test:assertEquals(recorder.payload("size"), "14", "FileInfo.sizeBytes must be the file's size");
+    test:assertEquals(recorder.payload("share"), share, "FileInfo.shareName must name the watched share");
+    test:assertNotEquals(recorder.payload("etag"), "", "FileInfo.eTag must be populated");
 }
 
 @test:Config {}
@@ -368,8 +381,13 @@ function testFunctionConfigDeleteConsumes() returns error? {
         boolean present = check shareClient->hasFile("/incoming/temp.dat");
         return !present;
     });
+    // Several more polls elapse: the guard must not have let one file dispatch twice on the way
+    // to being consumed, and a consumed file must not come back.
+    runtime:sleep(3);
     check lsn.gracefulStop();
     check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("delete"), 1, "a consumed file must be dispatched exactly once");
 }
 
 @test:Config {}
@@ -397,8 +415,11 @@ function testFunctionConfigMoveConsumes() returns error? {
         boolean atDestination = check shareClient->hasFile("/processed/report.dat");
         return !atSource && atDestination;
     });
+    runtime:sleep(3);
     check lsn.gracefulStop();
     check lsn.detach(svc);
+
+    test:assertEquals(recorder.count("move"), 1, "a consumed file must be dispatched exactly once");
 }
 
 @test:Config {}
@@ -472,6 +493,10 @@ function testCallerOperations() returns error? {
     test:assertTrue(recorder.count("copy-status-seen") >= 1);
     test:assertTrue(recorder.count("abort-rejected") >= 1, "abortCopy on a completed copy must fail");
     test:assertTrue(recorder.count("done") >= 1);
+    // Recorded but never read before: a Caller.list that returned nothing, or that ignored the
+    // directory and returned the whole share, was indistinguishable from a correct one.
+    test:assertEquals(recorder.payload("listed"), "1",
+            "Caller.list must return the one entry left under /work");
 }
 
 @test:Config {}
@@ -610,6 +635,32 @@ function testMinFileAgeSkipsYoungFiles() returns error? {
     test:assertEquals(recorder.count("dispatched"), 0, "a file younger than minFileAgeSeconds must not dispatch");
     boolean youngPresent = check shareClient->hasFile("/incoming/young.dat");
     test:assertTrue(youngPresent);
+}
+
+@test:Config {}
+function testMinFileAgeDispatchesAgedFiles() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-minage-pass");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->upload("old enough", "/incoming/aged.dat");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    // The negative twin of this test proves young files are held back; without this one, a gate
+    // that skipped every file regardless of age would still ship green.
+    Service svc = @ServiceConfig {minFileAgeSeconds: 2} isolated service object {
+        remote function onFile(byte[] content) returns error? {
+            recorder.hit("dispatched");
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("dispatched") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertTrue(recorder.count("dispatched") >= 1,
+            "a file older than minFileAgeSeconds must dispatch once it has aged past the gate");
 }
 
 @test:Config {}
@@ -1916,6 +1967,90 @@ function testStreamHandlerErrorTriggersAfterError() returns error? {
     test:assertFalse(stillPresent, "afterError must consume the file the stream handler failed on");
 }
 
+@test:Config {}
+function testHandlerPanicTriggersAfterError() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-panic");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->upload("boom", "/incoming/panic.bin");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = isolated service object {
+        // A panic is the handler failing just as much as a returned error is, so the annotation's
+        // afterError must consume the file either way; otherwise it re-fires on every poll.
+        @FunctionConfig {afterError: {moveTo: "/failed"}}
+        remote function onFile(byte[] content) returns error? {
+            recorder.hit("attempt");
+            panic error("handler panic");
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("attempt") >= 1);
+    check await(function() returns boolean|error {
+        boolean present = check shareClient->hasFile("/incoming/panic.bin");
+        return !present;
+    });
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    boolean stillWatched = check shareClient->hasFile("/incoming/panic.bin");
+    test:assertFalse(stillWatched, "afterError must consume the file a panicking handler failed on");
+    boolean quarantined = check shareClient->hasFile("/failed/panic.bin");
+    test:assertTrue(quarantined, "the panicking handler's file must land in the afterError target");
+    test:assertEquals(recorder.count("attempt"), 1,
+            "a consumed file must not be dispatched again after its handler panicked");
+}
+
+@test:Config {}
+function testStopBeforeStartLeavesListenerUsable() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-stop-first");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->upload("payload", "/incoming/later.bin");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    // Stopping a listener that never started is a no-op, not something that poisons it.
+    check lsn.gracefulStop();
+
+    Service svc = isolated service object {
+        remote function onFile(byte[] content) returns error? {
+            recorder.hit("dispatched");
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("dispatched") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertTrue(recorder.count("dispatched") >= 1,
+            "a listener stopped before it ever started must still dispatch once started");
+}
+
+@test:Config {}
+function testStartAfterStopRejected() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-restart");
+    string share = setup[1];
+
+    Listener lsn = check newListener(share);
+    Service svc = isolated service object {
+        remote function onFile(byte[] content) returns error? {
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check lsn.gracefulStop();
+
+    // Restarting is not supported; it must say so rather than succeed into a listener that
+    // silently never polls again.
+    error? restarted = lsn.'start();
+    test:assertTrue(restarted is error, "a stopped listener must refuse to start again");
+    check lsn.detach(svc);
+}
+
 // Creates a directory when it does not exist yet, for tests needing a second watched path.
 function ensureTestDirectory(Client shareClient, string path) returns error? {
     boolean exists = check shareClient->hasDirectory(path);
@@ -2336,4 +2471,99 @@ function testCallerTypedRead() returns error? {
     check lsn.immediateStop();
     json bound = check recorder.payload("typed").fromJsonString();
     test:assertEquals(bound, {kind: "probe", value: 7});
+}
+
+// Collects the diagnostics the native listener bridges into the module's log helpers.
+isolated class LogSink {
+    private final string[] lines = [];
+
+    isolated function add(string line) {
+        lock {
+            self.lines.push(line);
+        }
+    }
+
+    isolated function matching(string fragment) returns int {
+        lock {
+            int hits = 0;
+            foreach string line in self.lines {
+                if line.includes(fragment) {
+                    hits += 1;
+                }
+            }
+            return hits;
+        }
+    }
+}
+
+final LogSink logSink = new;
+
+@test:Mock {functionName: "logListenerWarn"}
+test:MockFunction logListenerWarnMock = new;
+
+// Stands in for the real helper so the test can see what the native side sent it.
+public isolated function recordListenerWarn(string message) {
+    logSink.add(message);
+}
+
+// The native listener reports its own diagnostics by calling back into the module's Ballerina log
+// helpers. This pins that call actually happens: a file the listing sees but the read cannot fetch
+// makes the native side report "cannot read". onError is the independent witness that the read
+// really did fail, so a green onError with an empty sink would mean the bridge is broken rather
+// than the fault never firing. Mock-pinned: the unreadable file is seeded straight into the mock's
+// store, because uploading it through the client would trip the same forced-error path.
+@test:Config {}
+function testNativeDiagnosticsReachTheBallerinaLog() returns error? {
+    test:when(logListenerWarnMock).call("recordListenerWarn");
+
+    string share = testShare("lsn-log-bridge");
+    AdminClient admin = check newMockAdmin();
+    boolean shareExists = check admin->hasShare(share);
+    if !shareExists {
+        check createTestShare(admin, share);
+    }
+    Client shareClient = check newMockShareClient(share);
+    boolean dirExists = check shareClient->hasDirectory("/incoming");
+    if !dirExists {
+        check shareClient->createDirectory("/incoming");
+    }
+    check shareClient->upload("bridge-probe", "/incoming/probe.dat");
+
+    // Clone the uploaded file under a name whose path trips the mock's forced-error hatch, so the
+    // listing still reports it but every read of it fails with a 500.
+    MockShare mockShare = mockShares.get(share);
+    string probeKey = "";
+    foreach string key in mockShare.files.keys() {
+        if key.endsWith("probe.dat") {
+            probeKey = key;
+        }
+    }
+    test:assertNotEquals(probeKey, "", "the uploaded probe must be in the mock store");
+    string unreadableKey = probeKey.substring(0, probeKey.length() - "probe.dat".length())
+            + "__err-500-InternalError";
+    mockShare.files[unreadableKey] = mockShare.files.get(probeKey);
+
+    final Recorder recorder = new;
+    Listener lsn = check newMockListener(share);
+    Service svc = service object {
+        remote function onFile(byte[] content, FileInfo info, Caller caller) returns error? {
+            recorder.hit("onfile");
+        }
+
+        remote function onError(Error err) returns error? {
+            recorder.hit("onerror");
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("onerror") >= 1);
+    check lsn.immediateStop();
+    check lsn.detach(svc);
+
+    test:assertTrue(recorder.count("onerror") >= 1,
+            "the seeded file must fail its read, so onError is the witness that the fault fired");
+    test:assertTrue(logSink.matching("cannot read") >= 1,
+            "the native side must report the failed read through the module's log helpers");
+    test:assertTrue(logSink.matching("__err-500-InternalError") >= 1,
+            "the bridged diagnostic must name the file it failed on");
 }

@@ -47,8 +47,6 @@ import io.ballerina.runtime.api.values.BError;
 import io.ballerina.runtime.api.values.BMap;
 import io.ballerina.runtime.api.values.BObject;
 import io.ballerina.runtime.api.values.BString;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -78,8 +76,6 @@ import javax.xml.stream.XMLStreamException;
  * virtual thread.
  */
 public final class Listener {
-
-    private static final Logger LOG = LoggerFactory.getLogger(Listener.class);
 
     // Native-data key under which the per-listener context is stored on the listener object.
     private static final String NATIVE_LISTENER_CONTEXT = "listenerContext";
@@ -213,6 +209,33 @@ public final class Listener {
         return null;
     }
 
+    // Diagnostics go through the module's Ballerina log helpers: slf4j has no binding in any
+    // Ballerina distribution, so logging from Java directly would be discarded silently.
+    private static void logAt(ListenerContext ctx, String function, String message) {
+        Runtime runtime = ctx == null ? null : ctx.runtime;
+        if (runtime == null) {
+            return;
+        }
+        try {
+            runtime.callFunction(ModuleUtils.getModule(), function, new StrandMetadata(true, null),
+                    StringUtils.fromString(message));
+        } catch (RuntimeException ignored) {
+            // Reporting a diagnostic must never take down the path that raised it.
+        }
+    }
+
+    private static void logWarn(ListenerContext ctx, String message) {
+        logAt(ctx, "logListenerWarn", message);
+    }
+
+    private static void logError(ListenerContext ctx, String message) {
+        logAt(ctx, "logListenerError", message);
+    }
+
+    private static void logDebug(ListenerContext ctx, String message) {
+        logAt(ctx, "logListenerDebug", message);
+    }
+
     /**
      * Runs one poll of the watched path. Called on a Ballerina strand by the task job, which
      * drives the fixed polling cadence. Lists the present files and dispatches each match on a
@@ -284,12 +307,13 @@ public final class Listener {
                     handlerPanic.printStackTrace();
                     handled = false;
                 } catch (RuntimeException e) {
-                    LOG.warn("azure.storage.files listener: onError invocation failed", e);
+                    logWarn(ctx, "azure.storage.files listener: onError invocation failed: "
+                            + BallerinaAzureClient.describe(e));
                     handled = false;
                 }
                 if (listenerObj != null) {
                     PostAction action = handled ? afterProcess : afterError;
-                    postProcess(listenerObj, serviceContext, action, path, eTag);
+                    postProcess(ctx, listenerObj, serviceContext, action, path, eTag);
                 }
             } finally {
                 // The takeover path holds the guard until its consume action lands, so a
@@ -390,7 +414,7 @@ public final class Listener {
             }
             HandlerConfig handler = resolveHandler(serviceContext, item.getName());
             if (handler == null) {
-                LOG.debug("azure.storage.files listener: no handler for {}, skipping", path);
+                logDebug(ctx, "azure.storage.files listener: no handler for " + path + ", skipping");
                 return;
             }
 
@@ -405,7 +429,8 @@ public final class Listener {
                     inputStream = BallerinaAzureClient.getShareClient(listenerObj)
                             .getFileClient(path).openInputStream();
                 } catch (RuntimeException e) {
-                    LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
+                    logWarn(ctx, "azure.storage.files listener: cannot read " + path
+                            + "; will retry next poll: " + BallerinaAzureClient.describe(e));
                     invokeOnError(ctx, BallerinaAzureClient.mapFailure(e));
                     return;
                 }
@@ -416,7 +441,7 @@ public final class Listener {
                             : ContentStreams.createByteStream(inputStream,
                                     streamContentType.getConstrainedType());
                 } catch (RuntimeException e) {
-                    closeQuietly(inputStream);
+                    closeQuietly(ctx, inputStream);
                     handedOff = handleBindingFailure(listenerObj, ctx, serviceContext, handler, item, path, e, null);
                     return;
                 }
@@ -425,7 +450,8 @@ public final class Listener {
                 try {
                     bytes = download(listenerObj, path);
                 } catch (RuntimeException e) {
-                    LOG.warn("azure.storage.files listener: cannot read {}; will retry next poll", path, e);
+                    logWarn(ctx, "azure.storage.files listener: cannot read " + path
+                            + "; will retry next poll: " + BallerinaAzureClient.describe(e));
                     invokeOnError(ctx, BallerinaAzureClient.mapFailure(e));
                     return;
                 }
@@ -447,12 +473,13 @@ public final class Listener {
                 // The handler already saw its own error, so onError is not notified; the error is
                 // printed so the failure stays visible without a logging backend.
                 error.printStackTrace();
-                postProcess(listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
+                postProcess(ctx, listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
             } else {
-                postProcess(listenerObj, serviceContext, handler.afterProcess(), path, listedETag(item));
+                postProcess(ctx, listenerObj, serviceContext, handler.afterProcess(), path, listedETag(item));
             }
         } catch (Throwable e) {
-            LOG.error("azure.storage.files listener: unexpected dispatch failure for {}", path, e);
+            logError(ctx, "azure.storage.files listener: unexpected dispatch failure for " + path
+                    + ": " + BallerinaAzureClient.describe(e));
         } finally {
             // Released here unless the onError takeover thread took ownership of the guard.
             if (!handedOff) {
@@ -474,7 +501,7 @@ public final class Listener {
         BError bindingError = FilesErrorCreator.contentBindingError(message, e, "/" + path, content);
         if (serviceContext.onErrorArity() == 0) {
             bindingError.printStackTrace();
-            postProcess(listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
+            postProcess(ctx, listenerObj, serviceContext, handler.afterError(), path, listedETag(item));
             return false;
         }
         return invokeOnError(ctx, bindingError, listenerObj, serviceContext.onErrorAfterProcess(),
@@ -494,11 +521,12 @@ public final class Listener {
         return eTag;
     }
 
-    private static void closeQuietly(InputStream inputStream) {
+    private static void closeQuietly(ListenerContext ctx, InputStream inputStream) {
         try {
             inputStream.close();
         } catch (IOException e) {
-            LOG.debug("azure.storage.files listener: failed to close a content stream", e);
+            logDebug(ctx, "azure.storage.files listener: failed to close a content stream: "
+                    + BallerinaAzureClient.describe(e));
         }
     }
 
@@ -568,12 +596,20 @@ public final class Listener {
                     : new Object[]{content, fileInfo};
             default -> new Object[]{content, fileInfo, ctx.caller};
         };
-        return ctx.runtime.callMethod(service, methodName, metadata, args);
+        // A panic is the handler failing just as much as a returned error is. Normalizing it into
+        // the error return keeps the consume contract identical for both, so afterError applies
+        // and the file is not left to re-fire on every later poll.
+        try {
+            return ctx.runtime.callMethod(service, methodName, metadata, args);
+        } catch (BError panic) {
+            return panic;
+        }
     }
 
     // Applies a post-process action (delete, or move to a target directory). A failure is
     // logged and left alone so the file re-fires on a later poll.
-    private static void postProcess(BObject listenerObj, ServiceContext serviceContext, PostAction action,
+    private static void postProcess(ListenerContext ctx, BObject listenerObj, ServiceContext serviceContext,
+                                    PostAction action,
                                     String path, String expectedETag) {
         if (action == null) {
             return;
@@ -586,8 +622,8 @@ public final class Listener {
             if (expectedETag != null) {
                 String currentETag = share.getFileClient(path).getProperties().getETag();
                 if (!unquoteETag(expectedETag).equals(unquoteETag(currentETag))) {
-                    LOG.debug("azure.storage.files listener: {} changed since dispatch; "
-                            + "leaving it for the next poll", path);
+                    logDebug(ctx, "azure.storage.files listener: " + path + " changed since dispatch; "
+                            + "leaving it for the next poll");
                     return;
                 }
             }
@@ -600,17 +636,18 @@ public final class Listener {
                     ? join(moveRoot, relativeTo(path, serviceContext.watchedPath()))
                     : join(moveRoot, path.substring(path.lastIndexOf('/') + 1));
             int slash = destination.lastIndexOf('/');
-            ensureDirectory(share, slash < 0 ? "" : destination.substring(0, slash));
+            ensureDirectory(ctx, share, slash < 0 ? "" : destination.substring(0, slash));
             // A same-named file already at the destination is replaced: a failing rename would
             // leave the source in the watched path, re-dispatching it on every later poll.
             share.getFileClient(path).renameWithResponse(
                     new ShareFileRenameOptions(destination).setReplaceIfExists(true), null, null);
         } catch (RuntimeException e) {
-            LOG.warn("azure.storage.files listener: post-process failed for {}", path, e);
+            logWarn(ctx, "azure.storage.files listener: post-process failed for " + path + ": "
+                    + BallerinaAzureClient.describe(e));
         }
     }
 
-    private static void ensureDirectory(ShareClient share, String directoryPath) {
+    private static void ensureDirectory(ListenerContext ctx, ShareClient share, String directoryPath) {
         if (directoryPath.isEmpty()) {
             return;
         }
@@ -626,7 +663,7 @@ public final class Listener {
             try {
                 share.getDirectoryClient(built.toString()).createIfNotExists();
             } catch (ShareStorageException e) {
-                LOG.debug("azure.storage.files listener: directory {} already exists", built, e);
+                logDebug(ctx, "azure.storage.files listener: directory " + built + " already exists");
             }
         }
     }

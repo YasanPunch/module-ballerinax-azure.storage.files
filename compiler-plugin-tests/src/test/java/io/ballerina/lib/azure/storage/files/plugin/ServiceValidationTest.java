@@ -192,6 +192,12 @@ public class ServiceValidationTest {
     }
 
     @Test
+    public void testValidContentTypeAliases() {
+        DiagnosticResult result = loadPackage("valid_content_type_aliases");
+        assertEquals(result.errorCount(), 0);
+    }
+
+    @Test
     public void testInvalidOnErrorNarrowErrorParameter() {
         DiagnosticResult result = loadPackage("invalid_on_error_narrow_error");
         assertEquals(result.errorCount(), 1);

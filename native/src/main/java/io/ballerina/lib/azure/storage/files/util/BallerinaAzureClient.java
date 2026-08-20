@@ -73,6 +73,8 @@ public final class BallerinaAzureClient {
         });
     }
 
+    private static final int MAX_CAUSE_DEPTH = 8;
+
     /**
      * Maps a failure to the module's typed error: Azure service failures go through the
      * code-keyed mapper, Ballerina errors pass through, and anything else becomes the
@@ -82,11 +84,20 @@ public final class BallerinaAzureClient {
      * @return the mapped Ballerina error
      */
     public static BError mapFailure(Throwable e) {
-        if (e instanceof ShareStorageException storageException) {
-            return ErrorMapper.toBError(storageException);
-        }
         if (e instanceof BError bError) {
             return bError;
+        }
+        // A service failure raised mid-stream reaches us wrapped: the SDK's input stream rethrows
+        // it inside a RuntimeException. Its origin is still the service, so the hierarchy's
+        // origin rule says it must keep its status and error code rather than collapse to the
+        // generic client-side Error. Bounded and cycle-guarded, since a cause chain can loop.
+        Throwable current = e;
+        for (int depth = 0; current != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            if (current instanceof ShareStorageException storageException) {
+                return ErrorMapper.toBError(storageException);
+            }
+            Throwable cause = current.getCause();
+            current = cause == current ? null : cause;
         }
         return FilesErrorCreator.clientError(describe(e), e);
     }
