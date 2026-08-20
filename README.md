@@ -1,9 +1,9 @@
 # Ballerina Azure Files Connector
 
-[![Build](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-timestamped-master.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-timestamped-master.yml)
+[![Build](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/ci.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/ballerina-platform/module-ballerinax-azure.storage.files/branch/main/graph/badge.svg)](https://codecov.io/gh/ballerina-platform/module-ballerinax-azure.storage.files)
 [![GitHub Last Commit](https://img.shields.io/github/last-commit/ballerina-platform/module-ballerinax-azure.storage.files.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/commits/main)
-[![GraalVM Check](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-with-bal-test-graalvm.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-with-bal-test-graalvm.yml)
+[![GraalVM Check](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-with-bal-test-native.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-azure.storage.files/actions/workflows/build-with-bal-test-native.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## Overview
@@ -11,6 +11,15 @@
 [Azure Files](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-introduction) offers fully managed file shares in the cloud, accessible via the industry-standard SMB and NFS protocols and a REST API.
 
 The `ballerinax/azure.storage.files` package offers APIs to connect to Azure Files and manage shares and the directories and files within them, covering uploads, downloads, copies, renames, byte ranges, snapshots, and SAS token generation. It also provides a polling `Listener` that turns files arriving on a share into service events.
+
+### Key Features
+
+- Share-scoped `Client` for directory and file operations, transfers, copies, and byte ranges
+- Account-level `AdminClient` for creating, listing, deleting, and restoring shares
+- Polling `Listener` that routes files arriving on a watched path to raw, typed, or streaming content handlers, with an optional `onError` error handler
+- Share snapshots
+- Authentication with shared key, SAS tokens, connection strings, and Microsoft Entra ID
+- GraalVM compatible for native image builds
 
 ## Setup guide
 
@@ -87,23 +96,28 @@ files:Client fileClient = check new ("reports", auth = {accountName, accountKey}
 
 Now, utilize the available connector operations.
 
-#### Upload a file
+#### Create the share
+
+The client is bound to a share, so create it first if it does not exist yet.
 
 ```ballerina
-check fileClient->uploadFromFile("./local/q1.pdf", "/reports/q1.pdf");
+files:AdminClient admin = check new (auth = {accountName, accountKey});
+check admin->createShare("reports");
+```
+
+#### Upload a file
+
+Paths are relative to the bound share, so `/q1.pdf` is at the share root. Azure does not create
+parent directories, so create a directory before writing into one.
+
+```ballerina
+check fileClient->uploadFromFile("./local/q1.pdf", "/q1.pdf");
 ```
 
 #### Get the properties of a file
 
 ```ballerina
-files:FileProperties props = check fileClient->getFileProperties("/reports/q1.pdf");
-```
-
-#### Manage shares
-
-```ballerina
-files:AdminClient admin = check new (auth = {accountName, accountKey});
-check admin->createShare("reports");
+files:FileProperties props = check fileClient->getFileProperties("/q1.pdf");
 ```
 
 ### Step 4: Run the Ballerina application

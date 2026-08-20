@@ -88,23 +88,28 @@ files:Client fileClient = check new ("reports", auth = {accountName, accountKey}
 
 Now, utilize the available connector operations.
 
-#### Upload a file
+#### Create the share
+
+The client is bound to a share, so create it first if it does not exist yet.
 
 ```ballerina
-check fileClient->uploadFromFile("./local/q1.pdf", "/reports/q1.pdf");
+files:AdminClient admin = check new (auth = {accountName, accountKey});
+check admin->createShare("reports");
+```
+
+#### Upload a file
+
+Paths are relative to the bound share, so `/q1.pdf` is at the share root. Azure does not create
+parent directories, so create a directory before writing into one.
+
+```ballerina
+check fileClient->uploadFromFile("./local/q1.pdf", "/q1.pdf");
 ```
 
 #### Get the properties of a file
 
 ```ballerina
-files:FileProperties props = check fileClient->getFileProperties("/reports/q1.pdf");
-```
-
-#### Manage shares
-
-```ballerina
-files:AdminClient admin = check new (auth = {accountName, accountKey});
-check admin->createShare("reports");
+files:FileProperties props = check fileClient->getFileProperties("/q1.pdf");
 ```
 
 ### Step 4: Run the Ballerina application
