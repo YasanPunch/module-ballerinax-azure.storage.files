@@ -12,6 +12,15 @@
 
 The `ballerinax/azure.storage.files` package offers APIs to connect to Azure Files and manage shares and the directories and files within them, covering uploads, downloads, copies, renames, byte ranges, snapshots, and SAS token generation. It also provides a polling `Listener` that turns files arriving on a share into service events.
 
+### Key Features
+
+- Share-scoped `Client` for directory and file operations, transfers, copies, and byte ranges
+- Account-level `AdminClient` for creating, listing, deleting, and restoring shares
+- Polling `Listener` that routes files arriving on a watched path to raw, typed, or streaming content handlers, with an optional `onError` error handler
+- Share snapshots
+- Authentication with shared key, SAS tokens, connection strings, and Microsoft Entra ID
+- GraalVM compatible for native image builds
+
 ## Setup guide
 
 To use the Azure Files connector, you must have an Azure subscription and an Azure storage account. If you do not have an Azure account, you can sign up for one [here](https://azure.microsoft.com/free/).
@@ -87,23 +96,28 @@ files:Client fileClient = check new ("reports", auth = {accountName, accountKey}
 
 Now, utilize the available connector operations.
 
-#### Upload a file
+#### Create the share
+
+The client is bound to a share, so create it first if it does not exist yet.
 
 ```ballerina
-check fileClient->uploadFromFile("./local/q1.pdf", "/reports/q1.pdf");
+files:AdminClient admin = check new (auth = {accountName, accountKey});
+check admin->createShare("reports");
+```
+
+#### Upload a file
+
+Paths are relative to the bound share, so `/q1.pdf` is at the share root. Azure does not create
+parent directories, so create a directory before writing into one.
+
+```ballerina
+check fileClient->uploadFromFile("./local/q1.pdf", "/q1.pdf");
 ```
 
 #### Get the properties of a file
 
 ```ballerina
-files:FileProperties props = check fileClient->getFileProperties("/reports/q1.pdf");
-```
-
-#### Manage shares
-
-```ballerina
-files:AdminClient admin = check new (auth = {accountName, accountKey});
-check admin->createShare("reports");
+files:FileProperties props = check fileClient->getFileProperties("/q1.pdf");
 ```
 
 ### Step 4: Run the Ballerina application
