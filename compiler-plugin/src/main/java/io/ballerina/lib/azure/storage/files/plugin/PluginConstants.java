@@ -34,6 +34,11 @@ public final class PluginConstants {
     public static final String PACKAGE_ORG = "ballerinax";
     public static final String PACKAGE_PREFIX = "azure.storage.files";
 
+    // Bounds every walk over a type-reference chain. The plugin also analyzes in-progress and
+    // erroneous sources, whose semantic models can expose cyclic or unresolved reference chains;
+    // an unbounded walk there hangs the analysis, and with it the IDE's language server.
+    public static final int MAX_TYPE_REFERENCE_DEPTH = 8;
+
     // The content-handler function names.
     public static final String ON_FILE_FUNC = "onFile";
     public static final String ON_FILE_TEXT_FUNC = "onFileText";

@@ -612,13 +612,12 @@ public type EntraIdConfig DefaultEntraIdConfig|ManagedIdentityConfig|ClientSecre
 public type AuthConfig SharedKeyConfig|SasConfig|SasUrlConfig|ConnectionStringConfig|EntraIdConfig;
 
 # The retry policy kinds: `EXPONENTIAL` grows the delay between tries exponentially;
-# `FIXED` keeps the same delay between every try.
+# `FIXED_INTERVAL` keeps the same delay between every try.
 public enum RetryPolicyType {
     # Delays grow exponentially between tries
     EXPONENTIAL = "exponential",
-    // FIXED is a module-level constant shared with LeaseDuration (enum members merge when
-    // their values match), so its doc line lives on the LeaseDuration member.
-    FIXED = "fixed"
+    # The delay stays the same between tries
+    FIXED_INTERVAL = "fixed"
 }
 
 # Retry behaviour for service requests.

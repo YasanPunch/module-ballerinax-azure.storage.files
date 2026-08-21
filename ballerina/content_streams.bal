@@ -25,8 +25,8 @@ type ContentStreamEntry record {|
 
 # One entry of a CSV row stream: a row bound to the handler's declared row type.
 type CsvRowEntry record {|
-    # The bound row record
-    record {} value;
+    # The bound row, a record or a string array
+    record {}|string[] value;
 |};
 
 // Backs a stream content handler's byte stream: each next() reads one chunk from the service.
@@ -55,13 +55,17 @@ class ContentByteStream {
 class ContentCsvStream {
 
     private boolean isClosed = false;
-    private stream<record {}, error?> csvStream;
+    private stream<record {}|string[], error?> csvStream;
 
-    public isolated function init(typedesc<record {}> targetType,
+    public isolated function init(typedesc<record {}|string[]> targetType,
             stream<byte[], error?> byteStream, csv:ParseOptions options) returns error? {
-        // Each row record maps its fields through the header row (the file's first row),
-        // which the data.csv default consumes.
-        stream<record {}, error?>|csv:Error parsed = csv:parseToStream(byteStream, options, targetType);
+        // A record target maps its fields through the header row (the file's first row),
+        // which the data.csv default already consumes; the string array form yields every
+        // row of the file, so the header consumption is turned off for it.
+        if targetType !is typedesc<record {}> {
+            options.header = ();
+        }
+        stream<record {}|string[], error?>|csv:Error parsed = csv:parseToStream(byteStream, options, targetType);
         if parsed is csv:Error {
             closeByteStreamQuietly(byteStream);
             return error Error("CSV stream binding could not be created: " + parsed.message(), parsed);
@@ -98,7 +102,7 @@ class ContentCsvStream {
 
 // The data.csv stream construction runs Ballerina code, so the native dispatcher must call in
 // through the runtime on a real strand.
-isolated function newContentCsvStream(typedesc<record {}> targetType,
+isolated function newContentCsvStream(typedesc<record {}|string[]> targetType,
         stream<byte[], error?> byteStream, boolean laxDataBinding) returns ContentCsvStream|error {
     return new (targetType, byteStream, csvParseOptions(laxDataBinding));
 }
@@ -110,7 +114,7 @@ isolated function closeByteStreamQuietly(stream<byte[], error?> byteStream) {
     }
 }
 
-isolated function closeRowStreamQuietly(stream<record {}, error?> rowStream) {
+isolated function closeRowStreamQuietly(stream<record {}|string[], error?> rowStream) {
     error? closed = rowStream.close();
     if closed is error {
         // Best effort cleanup.

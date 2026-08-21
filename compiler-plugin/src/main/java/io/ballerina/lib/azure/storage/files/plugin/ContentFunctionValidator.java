@@ -56,7 +56,8 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.reportErro
  * Validates one content handler's signature: the method must be {@code remote}; the first
  * parameter carries the handler's content type (onFile: {@code byte[]} or a byte stream;
  * onFileText: {@code string}; onFileJson: {@code json} or a record; onFileXml: {@code xml}
- * or a record; onFileCsv: a record array or a record stream); an optional second parameter
+ * or a record; onFileCsv: a string matrix, a record array, or a stream of either row form);
+ * an optional second parameter
  * is {@code FileInfo}, an optional third is {@code Caller}, and the return type must be
  * {@code error?}.
  */
@@ -126,27 +127,50 @@ public class ContentFunctionValidator {
         if (typeSymbolOpt.isEmpty()) {
             return false;
         }
-        TypeSymbol typeSymbol = typeSymbolOpt.get();
+        // A named type is ordinary Ballerina and the runtime resolves it, so the declared type is
+        // unwrapped to what it refers to before any of the shape checks below.
+        TypeSymbol typeSymbol = unwrapTypeReference(typeSymbolOpt.get());
         TypeDescKind typeKind = typeSymbol.typeKind();
         return switch (contentMethodName) {
             case ON_FILE_FUNC -> isByteArray(typeSymbol, typeKind) || isByteStream(typeSymbol, typeKind);
             case ON_FILE_TEXT_FUNC -> typeKind == STRING;
             case ON_FILE_JSON_FUNC -> typeKind == JSON || typeKind == RECORD || isRecordTypeReference(typeSymbol);
             case ON_FILE_XML_FUNC -> typeKind == XML || typeKind == RECORD || isRecordTypeReference(typeSymbol);
-            case ON_FILE_CSV_FUNC -> isRecordArray(typeSymbol, typeKind) || isCsvStream(typeSymbol, typeKind);
+            case ON_FILE_CSV_FUNC -> isStringArrayOfArray(typeSymbol, typeKind)
+                    || isRecordArray(typeSymbol, typeKind) || isCsvStream(typeSymbol, typeKind);
             default -> false;
         };
     }
 
     private boolean isByteArray(TypeSymbol typeSymbol, TypeDescKind typeKind) {
-        return typeKind == ARRAY && ((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor().typeKind() == BYTE;
+        return typeKind == ARRAY
+                && unwrapTypeReference(((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor()).typeKind() == BYTE;
+    }
+
+    private TypeSymbol unwrapTypeReference(TypeSymbol typeSymbol) {
+        TypeSymbol resolved = typeSymbol;
+        // Bounded and null-guarded: erroneous sources can expose cyclic or unresolved reference
+        // chains, and this walk must never hang or crash the analysis they run under. A reference
+        // that stays unresolved is returned as is, for the callers' reference fallbacks.
+        for (int depth = 0; depth < PluginConstants.MAX_TYPE_REFERENCE_DEPTH; depth++) {
+            if (resolved.typeKind() != TypeDescKind.TYPE_REFERENCE
+                    || !(resolved instanceof TypeReferenceTypeSymbol typeReferenceTypeSymbol)) {
+                return resolved;
+            }
+            TypeSymbol referred = typeReferenceTypeSymbol.typeDescriptor();
+            if (referred == null) {
+                return resolved;
+            }
+            resolved = referred;
+        }
+        return resolved;
     }
 
     private boolean isByteStream(TypeSymbol typeSymbol, TypeDescKind typeKind) {
         if (typeKind != STREAM) {
             return false;
         }
-        TypeSymbol itemType = ((StreamTypeSymbol) typeSymbol).typeParameter();
+        TypeSymbol itemType = unwrapTypeReference(((StreamTypeSymbol) typeSymbol).typeParameter());
         return isByteArray(itemType, itemType.typeKind());
     }
 
@@ -154,16 +178,29 @@ public class ContentFunctionValidator {
         if (typeKind != ARRAY) {
             return false;
         }
-        TypeSymbol member = ((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor();
-        return member.typeKind() == RECORD || isRecordTypeReference(member);
+        TypeSymbol member = unwrapTypeReference(((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor());
+        return member.typeKind() == RECORD;
+    }
+
+    private boolean isStringArrayOfArray(TypeSymbol typeSymbol, TypeDescKind typeKind) {
+        if (typeKind != ARRAY) {
+            return false;
+        }
+        TypeSymbol member = unwrapTypeReference(((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor());
+        return member.typeKind() == ARRAY
+                && unwrapTypeReference(((ArrayTypeSymbol) member).memberTypeDescriptor()).typeKind() == STRING;
     }
 
     private boolean isCsvStream(TypeSymbol typeSymbol, TypeDescKind typeKind) {
         if (typeKind != STREAM) {
             return false;
         }
-        TypeSymbol itemType = ((StreamTypeSymbol) typeSymbol).typeParameter();
-        return itemType.typeKind() == RECORD || isRecordTypeReference(itemType);
+        TypeSymbol itemType = unwrapTypeReference(((StreamTypeSymbol) typeSymbol).typeParameter());
+        if (itemType.typeKind() == RECORD) {
+            return true;
+        }
+        return itemType.typeKind() == ARRAY
+                && unwrapTypeReference(((ArrayTypeSymbol) itemType).memberTypeDescriptor()).typeKind() == STRING;
     }
 
     private boolean isRecordTypeReference(TypeSymbol typeSymbol) {
@@ -180,7 +217,8 @@ public class ContentFunctionValidator {
             case ON_FILE_TEXT_FUNC -> "string";
             case ON_FILE_JSON_FUNC -> "json or a record";
             case ON_FILE_XML_FUNC -> "xml or a record";
-            case ON_FILE_CSV_FUNC -> "record{}[] or stream<record{}, error?>";
+            case ON_FILE_CSV_FUNC -> "string[][], record{}[], stream<string[], error?>, "
+                    + "or stream<record{}, error?>";
             default -> "unknown";
         };
     }

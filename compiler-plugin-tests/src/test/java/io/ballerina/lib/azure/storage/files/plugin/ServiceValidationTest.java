@@ -58,6 +58,13 @@ public class ServiceValidationTest {
     }
 
     @Test
+    public void testValidTypedJsonRecordAliasChainService() {
+        DiagnosticResult result = loadPackage("valid_on_file_json_record_alias_chain");
+        assertEquals(result.errorCount(), 0,
+                "expected no diagnostics for a record behind an alias chain on onFileJson");
+    }
+
+    @Test
     public void testInvalidOnFileJsonRecordArray() {
         DiagnosticResult result = loadPackage("invalid_on_file_json_record_array");
         assertEquals(result.errorCount(), 1);
@@ -192,6 +199,12 @@ public class ServiceValidationTest {
     }
 
     @Test
+    public void testValidContentTypeAliases() {
+        DiagnosticResult result = loadPackage("valid_content_type_aliases");
+        assertEquals(result.errorCount(), 0);
+    }
+
+    @Test
     public void testInvalidOnErrorNarrowErrorParameter() {
         DiagnosticResult result = loadPackage("invalid_on_error_narrow_error");
         assertEquals(result.errorCount(), 1);
@@ -279,16 +292,14 @@ public class ServiceValidationTest {
     }
 
     @Test
-    public void testInvalidOnFileCsvStringMatrix() {
-        DiagnosticResult result = loadPackage("invalid_on_file_csv_string_matrix");
-        assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
+    public void testValidOnFileCsvStringMatrixService() {
+        DiagnosticResult result = loadPackage("valid_on_file_csv_string_matrix");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv string matrix service");
     }
 
     @Test
-    public void testInvalidOnFileCsvStringArrayStream() {
-        DiagnosticResult result = loadPackage("invalid_on_file_csv_stream_string_array");
-        assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
+    public void testValidOnFileCsvStringArrayStreamService() {
+        DiagnosticResult result = loadPackage("valid_on_file_csv_stream_string_array");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv string array stream service");
     }
 }

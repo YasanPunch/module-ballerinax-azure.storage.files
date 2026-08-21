@@ -41,7 +41,6 @@ import io.ballerina.tools.diagnostics.Location;
 import java.util.Optional;
 
 import static io.ballerina.compiler.api.symbols.TypeDescKind.TYPE_REFERENCE;
-import static io.ballerina.compiler.syntax.tree.SyntaxKind.QUALIFIED_NAME_REFERENCE;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CALLER;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.INVALID_RETURN_TYPE_ERROR_OR_NIL;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.FILE_INFO;
@@ -122,21 +121,30 @@ public final class PluginUtils {
 
     private static boolean validateQualifiedParameter(ParameterNode parameterNode, SyntaxNodeAnalysisContext context,
                                                       String expectedTypeName) {
-        if (!(parameterNode instanceof RequiredParameterNode requiredParameterNode)) {
+        if (!(parameterNode instanceof RequiredParameterNode)) {
             return false;
         }
-        if (requiredParameterNode.typeName().kind() != QUALIFIED_NAME_REFERENCE) {
-            return false;
-        }
+        // Resolved through the type rather than the syntax, so a local alias of the module's type
+        // is accepted: naming a type is ordinary Ballerina, and the runtime already resolves it.
         Optional<TypeSymbol> typeSymbol = getParameterTypeSymbol(parameterNode, context);
         if (typeSymbol.isEmpty()) {
             return false;
         }
-        Optional<ModuleSymbol> moduleSymbol = typeSymbol.get().getModule();
-        if (moduleSymbol.isEmpty() || !validateModuleId(moduleSymbol.get())) {
-            return false;
+        TypeSymbol resolved = typeSymbol.get();
+        // Bounded and null-guarded: erroneous sources can expose cyclic or unresolved reference
+        // chains, and this walk must never hang or crash the analysis they run under.
+        for (int depth = 0; resolved != null && depth < PluginConstants.MAX_TYPE_REFERENCE_DEPTH; depth++) {
+            Optional<ModuleSymbol> moduleSymbol = resolved.getModule();
+            if (moduleSymbol.isPresent() && validateModuleId(moduleSymbol.get())
+                    && resolved.getName().map(expectedTypeName::equals).orElse(false)) {
+                return true;
+            }
+            if (!(resolved instanceof TypeReferenceTypeSymbol reference)) {
+                return false;
+            }
+            resolved = reference.typeDescriptor();
         }
-        return typeSymbol.get().getName().map(expectedTypeName::equals).orElse(false);
+        return false;
     }
 
     public static Optional<TypeSymbol> getParameterTypeSymbol(ParameterNode parameterNode,
