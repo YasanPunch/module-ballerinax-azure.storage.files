@@ -70,9 +70,9 @@ public final class ContentStreams {
     }
 
     /**
-     * Creates the {@code stream<record{}, error?>} value handed to a CSV stream content handler.
-     * The wrapping object is constructed through the runtime because its initialization runs
-     * the data.csv stream construction, which needs a real strand.
+     * Creates the {@code stream<string[]|record{}, error?>} value handed to a CSV stream content
+     * handler. The wrapping object is constructed through the runtime because its initialization
+     * runs the data.csv stream construction, which needs a real strand.
      */
     static Object createCsvStream(Runtime runtime, InputStream content, Type elementType, boolean laxDataBinding) {
         Type byteArrayType = TypeCreator.createArrayType(PredefinedTypes.TYPE_BYTE);

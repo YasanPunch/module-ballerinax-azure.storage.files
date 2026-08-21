@@ -36,6 +36,7 @@ import static io.ballerina.compiler.api.symbols.TypeDescKind.JSON;
 import static io.ballerina.compiler.api.symbols.TypeDescKind.RECORD;
 import static io.ballerina.compiler.api.symbols.TypeDescKind.STREAM;
 import static io.ballerina.compiler.api.symbols.TypeDescKind.STRING;
+import static io.ballerina.compiler.api.symbols.TypeDescKind.TYPE_REFERENCE;
 import static io.ballerina.compiler.api.symbols.TypeDescKind.XML;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.CONTENT_METHOD_MUST_BE_REMOTE;
 import static io.ballerina.lib.azure.storage.files.plugin.PluginConstants.CompilationErrors.INVALID_CALLER_PARAMETER;
@@ -55,7 +56,8 @@ import static io.ballerina.lib.azure.storage.files.plugin.PluginUtils.reportErro
  * Validates one content handler's signature: the method must be {@code remote}; the first
  * parameter carries the handler's content type (onFile: {@code byte[]} or a byte stream;
  * onFileText: {@code string}; onFileJson: {@code json} or a record; onFileXml: {@code xml}
- * or a record; onFileCsv: a record array or a record stream); an optional second parameter
+ * or a record; onFileCsv: a string matrix, a record array, or a stream of either row form);
+ * an optional second parameter
  * is {@code FileInfo}, an optional third is {@code Caller}, and the return type must be
  * {@code error?}.
  */
@@ -132,9 +134,10 @@ public class ContentFunctionValidator {
         return switch (contentMethodName) {
             case ON_FILE_FUNC -> isByteArray(typeSymbol, typeKind) || isByteStream(typeSymbol, typeKind);
             case ON_FILE_TEXT_FUNC -> typeKind == STRING;
-            case ON_FILE_JSON_FUNC -> typeKind == JSON || typeKind == RECORD;
-            case ON_FILE_XML_FUNC -> typeKind == XML || typeKind == RECORD;
-            case ON_FILE_CSV_FUNC -> isRecordArray(typeSymbol, typeKind) || isCsvStream(typeSymbol, typeKind);
+            case ON_FILE_JSON_FUNC -> typeKind == JSON || typeKind == RECORD || isRecordTypeReference(typeSymbol);
+            case ON_FILE_XML_FUNC -> typeKind == XML || typeKind == RECORD || isRecordTypeReference(typeSymbol);
+            case ON_FILE_CSV_FUNC -> isStringArrayOfArray(typeSymbol, typeKind)
+                    || isRecordArray(typeSymbol, typeKind) || isCsvStream(typeSymbol, typeKind);
             default -> false;
         };
     }
@@ -169,12 +172,33 @@ public class ContentFunctionValidator {
         return member.typeKind() == RECORD;
     }
 
+    private boolean isStringArrayOfArray(TypeSymbol typeSymbol, TypeDescKind typeKind) {
+        if (typeKind != ARRAY) {
+            return false;
+        }
+        TypeSymbol member = unwrapTypeReference(((ArrayTypeSymbol) typeSymbol).memberTypeDescriptor());
+        return member.typeKind() == ARRAY
+                && unwrapTypeReference(((ArrayTypeSymbol) member).memberTypeDescriptor()).typeKind() == STRING;
+    }
+
     private boolean isCsvStream(TypeSymbol typeSymbol, TypeDescKind typeKind) {
         if (typeKind != STREAM) {
             return false;
         }
         TypeSymbol itemType = unwrapTypeReference(((StreamTypeSymbol) typeSymbol).typeParameter());
-        return itemType.typeKind() == RECORD;
+        if (itemType.typeKind() == RECORD) {
+            return true;
+        }
+        return itemType.typeKind() == ARRAY
+                && unwrapTypeReference(((ArrayTypeSymbol) itemType).memberTypeDescriptor()).typeKind() == STRING;
+    }
+
+    private boolean isRecordTypeReference(TypeSymbol typeSymbol) {
+        if (typeSymbol.typeKind() != TYPE_REFERENCE) {
+            return false;
+        }
+        TypeSymbol referredType = ((TypeReferenceTypeSymbol) typeSymbol).typeDescriptor();
+        return referredType != null && referredType.typeKind() == RECORD;
     }
 
     private String expectedContentType() {
@@ -183,7 +207,8 @@ public class ContentFunctionValidator {
             case ON_FILE_TEXT_FUNC -> "string";
             case ON_FILE_JSON_FUNC -> "json or a record";
             case ON_FILE_XML_FUNC -> "xml or a record";
-            case ON_FILE_CSV_FUNC -> "record{}[] or stream<record{}, error?>";
+            case ON_FILE_CSV_FUNC -> "string[][], record{}[], stream<string[], error?>, "
+                    + "or stream<record{}, error?>";
             default -> "unknown";
         };
     }

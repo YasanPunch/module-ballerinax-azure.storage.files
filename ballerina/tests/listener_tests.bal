@@ -612,6 +612,35 @@ function testTypedCsvRouting() returns error? {
 }
 
 @test:Config {}
+function testCsvStringMatrixAllRows() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-csv-matrix");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->upload("a,b\nc,d", "/incoming/rows.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = service object {
+        remote function onFileCsv(string[][] content, FileInfo info, Caller caller) returns error? {
+            string[] rows = [];
+            foreach string[] row in content {
+                rows.push(string:'join(",", ...row));
+            }
+            recorder.put("csv", string:'join(";", ...rows));
+            check caller->deleteFile(info.path);
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("csv"), "a,b;c,d",
+            "the string matrix must keep every row of the file, the header row included");
+}
+
+@test:Config {}
 function testMinFileAgeSkipsYoungFiles() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-minage");
     Client shareClient = setup[0];
@@ -1823,6 +1852,40 @@ function testCsvStreamRecords() returns error? {
 }
 
 @test:Config {}
+function testCsvStreamStringArrays() returns error? {
+    [Client, string] setup = check setupWatchedShare("lsn-csvstream-str");
+    Client shareClient = setup[0];
+    string share = setup[1];
+    check shareClient->upload("a,b\nc,d", "/incoming/rows.csv");
+
+    final Recorder recorder = new;
+    Listener lsn = check newListener(share);
+    Service svc = isolated service object {
+        @FunctionConfig {afterProcess: DELETE}
+        remote function onFileCsv(stream<string[], error?> rows) returns error? {
+            string[] collected = [];
+            record {|string[] value;|}|error? entry = rows.next();
+            while entry is record {|string[] value;|} {
+                collected.push(string:'join(",", ...entry.value));
+                entry = rows.next();
+            }
+            if entry is error {
+                return entry;
+            }
+            recorder.put("csv", string:'join(";", ...collected));
+        }
+    };
+    check lsn.attach(svc, "/incoming");
+    check lsn.'start();
+    check await(() => recorder.count("csv") >= 1);
+    check lsn.gracefulStop();
+    check lsn.detach(svc);
+
+    test:assertEquals(recorder.payload("csv"), "a,b;c,d",
+            "the string array stream must yield every row of the file");
+}
+
+@test:Config {}
 function testCsvStreamLaxBinding() returns error? {
     [Client, string] setup = check setupWatchedShare("lsn-csvstream-lax");
     Client shareClient = setup[0];
@@ -2560,10 +2623,24 @@ function testNativeDiagnosticsReachTheBallerinaLog() returns error? {
     check lsn.immediateStop();
     check lsn.detach(svc);
 
+    // Restore the real helper so the redirect does not leak into the rest of the run.
+    test:when(logListenerWarnMock).callOriginal();
+
     test:assertTrue(recorder.count("onerror") >= 1,
             "the seeded file must fail its read, so onError is the witness that the fault fired");
     test:assertTrue(logSink.matching("cannot read") >= 1,
             "the native side must report the failed read through the module's log helpers");
     test:assertTrue(logSink.matching("__err-500-InternalError") >= 1,
             "the bridged diagnostic must name the file it failed on");
+}
+
+// The helpers are plain pass-throughs to the log functions; the bridge test above proves the
+// native side calls them, and this drives their real bodies, which the warn redirect otherwise
+// shadows while it is registered.
+@test:Config {}
+function testListenerLogHelpersRunTheRealLoggers() {
+    test:when(logListenerWarnMock).callOriginal();
+    logListenerWarn("log helper warn probe");
+    logListenerError("log helper error probe");
+    logListenerDebug("log helper debug probe");
 }

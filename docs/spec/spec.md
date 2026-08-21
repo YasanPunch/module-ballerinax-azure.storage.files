@@ -390,7 +390,7 @@ A service declares at least one content handler, validated at compile time by th
 * **`onFileText`**: takes a `string`.
 * **`onFileJson`**: takes a `json` value or a record. A `json` parameter receives any parsed root as is, and a record binds an object root by projection.
 * **`onFileXml`**: takes an `xml` document or a record whose fields bind from the document's elements.
-* **`onFileCsv`**: takes a record array or a `stream<record {}, error?>`. Both forms map each row's fields through the file's first row, the header. To consume positional or headerless rows, take the content through `onFile` and parse it with the `data.csv` module.
+* **`onFileCsv`**: takes a string matrix (`string[][]`), a record array, a `stream<string[], error?>`, or a `stream<record {}, error?>`. The record forms map each row's fields through the file's first row, the header; the string forms keep every row of the file, the header row included.
 
 The `FileInfo` and `Caller` parameters are optional trailing parameters: a handler declares its content parameter first, then either, both, or neither of `FileInfo` and `Caller` (with `FileInfo` before `Caller` when both are present), and the listener passes only what the handler declares. `FileInfo` carries what the directory listing provides: the share name, the share relative path, the file name, the size in bytes, the entity tag, and the last modified time.
 

@@ -2,6 +2,24 @@
 
 This file documents all notable changes to the Ballerina Azure Files package. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-08-21
+
+### Added
+
+- `onFileCsv` accepts the string row forms alongside the record forms: `string[][]` and `stream<string[], error?>`. The string forms keep every row of the file, the header row included
+- Named type aliases are accepted for a listener handler's content, `FileInfo`, and `Caller` parameters
+
+### Fixed
+
+- Typed service errors raised while a content stream is read keep their Azure status and error code instead of collapsing to the generic client error
+- A ranged `downloadToFile` no longer drops the range's last byte
+- The CSV row stream and the content streams close their sources when parsing or reading fails
+- Listener diagnostics reach the Ballerina log (they were silently discarded), a handler panic triggers the `afterError` consume action, and a stopped listener rejects a restart instead of never polling again
+
+### Changed
+
+- `RetryPolicyType.FIXED` is renamed `FIXED_INTERVAL`; the configuration value stays `"fixed"`
+
 ## [1.0.0] - 2026-08-19
 
 ### Added

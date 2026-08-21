@@ -285,16 +285,14 @@ public class ServiceValidationTest {
     }
 
     @Test
-    public void testInvalidOnFileCsvStringMatrix() {
-        DiagnosticResult result = loadPackage("invalid_on_file_csv_string_matrix");
-        assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
+    public void testValidOnFileCsvStringMatrixService() {
+        DiagnosticResult result = loadPackage("valid_on_file_csv_string_matrix");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv string matrix service");
     }
 
     @Test
-    public void testInvalidOnFileCsvStringArrayStream() {
-        DiagnosticResult result = loadPackage("invalid_on_file_csv_stream_string_array");
-        assertEquals(result.errorCount(), 1);
-        assertError(result, 0, "AZURE_FILES_106", "Invalid parameter type for onFileCsv");
+    public void testValidOnFileCsvStringArrayStreamService() {
+        DiagnosticResult result = loadPackage("valid_on_file_csv_stream_string_array");
+        assertEquals(result.errorCount(), 0, "expected no diagnostics for an onFileCsv string array stream service");
     }
 }
