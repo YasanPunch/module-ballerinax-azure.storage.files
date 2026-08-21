@@ -18,7 +18,7 @@ This file documents all notable changes to the Ballerina Azure Files package. Th
 
 ### Changed
 
-- `RetryPolicyType.FIXED` is renamed `FIXED_INTERVAL`; the configuration value stays `"fixed"`
+- `RetryPolicyType.FIXED` is renamed `FIXED_INTERVAL`; the configuration value stays `"fixed"`, and the `FIXED` constant remains available through the shared `LeaseDuration` member, so existing code keeps compiling
 
 ## [1.0.0] - 2026-08-19
 
