@@ -307,8 +307,10 @@ public final class Listener {
                     handlerPanic.printStackTrace();
                     handled = false;
                 } catch (RuntimeException e) {
-                    logWarn(ctx, "azure.storage.files listener: onError invocation failed: "
-                            + BallerinaAzureClient.describe(e));
+                    // Reported the same way as the handler's own failures above: as a Ballerina
+                    // error value with its stack trace.
+                    FilesErrorCreator.clientError("azure.storage.files listener: onError invocation failed: "
+                            + BallerinaAzureClient.describe(e), e).printStackTrace();
                     handled = false;
                 }
                 if (listenerObj != null) {

@@ -131,18 +131,20 @@ public final class PluginUtils {
             return false;
         }
         TypeSymbol resolved = typeSymbol.get();
-        while (true) {
+        // Bounded and null-guarded: erroneous sources can expose cyclic or unresolved reference
+        // chains, and this walk must never hang or crash the analysis they run under.
+        for (int depth = 0; resolved != null && depth < PluginConstants.MAX_TYPE_REFERENCE_DEPTH; depth++) {
             Optional<ModuleSymbol> moduleSymbol = resolved.getModule();
             if (moduleSymbol.isPresent() && validateModuleId(moduleSymbol.get())
                     && resolved.getName().map(expectedTypeName::equals).orElse(false)) {
                 return true;
             }
-            if (resolved instanceof TypeReferenceTypeSymbol reference) {
-                resolved = reference.typeDescriptor();
-            } else {
+            if (!(resolved instanceof TypeReferenceTypeSymbol reference)) {
                 return false;
             }
+            resolved = reference.typeDescriptor();
         }
+        return false;
     }
 
     public static Optional<TypeSymbol> getParameterTypeSymbol(ParameterNode parameterNode,

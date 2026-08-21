@@ -1,0 +1,4 @@
+[package]
+org = "azure_files_test"
+name = "valid_on_file_json_record_alias_chain"
+version = "0.9.0"

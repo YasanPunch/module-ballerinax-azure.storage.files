@@ -58,6 +58,13 @@ public class ServiceValidationTest {
     }
 
     @Test
+    public void testValidTypedJsonRecordAliasChainService() {
+        DiagnosticResult result = loadPackage("valid_on_file_json_record_alias_chain");
+        assertEquals(result.errorCount(), 0,
+                "expected no diagnostics for a record behind an alias chain on onFileJson");
+    }
+
+    @Test
     public void testInvalidOnFileJsonRecordArray() {
         DiagnosticResult result = loadPackage("invalid_on_file_json_record_array");
         assertEquals(result.errorCount(), 1);

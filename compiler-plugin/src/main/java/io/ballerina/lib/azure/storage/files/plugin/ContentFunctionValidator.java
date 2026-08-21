@@ -149,9 +149,19 @@ public class ContentFunctionValidator {
 
     private TypeSymbol unwrapTypeReference(TypeSymbol typeSymbol) {
         TypeSymbol resolved = typeSymbol;
-        while (resolved.typeKind() == TypeDescKind.TYPE_REFERENCE
-                && resolved instanceof TypeReferenceTypeSymbol typeReferenceTypeSymbol) {
-            resolved = typeReferenceTypeSymbol.typeDescriptor();
+        // Bounded and null-guarded: erroneous sources can expose cyclic or unresolved reference
+        // chains, and this walk must never hang or crash the analysis they run under. A reference
+        // that stays unresolved is returned as is, for the callers' reference fallbacks.
+        for (int depth = 0; depth < PluginConstants.MAX_TYPE_REFERENCE_DEPTH; depth++) {
+            if (resolved.typeKind() != TypeDescKind.TYPE_REFERENCE
+                    || !(resolved instanceof TypeReferenceTypeSymbol typeReferenceTypeSymbol)) {
+                return resolved;
+            }
+            TypeSymbol referred = typeReferenceTypeSymbol.typeDescriptor();
+            if (referred == null) {
+                return resolved;
+            }
+            resolved = referred;
         }
         return resolved;
     }
