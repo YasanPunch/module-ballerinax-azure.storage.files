@@ -4,6 +4,12 @@ This file documents all notable changes to the Ballerina Azure Files package. Th
 
 ## [Unreleased]
 
+### Added
+
+- Observability support: the clients and the listener publish metrics and traces that follow the observability specification shared by the Ballerina file integration modules, active only when the Ballerina runtime's observability is enabled
+
+## [1.0.3] - 2026-09-16
+
 ### Fixed
 
 - Remove conflicting jar file warnings during consumer builds by aligning the `data.jsondata` and `data.xmldata` dependency versions with the distribution and marking `slf4j-api` as test-only
